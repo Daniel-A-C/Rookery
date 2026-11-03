@@ -1,0 +1,18 @@
+[package]
+name = "rookery-render"
+description = "wgpu render thread, frame scheduler and demo scene for the Rookery host."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rookery-core.workspace = true
+wgpu.workspace = true
+raw-window-handle.workspace = true
+pollster.workspace = true
+bytemuck.workspace = true
+log.workspace = true
+anyhow.workspace = true
+serde.workspace = true

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rookery</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="popover">
+      <header class="header">
+        <div class="brand">
+          <span class="bird-glyph" aria-hidden="true">◆</span>
+          <div>
+            <h1>Rookery</h1>
+            <p class="subtitle">Demo Scene · Aurora &amp; Motes</p>
+          </div>
+        </div>
+        <span id="power-badge" class="badge">AC</span>
+      </header>
+
+      <section class="card actions-row">
+        <button id="btn-interactive" class="btn primary" type="button">
+          <span id="lbl-interactive">Interact on Desktop</span>
+          <kbd id="kbd-hotkey">⌘⌥⇧R</kbd>
+        </button>
+        <button id="btn-pause" class="btn secondary" type="button">
+          Pause
+        </button>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Displays</div>
+        <ul id="displays-list" class="displays-list">
+          <li class="empty">Detecting displays…</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="section-title">Performance &amp; Controls</div>
+
+        <label class="control-row" for="slider-passive">
+          <span>Passive FPS Cap</span>
+          <strong id="val-passive">24 fps</strong>
+        </label>
+        <input
+          id="slider-passive"
+          type="range"
+          min="15"
+          max="30"
+          step="1"
+          value="24"
+        />
+
+        <label class="control-row" for="slider-lowpower">
+          <span>Low-Power FPS</span>
+          <strong id="val-lowpower">12 fps</strong>
+        </label>
+        <input
+          id="slider-lowpower"
+          type="range"
+          min="5"
+          max="15"
+          step="1"
+          value="12"
+        />
+
+        <label class="checkbox-row">
+          <input id="chk-battery" type="checkbox" />
+          <span>Pause simulation on battery power</span>
+        </label>
+
+        <div class="hotkey-row">
+          <span>Interaction Hotkey</span>
+          <button id="btn-record-hotkey" class="hotkey-btn" type="button">
+            CommandOrControl+Alt+Shift+R
+          </button>
+        </div>
+        <p id="hotkey-error" class="error-msg" hidden></p>
+      </section>
+
+      <footer class="footer">
+        <span class="version">v0.1.0 · MIT</span>
+        <button id="btn-quit" class="quit-btn" type="button">
+          Quit Rookery
+        </button>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
