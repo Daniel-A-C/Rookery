@@ -16,8 +16,13 @@ pub mod governor;
 pub mod interaction;
 pub mod occlusion;
 pub mod settings;
+pub mod world;
 
 pub use geometry::{DisplayId, Rect};
+pub use world::{
+    Bird, BirdSpecies, BirdState, Branch, FoliageBud, WORLD_STATE_FILE_NAME, WorldRng, WorldState,
+    WorldStats,
+};
 
 /// A scene's hint to the governor about how much motion it currently has.
 ///

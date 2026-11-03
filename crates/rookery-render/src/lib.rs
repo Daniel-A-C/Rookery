@@ -10,6 +10,8 @@
 //! - [`demo::DemoScene`]: a cheap placeholder scene (aurora bands + drifting motes) used to
 //!   exercise the render loop and governor in Milestone 1.
 
+pub mod ascii_scene;
+pub mod atlas;
 pub mod demo;
 mod fullscreen;
 mod gpu;
@@ -18,6 +20,7 @@ mod renderer;
 mod scene;
 mod vignette;
 
+pub use ascii_scene::LivingRookeryScene;
 pub use gpu::Gpu;
 pub use renderer::{DisplayStats, Renderer, SceneFactory, SurfaceSize};
 pub use scene::{Pointer, Scene, SceneInput};

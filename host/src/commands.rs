@@ -94,6 +94,61 @@ pub fn update_settings(
 }
 
 #[tauri::command]
+pub fn plant_seed(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) -> HostStatus {
+    if let Ok(mut w) = state.world.lock() {
+        w.plant_seed(pos);
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    status
+}
+
+#[tauri::command]
+pub fn prune_branch(
+    app: AppHandle,
+    state: State<'_, HostState>,
+    pos: [f32; 2],
+    radius: Option<f32>,
+) -> HostStatus {
+    if let Ok(mut w) = state.world.lock() {
+        w.prune_nearest(pos, radius.unwrap_or(80.0));
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    status
+}
+
+#[tauri::command]
+pub fn feed_birds(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) -> HostStatus {
+    if let Ok(mut w) = state.world.lock() {
+        w.drop_snack(pos);
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    status
+}
+
+#[tauri::command]
+pub fn get_world_seed(state: State<'_, HostState>) -> String {
+    if let Ok(w) = state.world.lock() {
+        format!("rookery://tree/seed-{:016x}", w.seed)
+    } else {
+        "rookery://tree/seed-unknown".into()
+    }
+}
+
+#[tauri::command]
+pub fn set_world_seed(app: AppHandle, state: State<'_, HostState>, seed: u64) -> HostStatus {
+    if let Ok(mut w) = state.world.lock() {
+        *w = rookery_core::world::WorldState::new(seed);
+        let _ = w.save_atomic(&state.world_path);
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    status
+}
+
+#[tauri::command]
 pub fn quit(app: AppHandle, state: State<'_, HostState>) {
     state.clean_shutdown();
     app.exit(0);

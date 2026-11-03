@@ -16,9 +16,9 @@ use chrono::Utc;
 use rookery_core::governor::PowerState;
 use rookery_core::interaction::Interaction;
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
+use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
-use rookery_render::demo::DemoScene;
-use rookery_render::{Gpu, Renderer};
+use rookery_render::{Gpu, LivingRookeryScene, Renderer};
 use state::{HostInner, HostState};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -39,6 +39,11 @@ pub fn run() {
             commands::set_interactive,
             commands::get_settings,
             commands::update_settings,
+            commands::plant_seed,
+            commands::prune_branch,
+            commands::feed_birds,
+            commands::get_world_seed,
+            commands::set_world_seed,
             commands::quit,
         ])
         .setup(|app| {
@@ -55,18 +60,32 @@ pub fn run() {
                 "settings loaded from {} ({outcome:?})",
                 settings_path.display()
             );
+
+            let world_path = config_dir.join(WORLD_STATE_FILE_NAME);
+            let mut world = WorldState::load_or_init(&world_path, 42);
+
+            // Milestone 2 Offline Time-Delta Engine: catch up progression since last known run
+            if let Some(last_run) = settings.last_run_utc {
+                let elapsed_secs = (Utc::now() - last_run).num_seconds().max(0) as f64;
+                if elapsed_secs > 0.0 {
+                    log::info!("offline time-delta catch-up: advancing {elapsed_secs:.1}s");
+                    world.on_wake(elapsed_secs);
+                }
+            }
+
+            let world_arc = Arc::new(Mutex::new(world));
+            let scene_world = world_arc.clone();
+
             settings.touch_running(Utc::now());
             if let Err(e) = settings.save(&settings_path) {
                 log::warn!("failed to write initial settings heartbeat: {e}");
             }
 
             let gpu = Gpu::new_blocking()?;
-            let seed_counter = Arc::new(std::sync::atomic::AtomicU64::new(1));
             let renderer = Renderer::spawn(
                 gpu,
                 Box::new(move |gpu, format| {
-                    let s = seed_counter.fetch_add(1, Ordering::Relaxed);
-                    Box::new(DemoScene::new(gpu, format, s * 0x9E37_79B9))
+                    Box::new(LivingRookeryScene::new(gpu, format, scene_world.clone()))
                 }),
                 Arc::new(rookery_platform::cursor_position),
             )?;
@@ -74,6 +93,8 @@ pub fn run() {
             let initial_hotkey = settings.hotkey.clone();
             let host_state = HostState {
                 settings_path,
+                world_path,
+                world: world_arc,
                 layer: desktop_layer(),
                 renderer: Mutex::new(Some(renderer)),
                 inner: Mutex::new(HostInner {
@@ -165,6 +186,14 @@ fn spawn_governor_thread(app: AppHandle) {
                             log::debug!("heartbeat save failed: {e}");
                         }
                     }
+                }
+
+                // 1-minute periodic world autosave
+                if ticks.is_multiple_of(60)
+                    && let Ok(mut w) = state.world.lock()
+                    && let Err(e) = w.save_atomic(&state.world_path)
+                {
+                    log::debug!("world autosave failed: {e}");
                 }
 
                 state.recompute_budgets();

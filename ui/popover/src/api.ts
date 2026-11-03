@@ -24,11 +24,26 @@ export interface DisplayStatus {
   occluded: boolean;
 }
 
+export interface RookeryStatus {
+  seed: number;
+  total_age_secs: number;
+  total_offline_caught_up_secs: number;
+  total_branches: number;
+  total_foliage: number;
+  birds_active: number;
+  birds_perched: number;
+  pruned_branches: number;
+  seeds_planted: number;
+  snacks_eaten: number;
+  nests_built: number;
+}
+
 export interface HostStatus {
   displays: DisplayStatus[];
   power: PowerState;
   interactive: boolean;
   user_paused: boolean;
+  rookery?: RookeryStatus;
 }
 
 export interface FrameSettings {
@@ -61,6 +76,17 @@ export const api = {
   getSettings: (): Promise<Settings> => invoke("get_settings"),
   updateSettings: (patch: SettingsPatch): Promise<Settings> =>
     invoke("update_settings", { patch }),
+  plantSeed: (pos: [number, number]): Promise<HostStatus> =>
+    invoke("plant_seed", { pos }),
+  pruneBranch: (
+    pos: [number, number],
+    radius?: number,
+  ): Promise<HostStatus> => invoke("prune_branch", { pos, radius }),
+  feedBirds: (pos: [number, number]): Promise<HostStatus> =>
+    invoke("feed_birds", { pos }),
+  getWorldSeed: (): Promise<string> => invoke("get_world_seed"),
+  setWorldSeed: (seed: number): Promise<HostStatus> =>
+    invoke("set_world_seed", { seed }),
   quit: (): Promise<void> => invoke("quit"),
   onStatus: (cb: (status: HostStatus) => void): Promise<UnlistenFn> =>
     listen<HostStatus>("rookery://status", (ev) => cb(ev.payload)),

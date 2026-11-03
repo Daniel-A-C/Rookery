@@ -13,11 +13,48 @@
           <span class="bird-glyph" aria-hidden="true">◆</span>
           <div>
             <h1>Rookery</h1>
-            <p class="subtitle">Demo Scene · Aurora &amp; Motes</p>
+            <p class="subtitle">The Living ASCII Rookery</p>
           </div>
         </div>
         <span id="power-badge" class="badge">AC</span>
       </header>
+
+      <section class="card rookery-card">
+        <div class="section-title">The Living World</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">Tree Age</span>
+            <span id="stat-age" class="stat-value">0h 00m</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Branches</span>
+            <span id="stat-branches" class="stat-value">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Foliage Buds</span>
+            <span id="stat-foliage" class="stat-value">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Flock in Sky</span>
+            <span id="stat-birds" class="stat-value">4 birds</span>
+          </div>
+        </div>
+        <div class="rookery-actions">
+          <button id="btn-feed" class="btn small" type="button" title="Place snacks on branches to entice birds">
+            🌾 Feed Birds
+          </button>
+          <button id="btn-prune" class="btn small" type="button" title="Gently prune branches to shape the canopy">
+            ✂️ Prune
+          </button>
+          <button id="btn-plant" class="btn small" type="button" title="Drop a seed to grow a new sapling">
+            🌱 Plant Sapling
+          </button>
+          <button id="btn-seed" class="btn small" type="button" title="Copy shareable World Seed string">
+            📋 World Seed
+          </button>
+        </div>
+        <div id="seed-notification" class="notification-text" hidden></div>
+      </section>
 
       <section class="card actions-row">
         <button id="btn-interactive" class="btn primary" type="button">

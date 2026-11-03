@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use rookery_core::DisplayId;
@@ -12,6 +12,7 @@ use rookery_core::governor::{
 };
 use rookery_core::interaction::{Effect, Interaction, InteractionEvent};
 use rookery_core::settings::Settings;
+use rookery_core::world::WorldState;
 use rookery_platform::{DesktopLayer, DisplayInfo};
 use rookery_render::Renderer;
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,8 @@ pub struct HostInner {
 
 pub struct HostState {
     pub settings_path: PathBuf,
+    pub world_path: PathBuf,
+    pub world: Arc<Mutex<WorldState>>,
     pub layer: Box<dyn DesktopLayer>,
     pub renderer: Mutex<Option<Renderer>>,
     pub inner: Mutex<HostInner>,
@@ -59,11 +62,27 @@ pub struct DisplayStatus {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct RookeryStatus {
+    pub seed: u64,
+    pub total_age_secs: f64,
+    pub total_offline_caught_up_secs: f64,
+    pub total_branches: u32,
+    pub total_foliage: u32,
+    pub birds_active: u32,
+    pub birds_perched: u32,
+    pub pruned_branches: u32,
+    pub seeds_planted: u32,
+    pub snacks_eaten: u32,
+    pub nests_built: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct HostStatus {
     pub displays: Vec<DisplayStatus>,
     pub power: PowerState,
     pub interactive: bool,
     pub user_paused: bool,
+    pub rookery: Option<RookeryStatus>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -121,6 +140,20 @@ impl HostState {
     /// Snapshot current status for the popover UI.
     pub fn status(&self) -> HostStatus {
         let stats = self.with_renderer(|r| r.stats()).unwrap_or_default();
+        let rookery = self.world.lock().ok().map(|w| RookeryStatus {
+            seed: w.seed,
+            total_age_secs: w.total_age_secs,
+            total_offline_caught_up_secs: w.total_offline_caught_up_secs,
+            total_branches: w.stats.total_branches,
+            total_foliage: w.stats.total_foliage,
+            birds_active: w.stats.birds_active,
+            birds_perched: w.stats.birds_perched,
+            pruned_branches: w.stats.pruned_branches,
+            seeds_planted: w.stats.seeds_planted,
+            snacks_eaten: w.stats.snacks_eaten,
+            nests_built: w.stats.nests_built,
+        });
+
         let inner = self.inner.lock().expect("host state poisoned");
         let displays = inner
             .displays
@@ -144,6 +177,7 @@ impl HostState {
             power: inner.power,
             interactive: inner.interaction.is_interactive(),
             user_paused: inner.user_paused,
+            rookery,
         }
     }
 
@@ -214,6 +248,11 @@ impl HostState {
             if let Err(e) = inner.settings.save(&self.settings_path) {
                 log::warn!("failed to save settings on shutdown: {e}");
             }
+        }
+        if let Ok(mut w) = self.world.lock()
+            && let Err(e) = w.save_atomic(&self.world_path)
+        {
+            log::warn!("failed to save world state on shutdown: {e}");
         }
         if let Ok(mut r) = self.renderer.lock()
             && let Some(mut renderer) = r.take()

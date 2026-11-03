@@ -11,6 +11,15 @@ const btnInteractive = el<HTMLButtonElement>("btn-interactive");
 const lblInteractive = el<HTMLSpanElement>("lbl-interactive");
 const kbdHotkey = el<HTMLElement>("kbd-hotkey");
 const btnPause = el<HTMLButtonElement>("btn-pause");
+const statAge = el<HTMLSpanElement>("stat-age");
+const statBranches = el<HTMLSpanElement>("stat-branches");
+const statFoliage = el<HTMLSpanElement>("stat-foliage");
+const statBirds = el<HTMLSpanElement>("stat-birds");
+const btnFeed = el<HTMLButtonElement>("btn-feed");
+const btnPrune = el<HTMLButtonElement>("btn-prune");
+const btnPlant = el<HTMLButtonElement>("btn-plant");
+const btnSeed = el<HTMLButtonElement>("btn-seed");
+const seedNotification = el<HTMLDivElement>("seed-notification");
 const displaysList = el<HTMLUListElement>("displays-list");
 const sliderPassive = el<HTMLInputElement>("slider-passive");
 const valPassive = el<HTMLElement>("val-passive");
@@ -42,6 +51,31 @@ function formatBudget(d: DisplayStatus): { text: string; paused: boolean } {
   };
 }
 
+function formatAge(secs: number): string {
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ${Math.floor(secs % 60)}s`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return `${hours}h ${remMins}m`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return `${days}d ${remHours}h`;
+}
+
+let notificationTimer: number | null = null;
+function showNotification(msg: string): void {
+  seedNotification.textContent = msg;
+  seedNotification.hidden = false;
+  if (notificationTimer !== null) {
+    window.clearTimeout(notificationTimer);
+  }
+  notificationTimer = window.setTimeout(() => {
+    seedNotification.hidden = true;
+    notificationTimer = null;
+  }, 3000);
+}
+
 function renderStatus(s: HostStatus): void {
   currentStatus = s;
   const powerLabels: Record<HostStatus["power"], string> = {
@@ -56,6 +90,13 @@ function renderStatus(s: HostStatus): void {
     ? "Interactive · Active"
     : "Interact on Desktop";
   btnPause.textContent = s.user_paused ? "Resume" : "Pause";
+
+  if (s.rookery) {
+    statAge.textContent = formatAge(s.rookery.total_age_secs);
+    statBranches.textContent = `${s.rookery.total_branches}`;
+    statFoliage.textContent = `${s.rookery.total_foliage} buds`;
+    statBirds.textContent = `${s.rookery.birds_active} (${s.rookery.birds_perched} perched)`;
+  }
 
   if (s.displays.length === 0) {
     displaysList.innerHTML = `<li class="empty">No active displays</li>`;
@@ -102,6 +143,32 @@ btnInteractive.addEventListener("click", async () => {
 btnPause.addEventListener("click", async () => {
   const next = !(currentStatus?.user_paused ?? false);
   renderStatus(await api.setPaused(next));
+});
+
+btnFeed.addEventListener("click", async () => {
+  renderStatus(await api.feedBirds([500, 450]));
+  showNotification("Scattered snacks on branches 🌾");
+});
+
+btnPrune.addEventListener("click", async () => {
+  renderStatus(await api.pruneBranch([500, 400], 120));
+  showNotification("Pruned outer canopy ✂️");
+});
+
+btnPlant.addEventListener("click", async () => {
+  const rx = 350 + Math.random() * 300;
+  renderStatus(await api.plantSeed([rx, 750]));
+  showNotification("Planted new sapling 🌱");
+});
+
+btnSeed.addEventListener("click", async () => {
+  const seedStr = await api.getWorldSeed();
+  try {
+    await navigator.clipboard.writeText(seedStr);
+    showNotification("Copied world seed to clipboard! 📋");
+  } catch {
+    showNotification(seedStr);
+  }
 });
 
 sliderPassive.addEventListener("input", () => {
