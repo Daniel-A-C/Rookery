@@ -98,4 +98,3 @@ pub fn quit(app: AppHandle, state: State<'_, HostState>) {
     state.clean_shutdown();
     app.exit(0);
 }
-

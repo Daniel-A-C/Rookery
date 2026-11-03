@@ -226,4 +226,3 @@ impl HostState {
 pub fn initial_budget() -> FrameBudget {
     FrameBudget::Paused(PauseReason::Occluded)
 }
-

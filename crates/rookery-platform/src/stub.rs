@@ -49,4 +49,3 @@ impl PowerProbe for StubPowerProbe {
         PowerState::Ac
     }
 }
-
