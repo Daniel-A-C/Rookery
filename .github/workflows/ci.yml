@@ -45,6 +45,9 @@ jobs:
       - name: Run unit tests
         run: cargo test --workspace
 
+      - name: Run headless performance benchmark & regression harness
+        run: cargo run -p rookery-bench -- --ticks 200 --assert-budgets
+
       - name: Build release host binary
         run: cargo build -p rookery-host --release
 

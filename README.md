@@ -7,21 +7,32 @@
 
 - **[Project Vision & Roadmap (`docs/VISION.md`)](docs/VISION.md)**
 - **[Host Architecture & Developer Guide (`docs/architecture/host.md`)](docs/architecture/host.md)**
+- **[Living ASCII Rookery Architecture (`docs/architecture/rookery-app.md`)](docs/architecture/rookery-app.md)**
+- **[Performance Benchmarking & Packaging (`docs/architecture/bench-and-packaging.md`)](docs/architecture/bench-and-packaging.md)**
 
 ---
 
-## Milestone 1 Features
+## Features
 
-- **Native Desktop Layer Attachment**:
-  - **macOS**: Attaches below desktop icons (`kCGDesktopWindowLevelKey`), spans all Spaces/Mission Control cleanly, and runs as a Dock-less menu bar accessory.
-  - **Windows**: Attaches to `Progman` / `WorkerW` behind `SHELLDLL_DefView`, supporting both classic Windows 10 / 11 (<=23H2) and Windows 11 24H2+ desktop hierarchies.
-- **Zero-WebView Wallpaper Rendering (`wgpu`)**:
-  - One shared low-power `wgpu::Device` and a single render thread driving per-monitor surfaces without any background WebView process overhead.
-- **Smart Performance Governor**:
-  - Automatically drops occluded displays to `0 FPS` (blocking on the render channel with `0.0%` CPU) when covered by maximized or fullscreen windows, and adapts frame pacing to AC, Battery, and Low-Power states.
-- **Dual-Mode Interaction Architecture**:
-  - **System Tray / Menu Bar Popover**: On-demand lightweight control popover (created on click, destroyed on focus loss) for inspecting per-display FPS/occlusion status, pausing, and tuning frame budgets.
-  - **Direct Interaction Mode**: Toggle via global hotkey (`Cmd+Opt+Shift+R` on macOS / `Ctrl+Alt+Shift+R` on Windows) to promote the desktop simulation above icons and interact with the cursor; press `Esc` or click any application window to return to click-through passive mode.
+### 🌳 The Living ASCII Rookery (Flagship App)
+- **Overlapping SDF Glyph Renderer**:
+  Crisp, sub-pixel text rendering with smooth wind sway and dynamic scaling powered by a GPU-accelerated Signed Distance Field (SDF) glyph atlas.
+- **Procedural Growth Algorithm**:
+  Trunk and branching systems expand organically over days and weeks, sprouting lush foliage buds and blooming flowers.
+- **Autonomous Wildlife (The Flock)**:
+  Procedural birds glide across the desktop, circle the canopy, perch on branches, feed on scattered snacks, and sing floating musical notes.
+- **Offline Time-Delta Catch-Up**:
+  Deterministic catch-up engine that advances world growth seamlessly when the computer wakes from sleep.
+
+### ⚡ Performance & Resource Governance
+- **Strict Budgets**: `< 120 MB` peak RAM, `< 1.5%` background CPU usage, and automated headless CI benchmarks via `rookery-bench`.
+- **Smart Occlusion Detection**: Pauses rendering to `0 FPS` when covered by maximized or fullscreen windows.
+- **Power-Aware Pacing**: Dynamically throttles tick rates when running on battery or low-power modes.
+
+### 📸 Sharing, Viral Export & Distribution
+- **One-Click Snapshots & GIF Loops**: Export clean, icon-free PNG screenshots and 5-second animated GIF loops directly to `~/Pictures/Rookery`.
+- **Shareable Seeds & State URIs**: Copy `rookery://tree/seed-<hex>` or full snapshot `rookery://tree/state-<base64>` strings to share worlds with friends or restore past ecosystems.
+- **Cross-Platform One-Click Installers**: Automated GitHub Actions releases building Universal macOS `.dmg` and Windows `.msi` / `.exe` installers.
 
 ---
 

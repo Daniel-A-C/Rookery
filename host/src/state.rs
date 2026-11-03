@@ -14,7 +14,7 @@ use rookery_core::interaction::{Effect, Interaction, InteractionEvent};
 use rookery_core::settings::Settings;
 use rookery_core::world::WorldState;
 use rookery_platform::{DesktopLayer, DisplayInfo};
-use rookery_render::Renderer;
+use rookery_render::{Gpu, Renderer};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Window};
 
@@ -45,6 +45,7 @@ pub struct HostState {
     pub world: Arc<Mutex<WorldState>>,
     pub layer: Box<dyn DesktopLayer>,
     pub renderer: Mutex<Option<Renderer>>,
+    pub gpu: Arc<Gpu>,
     pub inner: Mutex<HostInner>,
     pub shutting_down: AtomicBool,
 }

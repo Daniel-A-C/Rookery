@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/rookery-core", "crates/rookery-platform", "crates/rookery-render", "host"]
+members = [
+    "crates/rookery-core",
+    "crates/rookery-platform",
+    "crates/rookery-render",
+    "crates/rookery-bench",
+    "host",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -26,6 +32,9 @@ wgpu = "30"
 pollster = "1"
 bytemuck = { version = "1", features = ["derive"] }
 tempfile = "3"
+png = "0.18"
+gif = "0.13"
+base64 = "0.22"
 
 [profile.release]
 codegen-units = 1

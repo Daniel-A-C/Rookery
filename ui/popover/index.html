@@ -49,11 +49,39 @@
           <button id="btn-plant" class="btn small" type="button" title="Drop a seed to grow a new sapling">
             🌱 Plant Sapling
           </button>
-          <button id="btn-seed" class="btn small" type="button" title="Copy shareable World Seed string">
-            📋 World Seed
-          </button>
         </div>
         <div id="seed-notification" class="notification-text" hidden></div>
+      </section>
+
+      <section class="card share-card">
+        <div class="section-title">Share &amp; Capture</div>
+        <div class="share-actions">
+          <button id="btn-snapshot" class="btn small" type="button" title="Capture clean desktop snapshot PNG">
+            📸 Snapshot
+          </button>
+          <button id="btn-record-loop" class="btn small" type="button" title="Record 5-second clean GIF loop">
+            🎞️ Record GIF
+          </button>
+          <button id="btn-copy-seed" class="btn small" type="button" title="Copy shareable World Seed URI">
+            🌱 Copy Seed
+          </button>
+          <button id="btn-copy-state" class="btn small" type="button" title="Copy full World State snapshot">
+            📦 Copy State
+          </button>
+        </div>
+        <div class="import-group">
+          <input
+            id="input-import-world"
+            type="text"
+            class="import-input"
+            placeholder="Paste seed or state URI…"
+            spellcheck="false"
+          />
+          <button id="btn-import-world" class="btn small primary" type="button">
+            Import
+          </button>
+        </div>
+        <div id="share-notification" class="notification-text" hidden></div>
       </section>
 
       <section class="card actions-row">

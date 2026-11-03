@@ -18,8 +18,14 @@ const statBirds = el<HTMLSpanElement>("stat-birds");
 const btnFeed = el<HTMLButtonElement>("btn-feed");
 const btnPrune = el<HTMLButtonElement>("btn-prune");
 const btnPlant = el<HTMLButtonElement>("btn-plant");
-const btnSeed = el<HTMLButtonElement>("btn-seed");
 const seedNotification = el<HTMLDivElement>("seed-notification");
+const btnSnapshot = el<HTMLButtonElement>("btn-snapshot");
+const btnRecordLoop = el<HTMLButtonElement>("btn-record-loop");
+const btnCopySeed = el<HTMLButtonElement>("btn-copy-seed");
+const btnCopyState = el<HTMLButtonElement>("btn-copy-state");
+const inputImportWorld = el<HTMLInputElement>("input-import-world");
+const btnImportWorld = el<HTMLButtonElement>("btn-import-world");
+const shareNotification = el<HTMLDivElement>("share-notification");
 const displaysList = el<HTMLUListElement>("displays-list");
 const sliderPassive = el<HTMLInputElement>("slider-passive");
 const valPassive = el<HTMLElement>("val-passive");
@@ -74,6 +80,20 @@ function showNotification(msg: string): void {
     seedNotification.hidden = true;
     notificationTimer = null;
   }, 3000);
+}
+
+let shareNotificationTimer: number | null = null;
+function showShareNotification(msg: string, isError = false): void {
+  shareNotification.textContent = msg;
+  shareNotification.style.color = isError ? "var(--danger)" : "var(--ok)";
+  shareNotification.hidden = false;
+  if (shareNotificationTimer !== null) {
+    window.clearTimeout(shareNotificationTimer);
+  }
+  shareNotificationTimer = window.setTimeout(() => {
+    shareNotification.hidden = true;
+    shareNotificationTimer = null;
+  }, 3500);
 }
 
 function renderStatus(s: HostStatus): void {
@@ -161,13 +181,68 @@ btnPlant.addEventListener("click", async () => {
   showNotification("Planted new sapling 🌱");
 });
 
-btnSeed.addEventListener("click", async () => {
-  const seedStr = await api.getWorldSeed();
+btnSnapshot.addEventListener("click", async () => {
+  showShareNotification("Capturing snapshot… 📸");
   try {
-    await navigator.clipboard.writeText(seedStr);
-    showNotification("Copied world seed to clipboard! 📋");
-  } catch {
-    showNotification(seedStr);
+    const path = await api.captureSnapshot();
+    showShareNotification(`Saved: ${path.split("/").pop() || "snapshot.png"} 📸`);
+  } catch (err) {
+    showShareNotification(`Failed to capture: ${String(err)}`, true);
+  }
+});
+
+btnRecordLoop.addEventListener("click", async () => {
+  btnRecordLoop.disabled = true;
+  showShareNotification("Recording 5s GIF loop… 🎞️");
+  try {
+    const path = await api.recordLoop();
+    showShareNotification(`Saved: ${path.split("/").pop() || "loop.gif"} 🎞️`);
+  } catch (err) {
+    showShareNotification(`Failed to record: ${String(err)}`, true);
+  } finally {
+    btnRecordLoop.disabled = false;
+  }
+});
+
+btnCopySeed.addEventListener("click", async () => {
+  try {
+    const seedUri = await api.getWorldSeed();
+    await navigator.clipboard.writeText(seedUri);
+    showShareNotification("Copied world seed URI! 🌱");
+  } catch (err) {
+    showShareNotification(`Copy failed: ${String(err)}`, true);
+  }
+});
+
+btnCopyState.addEventListener("click", async () => {
+  try {
+    const stateUri = await api.getWorldStateString();
+    await navigator.clipboard.writeText(stateUri);
+    showShareNotification("Copied state snapshot string! 📦");
+  } catch (err) {
+    showShareNotification(`Copy failed: ${String(err)}`, true);
+  }
+});
+
+btnImportWorld.addEventListener("click", async () => {
+  const val = inputImportWorld.value.trim();
+  if (!val) {
+    showShareNotification("Enter a seed or state string", true);
+    return;
+  }
+  try {
+    const status = await api.importWorldString(val);
+    renderStatus(status);
+    inputImportWorld.value = "";
+    showShareNotification("Imported world successfully! 🌍");
+  } catch (err) {
+    showShareNotification(`Import error: ${String(err)}`, true);
+  }
+});
+
+inputImportWorld.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    btnImportWorld.click();
   }
 });
 

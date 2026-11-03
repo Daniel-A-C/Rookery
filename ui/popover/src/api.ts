@@ -85,6 +85,11 @@ export const api = {
   feedBirds: (pos: [number, number]): Promise<HostStatus> =>
     invoke("feed_birds", { pos }),
   getWorldSeed: (): Promise<string> => invoke("get_world_seed"),
+  getWorldStateString: (): Promise<string> => invoke("get_world_state_string"),
+  importWorldString: (input: string): Promise<HostStatus> =>
+    invoke("import_world_string", { input }),
+  captureSnapshot: (): Promise<string> => invoke("capture_snapshot"),
+  recordLoop: (): Promise<string> => invoke("record_loop"),
   setWorldSeed: (seed: number): Promise<HostStatus> =>
     invoke("set_world_seed", { seed }),
   quit: (): Promise<void> => invoke("quit"),

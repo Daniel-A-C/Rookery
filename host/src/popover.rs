@@ -10,7 +10,7 @@ use tauri_plugin_positioner::{Position, WindowExt};
 use crate::state::POPOVER_LABEL;
 
 const POPOVER_WIDTH: f64 = 320.0;
-const POPOVER_HEIGHT: f64 = 410.0;
+const POPOVER_HEIGHT: f64 = 520.0;
 
 pub fn toggle(app: &AppHandle) {
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {

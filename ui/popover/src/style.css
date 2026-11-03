@@ -47,6 +47,7 @@ body {
   gap: 8px;
   padding: 12px;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .header {
@@ -136,11 +137,34 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-.rookery-actions {
+.rookery-actions,
+.share-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   margin-top: 4px;
+}
+
+.import-group {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.import-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text);
+  font-family: monospace;
+}
+
+.import-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .btn.small {

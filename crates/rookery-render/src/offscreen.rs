@@ -52,27 +52,47 @@ impl Offscreen {
         }
     }
 
-    /// Step `scene` `ticks` times at `dt`, render one frame, and return tightly packed RGBA8.
-    pub fn run(
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn create_view(&self) -> wgpu::TextureView {
+        self.texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    /// Step `scene` by `dt` with `input`, and submit render commands to the offscreen texture.
+    pub fn step_and_render(
         &self,
         gpu: &Gpu,
         scene: &mut dyn Scene,
-        ticks: u32,
         dt: Duration,
-    ) -> Result<Vec<u8>> {
-        let input = SceneInput::default();
-        for _ in 0..ticks {
-            scene.update(gpu, dt, &input);
-        }
+        input: &SceneInput,
+    ) {
+        scene.update(gpu, dt, input);
         let view = self
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("offscreen"),
+                label: Some("offscreen-render"),
             });
         scene.render(gpu, &view, &mut encoder);
+        gpu.queue.submit(Some(encoder.finish()));
+    }
+
+    /// Read back the current texture contents into a tightly packed RGBA8 buffer.
+    pub fn readback_rgba(&self, gpu: &Gpu) -> Result<Vec<u8>> {
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("offscreen-readback"),
+            });
         encoder.copy_texture_to_buffer(
             self.texture.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -115,5 +135,21 @@ impl Offscreen {
         drop(data);
         self.readback.unmap();
         Ok(out)
+    }
+
+    /// Step `scene` `ticks` times at `dt`, render one frame, and return tightly packed RGBA8.
+    pub fn run(
+        &self,
+        gpu: &Gpu,
+        scene: &mut dyn Scene,
+        ticks: u32,
+        dt: Duration,
+    ) -> Result<Vec<u8>> {
+        let input = SceneInput::default();
+        for _ in 0..ticks.saturating_sub(1) {
+            scene.update(gpu, dt, &input);
+        }
+        self.step_and_render(gpu, scene, dt, &input);
+        self.readback_rgba(gpu)
     }
 }

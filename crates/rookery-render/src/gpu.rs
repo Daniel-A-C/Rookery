@@ -26,6 +26,14 @@ impl Gpu {
             compatible_surface: None,
             apply_limit_buckets: false,
         }))
+        .or_else(|_| {
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                force_fallback_adapter: true,
+                compatible_surface: None,
+                apply_limit_buckets: false,
+            }))
+        })
         .context("no compatible GPU adapter found")?;
         let info = adapter.get_info();
         log::info!(

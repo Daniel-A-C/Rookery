@@ -932,6 +932,66 @@ impl WorldState {
         fs::rename(&temp_path, path)?;
         Ok(())
     }
+
+    /// Formats this world's seed into a standard sharing URI: `rookery://tree/seed-<hex>`.
+    pub fn seed_uri(&self) -> String {
+        format!("rookery://tree/seed-{:016x}", self.seed)
+    }
+
+    /// Serializes this world's entire simulation state into a base64url URI: `rookery://tree/state-<base64>`.
+    pub fn state_uri(&self) -> Result<String, serde_json::Error> {
+        use base64::Engine;
+        let json = serde_json::to_vec(self)?;
+        let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&json);
+        Ok(format!("rookery://tree/state-{b64}"))
+    }
+
+    /// Parses a share string (seed URI, state URI, hex seed, decimal seed, or raw JSON)
+    /// and returns either a newly seeded world or the exact deserialized state.
+    pub fn from_share_string(input: &str) -> Result<Self, String> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err("Empty input string".into());
+        }
+
+        // 1. Exact snapshot state URI
+        if let Some(rest) = trimmed.strip_prefix("rookery://tree/state-") {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(rest.trim())
+                .map_err(|e| format!("Invalid base64 state: {e}"))?;
+            let state: WorldState =
+                serde_json::from_slice(&bytes).map_err(|e| format!("Invalid world JSON: {e}"))?;
+            return Ok(state);
+        }
+
+        // 2. Seed URI: rookery://tree/seed-<hex> or seed-<hex>
+        let seed_hex = if let Some(rest) = trimmed.strip_prefix("rookery://tree/seed-") {
+            Some(rest.trim())
+        } else {
+            trimmed.strip_prefix("seed-").map(|s| s.trim())
+        };
+
+        if let Some(hex_str) = seed_hex {
+            let seed = u64::from_str_radix(hex_str, 16)
+                .map_err(|e| format!("Invalid hex seed '{hex_str}': {e}"))?;
+            return Ok(Self::new(seed));
+        }
+
+        // 3. Raw decimal u64 seed
+        if let Ok(seed) = trimmed.parse::<u64>() {
+            return Ok(Self::new(seed));
+        }
+
+        // 4. Raw JSON state
+        if trimmed.starts_with('{') {
+            let state: WorldState =
+                serde_json::from_str(trimmed).map_err(|e| format!("Invalid world JSON: {e}"))?;
+            return Ok(state);
+        }
+
+        Err("Unrecognized share string. Expected 'rookery://tree/seed-...' or 'rookery://tree/state-...'".into())
+    }
 }
 
 fn pointer_dist(a: [f32; 2], b: [f32; 2]) -> f32 {
@@ -1015,5 +1075,46 @@ mod tests {
         assert_eq!(loaded.seed, world.seed);
         assert_eq!(loaded.branches.len(), world.branches.len());
         assert_eq!(loaded.birds.len(), world.birds.len());
+    }
+
+    #[test]
+    fn seed_uri_round_trip() {
+        let world = WorldState::new(0x1a2b3c4d5e6f7081);
+        let uri = world.seed_uri();
+        assert_eq!(uri, "rookery://tree/seed-1a2b3c4d5e6f7081");
+
+        let parsed = WorldState::from_share_string(&uri).expect("must parse seed uri");
+        assert_eq!(parsed.seed, 0x1a2b3c4d5e6f7081);
+        assert_eq!(parsed.branches.len(), world.branches.len());
+    }
+
+    #[test]
+    fn state_uri_round_trip() {
+        let mut world = WorldState::new(0x999);
+        world.advance_growth(350.0);
+        world.drop_snack([500.0, 450.0]);
+
+        let uri = world.state_uri().expect("must serialize state uri");
+        assert!(uri.starts_with("rookery://tree/state-"));
+
+        let restored = WorldState::from_share_string(&uri).expect("must parse state uri");
+        assert_eq!(restored.seed, world.seed);
+        assert_eq!(restored.branches.len(), world.branches.len());
+        assert_eq!(restored.snacks.len(), world.snacks.len());
+        assert_eq!(restored.total_age_secs, world.total_age_secs);
+    }
+
+    #[test]
+    fn from_share_string_formats() {
+        // Hex with seed- prefix
+        let w1 = WorldState::from_share_string("seed-00000000000000ff").unwrap();
+        assert_eq!(w1.seed, 255);
+
+        // Decimal seed
+        let w2 = WorldState::from_share_string("12345").unwrap();
+        assert_eq!(w2.seed, 12345);
+
+        // Error on invalid
+        assert!(WorldState::from_share_string("gibberish").is_err());
     }
 }

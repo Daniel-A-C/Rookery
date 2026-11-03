@@ -12,6 +12,7 @@
 
 pub mod ascii_scene;
 pub mod atlas;
+pub mod capture;
 pub mod demo;
 mod fullscreen;
 mod gpu;

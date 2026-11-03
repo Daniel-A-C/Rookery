@@ -114,3 +114,22 @@ fn living_rookery_scene_renders_and_evolves() {
         }
     }
 }
+
+#[test]
+fn gif_and_png_encoding_smoke_test() {
+    let tmp = tempfile::tempdir().unwrap();
+    let png_path = tmp.path().join("test.png");
+    let gif_path = tmp.path().join("test.gif");
+
+    let f1 = [255u8, 0, 0, 255].repeat(16 * 16);
+    let f2 = [0u8, 255, 0, 255].repeat(16 * 16);
+    let mut frames = vec![f1.clone(), f2];
+
+    rookery_render::capture::write_png(&png_path, 16, 16, &f1).unwrap();
+    assert!(png_path.exists());
+    assert!(std::fs::metadata(&png_path).unwrap().len() > 0);
+
+    rookery_render::capture::write_gif(&gif_path, 16, 16, &mut frames, 10).unwrap();
+    assert!(gif_path.exists());
+    assert!(std::fs::metadata(&gif_path).unwrap().len() > 0);
+}

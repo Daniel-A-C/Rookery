@@ -108,3 +108,4 @@ When the computer sleeps or the app is closed, time does not stand still:
 - **Atomic Persistence**:
   - State is saved to `rookery_world.json` atomically via write-sync-rename.
   - Auto-saved every 60 seconds and on clean application shutdown.
+

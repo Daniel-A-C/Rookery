@@ -70,3 +70,4 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4<f32>(sky, 1.0);
 }
+

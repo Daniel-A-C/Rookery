@@ -44,6 +44,10 @@ pub fn run() {
             commands::feed_birds,
             commands::get_world_seed,
             commands::set_world_seed,
+            commands::get_world_state_string,
+            commands::import_world_string,
+            commands::capture_snapshot,
+            commands::record_loop,
             commands::quit,
         ])
         .setup(|app| {
@@ -83,7 +87,7 @@ pub fn run() {
 
             let gpu = Gpu::new_blocking()?;
             let renderer = Renderer::spawn(
-                gpu,
+                gpu.clone(),
                 Box::new(move |gpu, format| {
                     Box::new(LivingRookeryScene::new(gpu, format, scene_world.clone()))
                 }),
@@ -97,6 +101,7 @@ pub fn run() {
                 world: world_arc,
                 layer: desktop_layer(),
                 renderer: Mutex::new(Some(renderer)),
+                gpu: gpu.clone(),
                 inner: Mutex::new(HostInner {
                     settings,
                     interaction: Interaction::new(),

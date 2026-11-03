@@ -1,0 +1,27 @@
+[package]
+name = "rookery-bench"
+description = "Headless CI performance runner and visual regression harness for Rookery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rookery-core.workspace = true
+rookery-render.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+wgpu.workspace = true
+png.workspace = true
+gif.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_ProcessStatus", "Win32_System_Threading"] }

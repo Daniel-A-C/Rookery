@@ -16,3 +16,8 @@ bytemuck.workspace = true
 log.workspace = true
 anyhow.workspace = true
 serde.workspace = true
+png.workspace = true
+gif.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
