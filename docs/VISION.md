@@ -205,3 +205,4 @@ flowchart LR
 4. **Milestone 4 — First-Party Catalog & Open App SDK**:
    - Author 3–4 additional flagship Rookery Apps across our core archetypes (cozy ecosystem, generative physics/shader, slow-burn idle world).
    - Add playlist scheduling (time-of-day transitions) and local/GitHub custom app loading.
+
