@@ -14,14 +14,26 @@
 pub mod geometry;
 pub mod governor;
 pub mod interaction;
+pub mod koi;
+pub mod manifest;
+pub mod nebula;
 pub mod occlusion;
+pub mod orbital;
 pub mod settings;
 pub mod world;
 
 pub use geometry::{DisplayId, Rect};
+pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
+pub use manifest::{
+    AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, DayNightMapping, ScheduleMode,
+};
+pub use nebula::{CosmicNebulaState, CosmicNebulaStats, GravityWell, NebulaPalette, StellarParticle};
+pub use orbital::{
+    ConstructionFocus, OrbitalHavenState, OrbitalHavenStats, Shuttle, ShuttleState,
+};
 pub use world::{
-    Bird, BirdSpecies, BirdState, Branch, FoliageBud, WORLD_STATE_FILE_NAME, WorldRng, WorldState,
-    WorldStats,
+    Bird, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, PlantSign, WORLD_STATE_FILE_NAME,
+    WorldRng, WorldState, WorldStats,
 };
 
 /// A scene's hint to the governor about how much motion it currently has.

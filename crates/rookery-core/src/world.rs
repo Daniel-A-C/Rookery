@@ -204,6 +204,26 @@ pub struct FallingChip {
     pub max_life: f32,
 }
 
+/// A wooden plant marker sign erected when a tree/sapling is planted.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlantSign {
+    pub id: u32,
+    pub tree_root_id: u32,
+    pub pos: [f32; 2],
+    pub planted_age_secs: f64,
+    pub label: String,
+}
+
+/// A cozy little birdhouse built over time on a mature branch.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BirdHouse {
+    pub id: u32,
+    pub branch_id: u32,
+    pub t: f32,
+    pub house_style: u8,
+    pub built_age_secs: f64,
+}
+
 /// Statistics and milestones of the living world.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct WorldStats {
@@ -215,6 +235,8 @@ pub struct WorldStats {
     pub seeds_planted: u32,
     pub snacks_eaten: u32,
     pub nests_built: u32,
+    #[serde(default)]
+    pub houses_built: u32,
 }
 
 /// Complete serialized state of The Living ASCII Rookery world.
@@ -228,6 +250,12 @@ pub struct WorldState {
     pub branches: Vec<Branch>,
     pub birds: Vec<Bird>,
     pub snacks: Vec<Snack>,
+    #[serde(default)]
+    pub signs: Vec<PlantSign>,
+    #[serde(default)]
+    pub houses: Vec<BirdHouse>,
+    #[serde(default)]
+    pub viewport_offset_x: f32,
     #[serde(skip)]
     pub notes: Vec<FloatingNote>,
     #[serde(skip)]
@@ -298,6 +326,14 @@ impl WorldState {
             });
         }
 
+        let signs = vec![PlantSign {
+            id: 1,
+            tree_root_id: 1,
+            pos: [trunk_base[0] + 34.0, trunk_base[1] + 2.0],
+            planted_age_secs: 0.0,
+            label: format!("Ancestral Tree · Seed #{seed}"),
+        }];
+
         let mut world = Self {
             version: WORLD_STATE_VERSION,
             seed,
@@ -307,6 +343,9 @@ impl WorldState {
             branches,
             birds,
             snacks: Vec::new(),
+            signs,
+            houses: Vec::new(),
+            viewport_offset_x: 0.0,
             notes: Vec::new(),
             chips: Vec::new(),
             stats: WorldStats::default(),
@@ -466,6 +505,30 @@ impl WorldState {
         }
 
         self.branches.extend(new_branches);
+
+        // Milestone 4: Birds construct little houses on mature branches over time
+        if self.houses.len() < 12 && self.rng.f32() < 0.008 * (dt_secs / 10.0).clamp(0.01, 1.0) {
+            let candidates: Vec<u32> = self
+                .branches
+                .iter()
+                .filter(|b| b.growth_progress >= 0.95 && (b.depth == 1 || b.depth == 2))
+                .map(|b| b.id)
+                .collect();
+            if !candidates.is_empty() {
+                let branch_id = candidates[self.rng.range_i32(0, candidates.len() as i32) as usize];
+                let t = self.rng.range(0.35, 0.75);
+                let house_style = self.rng.range_i32(0, 3) as u8;
+                self.next_id += 1;
+                self.houses.push(BirdHouse {
+                    id: self.next_id,
+                    branch_id,
+                    t,
+                    house_style,
+                    built_age_secs: self.total_age_secs,
+                });
+                self.stats.houses_built += 1;
+            }
+        }
     }
 
     /// Autonomous bird flocking, perching, feeding, and singing AI.
@@ -818,6 +881,20 @@ impl WorldState {
         };
         self.branches.push(branch);
         self.stats.seeds_planted += 1;
+
+        // Milestone 4: Erect a little plant sign marker with timestamp/seed
+        self.signs.push(PlantSign {
+            id: self.next_id + 1,
+            tree_root_id: id,
+            pos: [pos[0] + 28.0, pos[1] + 2.0],
+            planted_age_secs: self.total_age_secs,
+            label: format!("Sapling #{}", self.stats.seeds_planted),
+        });
+    }
+
+    /// User interaction: pan forest horizontally.
+    pub fn pan_forest(&mut self, delta_x: f32) {
+        self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(-3000.0, 3000.0);
     }
 
     /// User micro-interaction: drop a snack on nearest branch to attract birds.

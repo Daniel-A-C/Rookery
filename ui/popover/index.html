@@ -13,13 +13,34 @@
           <span class="bird-glyph" aria-hidden="true">◆</span>
           <div>
             <h1>Rookery</h1>
-            <p class="subtitle">The Living ASCII Rookery</p>
+            <p id="app-tagline" class="subtitle">The Living ASCII Rookery</p>
           </div>
         </div>
         <span id="power-badge" class="badge">AC</span>
       </header>
 
-      <section class="card rookery-card">
+      <!-- App Switcher Tabs -->
+      <section class="card app-switcher">
+        <button id="tab-living-rookery" class="app-tab-btn active" type="button" data-app="living-rookery">
+          <span class="tab-glyph">🌲</span>
+          <span>Rookery</span>
+        </button>
+        <button id="tab-koi-pond" class="app-tab-btn" type="button" data-app="koi-pond">
+          <span class="tab-glyph">🎏</span>
+          <span>Koi Pond</span>
+        </button>
+        <button id="tab-cosmic-nebula" class="app-tab-btn" type="button" data-app="cosmic-nebula">
+          <span class="tab-glyph">🌌</span>
+          <span>Nebula</span>
+        </button>
+        <button id="tab-orbital-haven" class="app-tab-btn" type="button" data-app="orbital-haven">
+          <span class="tab-glyph">🛰️</span>
+          <span>Orbital</span>
+        </button>
+      </section>
+
+      <!-- Living Rookery Card -->
+      <section id="card-living-rookery" class="card rookery-card">
         <div class="section-title">The Living World</div>
         <div class="stats-grid">
           <div class="stat-box">
@@ -50,7 +71,136 @@
             🌱 Plant Sapling
           </button>
         </div>
+        <div class="pan-row">
+          <span class="pan-label">Forest Horizon Pan:</span>
+          <div class="pan-buttons">
+            <button id="btn-pan-left" class="btn small" type="button" title="Pan forest left">◀ Pan Left</button>
+            <button id="btn-pan-right" class="btn small" type="button" title="Pan forest right">Pan Right ▶</button>
+          </div>
+        </div>
         <div id="seed-notification" class="notification-text" hidden></div>
+      </section>
+
+      <!-- Tranquil Koi Pond Card -->
+      <section id="card-koi-pond" class="card koi-card" hidden>
+        <div class="section-title">Tranquil Koi Pond</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">Total Koi</span>
+            <span id="stat-koi-count" class="stat-value">12</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Lily Pads</span>
+            <span id="stat-koi-lilies" class="stat-value">9</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Lotuses Blooming</span>
+            <span id="stat-koi-lotuses" class="stat-value">3</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Water Ripples</span>
+            <span id="stat-koi-ripples" class="stat-value">0</span>
+          </div>
+        </div>
+        <div class="rookery-actions">
+          <button id="btn-koi-feed" class="btn small" type="button" title="Drop nutritious floating food pellets">
+            🪱 Feed Koi
+          </button>
+          <button id="btn-koi-pebble" class="btn small" type="button" title="Cast a smooth pebble to stir gentle ripples">
+            💧 Cast Pebble
+          </button>
+        </div>
+      </section>
+
+      <!-- Cosmic Nebula Card -->
+      <section id="card-cosmic-nebula" class="card nebula-card" hidden>
+        <div class="section-title">Cosmic Nebula</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">Stellar Particles</span>
+            <span id="stat-nebula-particles" class="stat-value">1500</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Gravity Wells</span>
+            <span id="stat-nebula-wells" class="stat-value">2</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Stellar Palette</span>
+            <span id="stat-nebula-palette" class="stat-value">Pillars of Creation</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Turbulence</span>
+            <span id="stat-nebula-turb" class="stat-value">1.0x</span>
+          </div>
+        </div>
+        <div class="rookery-actions">
+          <button id="btn-nebula-attractor" class="btn small" type="button" title="Add a gravitational vortex attractor">
+            🌀 Add Attractor
+          </button>
+          <button id="btn-nebula-repulsor" class="btn small" type="button" title="Pulse a supernova repulsor well">
+            💥 Repulsor Pulse
+          </button>
+          <button id="btn-nebula-palette" class="btn small" type="button" title="Cycle through Hubble / JWST color palettes">
+            🎨 Cycle Palette
+          </button>
+        </div>
+      </section>
+
+      <!-- Orbital Haven Card -->
+      <section id="card-orbital-haven" class="card orbital-card" hidden>
+        <div class="section-title">Orbital Haven</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">Station Modules</span>
+            <span id="stat-orbital-modules" class="stat-value">7</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Solar Wings</span>
+            <span id="stat-orbital-solar" class="stat-value">4</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Habitat Rings</span>
+            <span id="stat-orbital-rings" class="stat-value">1</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Shuttles Docked</span>
+            <span id="stat-orbital-shuttles" class="stat-value">2</span>
+          </div>
+        </div>
+        <div class="rookery-actions">
+          <button id="btn-orbital-module" class="btn small" type="button" title="Construct a new module extension">
+            🛰️ Add Module
+          </button>
+          <button id="btn-orbital-launch" class="btn small" type="button" title="Launch a research transport shuttle">
+            🚀 Launch Shuttle
+          </button>
+        </div>
+      </section>
+
+      <!-- Scheduler & Playlist Card -->
+      <section class="card">
+        <div class="section-title">Playlist &amp; Schedule</div>
+        <div class="schedule-row">
+          <label for="select-schedule-mode">Mode:</label>
+          <select id="select-schedule-mode" class="select-input">
+            <option value="Manual">Manual Selection</option>
+            <option value="Interval">Interval Rotation</option>
+            <option value="DayNight">Day / Night Cycle</option>
+          </select>
+        </div>
+        <div id="interval-group" class="control-row" style="margin-top: 4px;" hidden>
+          <span>Cycle Interval</span>
+          <strong id="val-interval">15 mins</strong>
+        </div>
+        <input
+          id="slider-interval"
+          type="range"
+          min="5"
+          max="60"
+          step="5"
+          value="15"
+          hidden
+        />
       </section>
 
       <section class="card share-card">
@@ -141,6 +291,13 @@
             CommandOrControl+Alt+Shift+R
           </button>
         </div>
+
+        <div class="hotkey-row">
+          <span>Menu Popover Hotkey</span>
+          <button id="btn-record-popover-hotkey" class="hotkey-btn" type="button" title="Global shortcut to toggle popover without clicking menu icon">
+            CommandOrControl+Alt+Shift+P
+          </button>
+        </div>
         <p id="hotkey-error" class="error-msg" hidden></p>
       </section>
 
@@ -154,4 +311,3 @@
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-

@@ -35,6 +35,7 @@ tempfile = "3"
 png = "0.18"
 gif = "0.13"
 base64 = "0.22"
+toml = "0.8"
 
 [profile.release]
 codegen-units = 1

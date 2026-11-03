@@ -198,11 +198,13 @@ flowchart LR
    - Build the overlapping character/glyph renderer and procedural growth algorithm.
    - Implement autonomous bird flocking, perching, and subtle user interactions (seeding/pruning).
    - Build the persistent save state and offline time-delta catch-up engine.
-3. **Milestone 3 — Performance Harness & One-Click Distribution**:
+3. **Milestone 3 — Performance Harness & One-Click Distribution** [✅ COMPLETE]:
    - Build `rookery-bench` for automated headless performance and visual regression testing.
    - Configure GitHub Actions CI/CD to produce one-click macOS and Windows installers.
    - Add snapshot/GIF export and World Seed sharing.
-4. **Milestone 4 — First-Party Catalog & Open App SDK**:
-   - Author 3–4 additional flagship Rookery Apps across our core archetypes (cozy ecosystem, generative physics/shader, slow-burn idle world).
-   - Add playlist scheduling (time-of-day transitions) and local/GitHub custom app loading.
+4. **Milestone 4 — First-Party Catalog & Open App SDK** [✅ COMPLETE]:
+   - Author 3 additional flagship Rookery Apps across core archetypes (*Tranquil Koi Pond*, *Cosmic Nebula*, *Orbital Haven*).
+   - Implement `rookery.toml` App Manifest specification and dynamic control schema.
+   - Build runtime zero-tear app switcher and Playlist / Day-Night scheduler.
+   - Implement global popover toggle hotkey and horizontal forest panning.
 

@@ -12,11 +12,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use rookery_core::koi::KoiPondState;
+use rookery_core::nebula::CosmicNebulaState;
+use rookery_core::orbital::OrbitalHavenState;
 use rookery_core::world::WorldState;
 use rookery_render::capture::write_png;
 use rookery_render::demo::DemoScene;
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
-use rookery_render::{Gpu, LivingRookeryScene, Scene, SceneInput};
+use rookery_render::{
+    CosmicNebulaScene, Gpu, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene, SceneInput,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
@@ -289,8 +294,22 @@ fn run_bench(config: &BenchConfig) -> Result<TelemetryReport> {
             let world = Arc::new(Mutex::new(WorldState::new(config.seed)));
             Box::new(LivingRookeryScene::new(&gpu, OFFSCREEN_FORMAT, world))
         }
+        "koi-pond" => {
+            let pond = Arc::new(Mutex::new(KoiPondState::new(config.seed)));
+            Box::new(KoiPondScene::new(&gpu, OFFSCREEN_FORMAT, pond))
+        }
+        "cosmic-nebula" => {
+            let nebula = Arc::new(Mutex::new(CosmicNebulaState::new(config.seed)));
+            Box::new(CosmicNebulaScene::new(&gpu, OFFSCREEN_FORMAT, nebula))
+        }
+        "orbital-haven" => {
+            let station = Arc::new(Mutex::new(OrbitalHavenState::new(config.seed)));
+            Box::new(OrbitalHavenScene::new(&gpu, OFFSCREEN_FORMAT, station))
+        }
         "demo" => Box::new(DemoScene::new(&gpu, OFFSCREEN_FORMAT, config.seed)),
-        other => anyhow::bail!("unknown app '{other}' (expected 'living-rookery' or 'demo')"),
+        other => anyhow::bail!(
+            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', 'demo', or 'all')"
+        ),
     };
 
     scene.resize(&gpu, config.width, config.height, 1.0);
@@ -436,14 +455,97 @@ fn run_bench(config: &BenchConfig) -> Result<TelemetryReport> {
     })
 }
 
+fn print_report(report: &TelemetryReport) {
+    println!("\n╔════════════════════════════════════════════════════════════╗");
+    println!("║               Rookery Performance Benchmark                ║");
+    println!("╚════════════════════════════════════════════════════════════╝");
+    println!("  App:            {}", report.app);
+    println!(
+        "  Adapter:        {} ({})",
+        report.adapter_name, report.device_type
+    );
+    println!(
+        "  Resolution:     {}x{}",
+        report.resolution[0], report.resolution[1]
+    );
+    println!("  Ticks:          {}", report.total_ticks);
+    println!("  Simulation FPS: {:.1} fps", report.achieved_fps);
+    println!("  Wall Clock:     {:.2}s", report.wall_clock_secs);
+    println!(
+        "  Peak RSS:       {:.2} MB (Budget: < 120 MB)",
+        report.peak_rss_mb
+    );
+    println!(
+        "  CPU Tick:       mean={:.2}ms  p95={:.2}ms  max={:.2}ms (Budget: < 2.0ms)",
+        report.cpu_update_ms.mean_ms, report.cpu_update_ms.p95_ms, report.cpu_update_ms.max_ms
+    );
+    println!(
+        "  GPU Submit:     mean={:.2}ms  p95={:.2}ms  max={:.2}ms",
+        report.gpu_render_ms.mean_ms, report.gpu_render_ms.p95_ms, report.gpu_render_ms.max_ms
+    );
+    println!("\nVisual Regression Snapshots:");
+    for s in &report.snapshots {
+        let diff_str = s
+            .diff_from_previous
+            .map(|d| format!(" (diff: {:.3})", d))
+            .unwrap_or_default();
+        let path_str = s
+            .path
+            .as_ref()
+            .map(|p| format!(" -> {p}"))
+            .unwrap_or_default();
+        println!(
+            "  • Tick {:5}: luma={:.1}{}{}",
+            s.tick, s.mean_luma, diff_str, path_str
+        );
+    }
+    println!("\nBudget Verification:");
+    if report.budget_passed {
+        println!("  ✅ ALL PERFORMANCE BUDGETS & REGRESSION CHECKS PASSED!");
+    } else {
+        println!("  ❌ BUDGET CHECK FAILURES:");
+        for f in &report.budget_failures {
+            println!("     - {f}");
+        }
+    }
+    println!();
+}
+
 fn main() -> Result<()> {
     let _ = env_logger::try_init();
     let config = parse_args()?;
 
-    let report = run_bench(&config)?;
+    let apps_to_run: Vec<String> = if config.app == "all" {
+        vec![
+            "living-rookery".into(),
+            "koi-pond".into(),
+            "cosmic-nebula".into(),
+            "orbital-haven".into(),
+        ]
+    } else {
+        vec![config.app.clone()]
+    };
+
+    let mut all_reports = Vec::new();
+    let mut any_failed = false;
+
+    for app_id in apps_to_run {
+        let mut app_config = config.clone();
+        app_config.app = app_id;
+
+        let report = run_bench(&app_config)?;
+        if !report.budget_passed {
+            any_failed = true;
+        }
+
+        if !config.json_stdout {
+            print_report(&report);
+        }
+        all_reports.push(report);
+    }
 
     if let Some(ref path) = config.output_json {
-        let json = serde_json::to_string_pretty(&report)?;
+        let json = serde_json::to_string_pretty(&all_reports)?;
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -451,64 +553,10 @@ fn main() -> Result<()> {
     }
 
     if config.json_stdout {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!("\n╔════════════════════════════════════════════════════════════╗");
-        println!("║               Rookery Performance Benchmark                ║");
-        println!("╚════════════════════════════════════════════════════════════╝");
-        println!("  App:            {}", report.app);
-        println!(
-            "  Adapter:        {} ({})",
-            report.adapter_name, report.device_type
-        );
-        println!(
-            "  Resolution:     {}x{}",
-            report.resolution[0], report.resolution[1]
-        );
-        println!("  Ticks:          {}", report.total_ticks);
-        println!("  Simulation FPS: {:.1} fps", report.achieved_fps);
-        println!("  Wall Clock:     {:.2}s", report.wall_clock_secs);
-        println!(
-            "  Peak RSS:       {:.2} MB (Budget: < 120 MB)",
-            report.peak_rss_mb
-        );
-        println!(
-            "  CPU Tick:       mean={:.2}ms  p95={:.2}ms  max={:.2}ms (Budget: < 2.0ms)",
-            report.cpu_update_ms.mean_ms, report.cpu_update_ms.p95_ms, report.cpu_update_ms.max_ms
-        );
-        println!(
-            "  GPU Submit:     mean={:.2}ms  p95={:.2}ms  max={:.2}ms",
-            report.gpu_render_ms.mean_ms, report.gpu_render_ms.p95_ms, report.gpu_render_ms.max_ms
-        );
-        println!("\nVisual Regression Snapshots:");
-        for s in &report.snapshots {
-            let diff_str = s
-                .diff_from_previous
-                .map(|d| format!(" (diff: {:.3})", d))
-                .unwrap_or_default();
-            let path_str = s
-                .path
-                .as_ref()
-                .map(|p| format!(" -> {p}"))
-                .unwrap_or_default();
-            println!(
-                "  • Tick {:5}: luma={:.1}{}{}",
-                s.tick, s.mean_luma, diff_str, path_str
-            );
-        }
-        println!("\nBudget Verification:");
-        if report.budget_passed {
-            println!("  ✅ ALL PERFORMANCE BUDGETS & REGRESSION CHECKS PASSED!");
-        } else {
-            println!("  ❌ BUDGET CHECK FAILURES:");
-            for f in &report.budget_failures {
-                println!("     - {f}");
-            }
-        }
-        println!();
+        println!("{}", serde_json::to_string_pretty(&all_reports)?);
     }
 
-    if config.assert_budgets && !report.budget_passed {
+    if config.assert_budgets && any_failed {
         std::process::exit(1);
     }
 

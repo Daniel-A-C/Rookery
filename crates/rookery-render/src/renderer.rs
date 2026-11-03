@@ -66,6 +66,7 @@ enum Command {
         budget: FrameBudget,
     },
     SetInteractive(bool),
+    SwitchScene(SceneFactory),
     Shutdown,
 }
 
@@ -166,6 +167,11 @@ impl Renderer {
     /// Snapshot of per-display stats.
     pub fn stats(&self) -> BTreeMap<DisplayId, DisplayStats> {
         self.stats.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Hot-swaps the active scene factory across all active display surfaces.
+    pub fn switch_scene(&self, factory: SceneFactory) {
+        let _ = self.tx.send(Command::SwitchScene(factory));
     }
 
     pub fn shutdown(&mut self) {
@@ -289,6 +295,17 @@ impl RenderThread {
             Command::SetInteractive(on) => {
                 self.interactive = on;
                 for d in self.displays.values_mut() {
+                    if !d.budget.is_paused() {
+                        d.next_due = Some(Instant::now());
+                    }
+                }
+            }
+            Command::SwitchScene(factory) => {
+                self.factory = factory;
+                for d in self.displays.values_mut() {
+                    let mut scene = (self.factory)(&self.gpu, d.config.format);
+                    scene.resize(&self.gpu, d.size.width, d.size.height, d.size.scale_factor);
+                    d.scene = scene;
                     if !d.budget.is_paused() {
                         d.next_due = Some(Instant::now());
                     }

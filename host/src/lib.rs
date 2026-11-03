@@ -12,13 +12,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use rookery_core::governor::PowerState;
 use rookery_core::interaction::Interaction;
+use rookery_core::manifest::ScheduleMode;
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
 use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
-use rookery_render::{Gpu, LivingRookeryScene, Renderer};
+use rookery_render::{AppCatalog, CatalogState, Gpu, Renderer};
 use state::{HostInner, HostState};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -39,6 +40,10 @@ pub fn run() {
             commands::set_interactive,
             commands::get_settings,
             commands::update_settings,
+            commands::get_catalog,
+            commands::switch_app,
+            commands::pan_forest,
+            commands::execute_app_action,
             commands::plant_seed,
             commands::prune_branch,
             commands::feed_birds,
@@ -66,39 +71,43 @@ pub fn run() {
             );
 
             let world_path = config_dir.join(WORLD_STATE_FILE_NAME);
-            let mut world = WorldState::load_or_init(&world_path, 42);
+            let world = WorldState::load_or_init(&world_path, 42);
 
-            // Milestone 2 Offline Time-Delta Engine: catch up progression since last known run
+            let catalog_state = CatalogState::new(world.seed);
+            *catalog_state.rookery.lock().unwrap() = world;
+            let world_arc = catalog_state.rookery.clone();
+
+            // Milestone 2 & 4 Offline Time-Delta Engine: catch up progression across all apps
             if let Some(last_run) = settings.last_run_utc {
                 let elapsed_secs = (Utc::now() - last_run).num_seconds().max(0) as f64;
                 if elapsed_secs > 0.0 {
                     log::info!("offline time-delta catch-up: advancing {elapsed_secs:.1}s");
-                    world.on_wake(elapsed_secs);
+                    catalog_state.on_wake_all(elapsed_secs);
                 }
             }
-
-            let world_arc = Arc::new(Mutex::new(world));
-            let scene_world = world_arc.clone();
 
             settings.touch_running(Utc::now());
             if let Err(e) = settings.save(&settings_path) {
                 log::warn!("failed to write initial settings heartbeat: {e}");
             }
 
+            let initial_app = settings.active_app.clone();
+            let initial_factory = AppCatalog::create_scene_factory(&initial_app, catalog_state.clone());
+
             let gpu = Gpu::new_blocking()?;
             let renderer = Renderer::spawn(
                 gpu.clone(),
-                Box::new(move |gpu, format| {
-                    Box::new(LivingRookeryScene::new(gpu, format, scene_world.clone()))
-                }),
+                initial_factory,
                 Arc::new(rookery_platform::cursor_position),
             )?;
 
             let initial_hotkey = settings.hotkey.clone();
+            let initial_popover_hotkey = settings.popover_hotkey.clone();
             let host_state = HostState {
                 settings_path,
                 world_path,
                 world: world_arc,
+                catalog_state,
                 layer: desktop_layer(),
                 renderer: Mutex::new(Some(renderer)),
                 gpu: gpu.clone(),
@@ -119,6 +128,9 @@ pub fn run() {
             tray::setup_tray(handle)?;
 
             if let Err(e) = hotkey::register_interaction_hotkey(handle, &initial_hotkey) {
+                log::warn!("{e:#}");
+            }
+            if let Err(e) = hotkey::register_popover_hotkey(handle, &initial_popover_hotkey) {
                 log::warn!("{e:#}");
             }
 
@@ -199,6 +211,39 @@ fn spawn_governor_thread(app: AppHandle) {
                     && let Err(e) = w.save_atomic(&state.world_path)
                 {
                     log::debug!("world autosave failed: {e}");
+                }
+
+                // Milestone 4: Playlist and Day-Night Scheduler
+                let (sched_mode, active_app, interval_mins, day_night) = {
+                    let Ok(inner) = state.inner.lock() else {
+                        continue;
+                    };
+                    (
+                        inner.settings.schedule_mode,
+                        inner.settings.active_app.clone(),
+                        inner.settings.schedule_interval_mins,
+                        inner.settings.day_night_mapping.clone(),
+                    )
+                };
+
+                match sched_mode {
+                    ScheduleMode::Manual => {}
+                    ScheduleMode::DayNight => {
+                        let hour = chrono::Local::now().hour();
+                        let target = day_night.app_for_hour(hour);
+                        if target != active_app {
+                            let _ = state.switch_app(target);
+                        }
+                    }
+                    ScheduleMode::Interval => {
+                        let interval_secs = (interval_mins.max(1) * 60) as u64;
+                        if ticks.is_multiple_of(interval_secs) {
+                            let apps = ["living-rookery", "koi-pond", "cosmic-nebula", "orbital-haven"];
+                            let cur_pos = apps.iter().position(|&a| a == active_app).unwrap_or(0);
+                            let next_app = apps[(cur_pos + 1) % apps.len()];
+                            let _ = state.switch_app(next_app);
+                        }
+                    }
                 }
 
                 state.recompute_budgets();

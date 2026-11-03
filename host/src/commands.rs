@@ -1,15 +1,19 @@
 //! Tauri IPC commands exposed to the popover UI.
 
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Local;
 use rookery_core::interaction::InteractionEvent;
+use rookery_core::manifest::AppManifest;
+use rookery_core::orbital::ConstructionFocus;
 use rookery_core::settings::Settings;
 use rookery_core::world::WorldState;
 use rookery_render::capture::{write_gif, write_png};
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
-use rookery_render::{LivingRookeryScene, Scene, SceneInput};
+use rookery_render::{
+    AppCatalog, CosmicNebulaScene, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene,
+    SceneInput,
+};
 use tauri::{AppHandle, Manager, State};
 
 use crate::hotkey;
@@ -71,10 +75,37 @@ pub fn update_settings(
         hotkey::replace_interaction_hotkey(&app, &old_hk, trimmed).map_err(|e| e.to_string())?;
     }
 
+    if let Some(ref new_p_hk) = patch.popover_hotkey {
+        let trimmed = new_p_hk.trim();
+        if trimmed.is_empty() {
+            return Err("Popover hotkey cannot be empty".into());
+        }
+        let old_hk = state
+            .inner
+            .lock()
+            .map_err(|_| "state poisoned")?
+            .settings
+            .popover_hotkey
+            .clone();
+        hotkey::replace_popover_hotkey(&app, &old_hk, trimmed).map_err(|e| e.to_string())?;
+    }
+
     let updated = {
         let mut inner = state.inner.lock().map_err(|_| "state poisoned")?;
         if let Some(hk) = patch.hotkey {
             inner.settings.hotkey = hk.trim().to_owned();
+        }
+        if let Some(hk) = patch.popover_hotkey {
+            inner.settings.popover_hotkey = hk.trim().to_owned();
+        }
+        if let Some(mode) = patch.schedule_mode {
+            inner.settings.schedule_mode = mode;
+        }
+        if let Some(mins) = patch.schedule_interval_mins {
+            inner.settings.schedule_interval_mins = mins;
+        }
+        if let Some(mapping) = patch.day_night_mapping {
+            inner.settings.day_night_mapping = mapping;
         }
         if let Some(v) = patch.passive_fps {
             inner.settings.frame.passive_fps = v;
@@ -95,6 +126,10 @@ pub fn update_settings(
             .map_err(|e| e.to_string())?;
         inner.settings.clone()
     };
+
+    if let Some(ref app_id) = patch.active_app {
+        state.switch_app(app_id)?;
+    }
 
     state.recompute_budgets();
     state.emit_status_if_popover_open(&app);
@@ -171,11 +206,118 @@ pub fn import_world_string(
 }
 
 #[tauri::command]
+pub fn get_catalog() -> Vec<AppManifest> {
+    AppCatalog::built_in_manifests()
+}
+
+#[tauri::command]
+pub fn switch_app(
+    app: AppHandle,
+    state: State<'_, HostState>,
+    app_id: String,
+) -> Result<HostStatus, String> {
+    state.switch_app(&app_id)?;
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    Ok(status)
+}
+
+#[tauri::command]
+pub fn pan_forest(app: AppHandle, state: State<'_, HostState>, delta_x: f32) -> HostStatus {
+    if let Ok(mut w) = state.world.lock() {
+        w.pan_forest(delta_x);
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    status
+}
+
+#[tauri::command]
+pub fn execute_app_action(
+    app: AppHandle,
+    state: State<'_, HostState>,
+    app_id: String,
+    action: String,
+) -> Result<HostStatus, String> {
+    match app_id.as_str() {
+        "living-rookery" => {
+            let mut w = state.world.lock().map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "feed" => {
+                    w.drop_snack([500.0, 450.0]);
+                }
+                "prune" => {
+                    w.prune_nearest([500.0, 400.0], 120.0);
+                }
+                "plant" => {
+                    let rx = 350.0 + (w.rng.f32() * 300.0);
+                    w.plant_seed([rx, 750.0]);
+                }
+                "pan_left" => {
+                    w.pan_forest(-150.0);
+                }
+                "pan_right" => {
+                    w.pan_forest(150.0);
+                }
+                other => return Err(format!("Unknown rookery action '{other}'")),
+            }
+        }
+        "koi-pond" => {
+            let mut k = state.catalog_state.koi.lock().map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "feed_koi" => {
+                    k.feed_koi([500.0, 375.0]);
+                }
+                "tap_water" => {
+                    k.add_ripple([500.0, 375.0], 0.7);
+                }
+                other => return Err(format!("Unknown koi action '{other}'")),
+            }
+        }
+        "cosmic-nebula" => {
+            let mut n = state.catalog_state.nebula.lock().map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "add_attractor" => {
+                    n.add_gravity_well([500.0, 375.0], false);
+                }
+                "add_repulsor" => {
+                    n.add_gravity_well([500.0, 375.0], true);
+                }
+                "cycle_palette" => {
+                    n.cycle_palette();
+                }
+                other => return Err(format!("Unknown nebula action '{other}'")),
+            }
+        }
+        "orbital-haven" => {
+            let mut o = state.catalog_state.orbital.lock().map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "focus_solar" => {
+                    o.set_focus(ConstructionFocus::SolarPower);
+                }
+                "focus_habitat" => {
+                    o.set_focus(ConstructionFocus::HabitatRing);
+                }
+                "launch_shuttle" => {
+                    o.launch_shuttle();
+                }
+                other => return Err(format!("Unknown orbital action '{other}'")),
+            }
+        }
+        other => return Err(format!("Unknown app id '{other}'")),
+    }
+    let status = state.status();
+    state.emit_status_if_popover_open(&app);
+    Ok(status)
+}
+
+#[tauri::command]
 pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
-    let world_snapshot = {
-        let guard = state.world.lock().map_err(|_| "World lock poisoned")?;
-        guard.clone()
-    };
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_else(|_| "living-rookery".into());
 
     let pictures_dir = app
         .path()
@@ -185,15 +327,35 @@ pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<S
         .join("Rookery");
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("snapshot_{timestamp}.png");
+    let filename = format!("snapshot_{active_app}_{timestamp}.png");
     let filepath = pictures_dir.join(filename);
 
     let width = 1280u32;
     let height = 720u32;
 
     let offscreen = Offscreen::new(&state.gpu, width, height);
-    let world_arc = Arc::new(Mutex::new(world_snapshot));
-    let mut scene = LivingRookeryScene::new(&state.gpu, OFFSCREEN_FORMAT, world_arc);
+    let mut scene: Box<dyn Scene> = match active_app.as_str() {
+        "koi-pond" => Box::new(KoiPondScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.koi.clone(),
+        )),
+        "cosmic-nebula" => Box::new(CosmicNebulaScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.nebula.clone(),
+        )),
+        "orbital-haven" => Box::new(OrbitalHavenScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.orbital.clone(),
+        )),
+        _ => Box::new(LivingRookeryScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.world.clone(),
+        )),
+    };
     scene.resize(&state.gpu, width, height, 1.0);
 
     let input = SceneInput::default();
@@ -221,10 +383,11 @@ pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<S
 
 #[tauri::command]
 pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
-    let world_snapshot = {
-        let guard = state.world.lock().map_err(|_| "World lock poisoned")?;
-        guard.clone()
-    };
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_else(|_| "living-rookery".into());
 
     let pictures_dir = app
         .path()
@@ -234,18 +397,38 @@ pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String
         .join("Rookery");
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("loop_{timestamp}.gif");
+    let filename = format!("loop_{active_app}_{timestamp}.gif");
     let filepath = pictures_dir.join(filename);
 
     let width = 640u32;
     let height = 360u32;
-    let total_frames = 60u32; // ~5 seconds at 12 fps
-    let dt = Duration::from_millis(83); // ~12 fps
-    let delay_centisecs = 8u16; // 8/100 sec = 12.5 fps
+    let total_frames = 60u32;
+    let dt = Duration::from_millis(83);
+    let delay_centisecs = 8u16;
 
     let offscreen = Offscreen::new(&state.gpu, width, height);
-    let world_arc = Arc::new(Mutex::new(world_snapshot));
-    let mut scene = LivingRookeryScene::new(&state.gpu, OFFSCREEN_FORMAT, world_arc);
+    let mut scene: Box<dyn Scene> = match active_app.as_str() {
+        "koi-pond" => Box::new(KoiPondScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.koi.clone(),
+        )),
+        "cosmic-nebula" => Box::new(CosmicNebulaScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.nebula.clone(),
+        )),
+        "orbital-haven" => Box::new(OrbitalHavenScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.catalog_state.orbital.clone(),
+        )),
+        _ => Box::new(LivingRookeryScene::new(
+            &state.gpu,
+            OFFSCREEN_FORMAT,
+            state.world.clone(),
+        )),
+    };
     scene.resize(&state.gpu, width, height, 1.0);
 
     let input = SceneInput::default();

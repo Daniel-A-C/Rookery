@@ -313,6 +313,81 @@ input[type="range"] {
   color: var(--danger);
 }
 
+.app-switcher {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.app-tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 550;
+  transition: all 0.15s ease;
+}
+
+.app-tab-btn .tab-glyph {
+  font-size: 14px;
+}
+
+.app-tab-btn:hover {
+  background: rgba(14, 165, 233, 0.08);
+  color: var(--text);
+}
+
+.app-tab-btn.active {
+  background: rgba(14, 165, 233, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.pan-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pan-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.select-input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 11.5px;
+}
+
 .footer {
   margin-top: auto;
   display: flex;

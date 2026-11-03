@@ -12,6 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::governor::FrameSettings;
+use crate::manifest::{DayNightMapping, ScheduleMode};
 
 /// Current on-disk schema version. Bump and extend [`Settings::migrate`] on breaking changes.
 pub const SETTINGS_VERSION: u32 = 1;
@@ -20,6 +21,9 @@ pub const SETTINGS_VERSION: u32 = 1;
 /// `CommandOrControl` maps to Cmd on macOS and Ctrl on Windows. Deliberately avoids
 /// `Cmd/Ctrl+Shift+R`, which is "hard reload" in every major browser.
 pub const DEFAULT_HOTKEY: &str = "CommandOrControl+Alt+Shift+R";
+
+/// Default global hotkey to summon / toggle the Rookery popover menu from anywhere.
+pub const DEFAULT_POPOVER_HOTKEY: &str = "CommandOrControl+Alt+Shift+P";
 
 pub const SETTINGS_FILE_NAME: &str = "settings.json";
 
@@ -36,6 +40,11 @@ pub enum SettingsError {
 pub struct Settings {
     pub version: u32,
     pub hotkey: String,
+    pub popover_hotkey: String,
+    pub active_app: String,
+    pub schedule_mode: ScheduleMode,
+    pub schedule_interval_mins: u32,
+    pub day_night_mapping: DayNightMapping,
     pub frame: FrameSettings,
     /// Last time the host was known to be running (startup, heartbeat, clean shutdown).
     /// Groundwork for Milestone 2's offline time-delta engine.
@@ -49,6 +58,11 @@ impl Default for Settings {
         Self {
             version: SETTINGS_VERSION,
             hotkey: DEFAULT_HOTKEY.to_owned(),
+            popover_hotkey: DEFAULT_POPOVER_HOTKEY.to_owned(),
+            active_app: "living-rookery".to_owned(),
+            schedule_mode: ScheduleMode::Manual,
+            schedule_interval_mins: 30,
+            day_night_mapping: DayNightMapping::default(),
             frame: FrameSettings::default(),
             last_run_utc: None,
             last_shutdown_clean: true,
@@ -108,6 +122,12 @@ impl Settings {
         self.frame = self.frame.clamped();
         if self.hotkey.trim().is_empty() {
             self.hotkey = DEFAULT_HOTKEY.to_owned();
+        }
+        if self.popover_hotkey.trim().is_empty() {
+            self.popover_hotkey = DEFAULT_POPOVER_HOTKEY.to_owned();
+        }
+        if self.active_app.trim().is_empty() {
+            self.active_app = "living-rookery".to_owned();
         }
     }
 

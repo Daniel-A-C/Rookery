@@ -339,8 +339,8 @@ impl LivingRookeryScene {
     }
 
     /// Converts normalized world coordinates [0..1000, 0..800] to current screen viewport pixels.
-    fn world_to_screen(&self, pt: [f32; 2]) -> [f32; 2] {
-        let x = (pt[0] / 1000.0) * self.width;
+    fn world_to_screen(&self, pt: [f32; 2], offset_x: f32) -> [f32; 2] {
+        let x = ((pt[0] - offset_x) / 1000.0) * self.width;
         let ground_y = self.height * 0.90;
         let tree_scale = (self.height / 900.0).clamp(0.6, 2.0);
         let y = ground_y - (750.0 - pt[1]) * tree_scale;
@@ -349,7 +349,8 @@ impl LivingRookeryScene {
 
     /// Converts screen pixel pointer coordinates to world coordinates.
     fn screen_to_world(&self, pt: Pointer) -> [f32; 2] {
-        let x = (pt.x / self.width) * 1000.0;
+        let offset_x = self.world.lock().map(|w| w.viewport_offset_x).unwrap_or(0.0);
+        let x = (pt.x / self.width) * 1000.0 + offset_x;
         let ground_y = self.height * 0.90;
         let tree_scale = (self.height / 900.0).clamp(0.6, 2.0);
         let y = 750.0 - (ground_y - pt.y) / tree_scale;
@@ -392,14 +393,15 @@ impl LivingRookeryScene {
             Err(_) => return,
         };
 
+        let offset_x = world_guard.viewport_offset_x;
         let tree_scale = (self.height / 900.0).clamp(0.6, 2.0);
         let base_glyph_size = [12.0 * tree_scale, 20.0 * tree_scale];
 
         // 1. Draw Tree Branches
         for branch in &world_guard.branches {
-            let start = self.world_to_screen(branch.start);
+            let start = self.world_to_screen(branch.start, offset_x);
             let current_end_world = branch.current_end();
-            let end = self.world_to_screen(current_end_world);
+            let end = self.world_to_screen(current_end_world, offset_x);
 
             let dx = end[0] - start[0];
             let dy = end[1] - start[1];
@@ -435,7 +437,7 @@ impl LivingRookeryScene {
                 let t = s as f32 / steps as f32;
                 let px = start[0] + dx * t;
                 let py = start[1] + dy * t;
-                let glyph_scale = (branch.thickness / 10.0).clamp(0.8, 2.2);
+                let glyph_scale = (branch.thickness / 8.0).clamp(1.0, 2.6);
 
                 self.push_glyph(
                     branch_char,
@@ -449,11 +451,34 @@ impl LivingRookeryScene {
                     bark_color,
                     branch.sway_factor,
                 );
+
+                // Multi-column trunk reinforcement for sturdy thick trees
+                if branch.depth == 0 {
+                    let col_offset = 7.0 * tree_scale;
+                    self.push_glyph(
+                        '|',
+                        [px - col_offset, py],
+                        [base_glyph_size[0] * 0.9, base_glyph_size[1]],
+                        branch.angle * 0.4,
+                        0.05,
+                        [0.42, 0.32, 0.22, 0.90],
+                        branch.sway_factor,
+                    );
+                    self.push_glyph(
+                        '|',
+                        [px + col_offset, py],
+                        [base_glyph_size[0] * 0.9, base_glyph_size[1]],
+                        branch.angle * 0.4,
+                        0.05,
+                        [0.42, 0.32, 0.22, 0.90],
+                        branch.sway_factor,
+                    );
+                }
             }
 
             // Draw nest if present on this branch
             if branch.has_nest {
-                let nest_pos = self.world_to_screen(branch.point_at(0.4));
+                let nest_pos = self.world_to_screen(branch.point_at(0.4), offset_x);
                 self.push_glyph(
                     '\\',
                     [nest_pos[0] - 8.0, nest_pos[1]],
@@ -489,7 +514,7 @@ impl LivingRookeryScene {
                     continue;
                 }
                 let pt = branch.point_at(bud.offset_along);
-                let mut screen_pt = self.world_to_screen(pt);
+                let mut screen_pt = self.world_to_screen(pt, offset_x);
                 screen_pt[0] += bud.lateral_offset * tree_scale;
 
                 let c = bud.char_code as char;
@@ -519,7 +544,7 @@ impl LivingRookeryScene {
 
         // 3. Draw Autonomous Birds
         for bird in &world_guard.birds {
-            let screen_pos = self.world_to_screen(bird.pos);
+            let screen_pos = self.world_to_screen(bird.pos, offset_x);
             let bird_color = match bird.species {
                 BirdSpecies::Rook => [0.85, 0.88, 0.95, 0.95], // bright silver-white
                 BirdSpecies::AzureJay => [0.32, 0.68, 0.98, 0.95], // sapphire azure
@@ -602,7 +627,7 @@ impl LivingRookeryScene {
 
         // 4. Draw Floating Musical Notes
         for note in &world_guard.notes {
-            let screen_pos = self.world_to_screen(note.pos);
+            let screen_pos = self.world_to_screen(note.pos, offset_x);
             let alpha = (1.0 - (note.life / note.max_life)).clamp(0.0, 1.0);
             let note_color = match note.color_idx {
                 0 => [0.95, 0.85, 0.40, alpha], // gold
@@ -622,7 +647,7 @@ impl LivingRookeryScene {
 
         // 5. Draw Falling Pruning Chips
         for chip in &world_guard.chips {
-            let screen_pos = self.world_to_screen(chip.pos);
+            let screen_pos = self.world_to_screen(chip.pos, offset_x);
             let alpha = (1.0 - (chip.life / chip.max_life)).clamp(0.0, 1.0);
             self.push_glyph(
                 chip.glyph,
@@ -632,6 +657,52 @@ impl LivingRookeryScene {
                 0.3,
                 [0.72, 0.55, 0.38, alpha],
                 0.0,
+            );
+        }
+
+        // 6. Draw Birdhouses on mature branches
+        for house in &world_guard.houses {
+            if let Some(b) = world_guard.branches.iter().find(|br| br.id == house.branch_id) {
+                let h_pos = self.world_to_screen(b.point_at(house.t), offset_x);
+                let house_color = [0.75, 0.55, 0.35, 0.95];
+                self.push_glyph('^', [h_pos[0], h_pos[1] - 12.0 * tree_scale], base_glyph_size, 0.0, 0.08, [0.85, 0.45, 0.35, 0.95], b.sway_factor);
+                self.push_glyph('[', [h_pos[0] - 6.0 * tree_scale, h_pos[1]], base_glyph_size, 0.0, 0.08, house_color, b.sway_factor);
+                self.push_glyph('o', [h_pos[0], h_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.08, [0.25, 0.18, 0.12, 0.95], b.sway_factor);
+                self.push_glyph(']', [h_pos[0] + 6.0 * tree_scale, h_pos[1]], base_glyph_size, 0.0, 0.08, house_color, b.sway_factor);
+                self.push_glyph('_', [h_pos[0], h_pos[1] + 6.0 * tree_scale], base_glyph_size, 0.0, 0.08, [0.60, 0.45, 0.30, 0.95], b.sway_factor);
+            }
+        }
+
+        // 7. Draw Planted Marker Signs
+        for sign in &world_guard.signs {
+            let s_pos = self.world_to_screen(sign.pos, offset_x);
+            let sign_col = [0.68, 0.52, 0.32, 0.92];
+            self.push_glyph('|', [s_pos[0], s_pos[1] + 8.0 * tree_scale], base_glyph_size, 0.0, 0.02, [0.45, 0.35, 0.22, 0.95], 0.0);
+            self.push_glyph('[', [s_pos[0] - 6.0 * tree_scale, s_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.02, sign_col, 0.0);
+            self.push_glyph('i', [s_pos[0], s_pos[1]], [base_glyph_size[0] * 0.7, base_glyph_size[1] * 0.7], 0.0, 0.02, [0.95, 0.90, 0.75, 0.95], 0.0);
+            self.push_glyph(']', [s_pos[0] + 6.0 * tree_scale, s_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.02, sign_col, 0.0);
+        }
+
+        // 8. Forest Floor Moss and Grass Sprouts
+        let ground_y = self.height * 0.90;
+        let tuft_chars = ['"', ',', '.', '\'', '~', '☘'];
+        let tufts_count = 24;
+        for i in 0..tufts_count {
+            let fx = (i as f32 / tufts_count as f32) * self.width;
+            let c = tuft_chars[i % tuft_chars.len()];
+            let moss_col = match i % 3 {
+                0 => [0.28, 0.55, 0.30, 0.75],
+                1 => [0.38, 0.65, 0.35, 0.70],
+                _ => [0.45, 0.40, 0.28, 0.65],
+            };
+            self.push_glyph(
+                c,
+                [fx, ground_y + 2.0 * tree_scale],
+                [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                0.0,
+                0.01,
+                moss_col,
+                0.05,
             );
         }
     }

@@ -13,15 +13,23 @@
 pub mod ascii_scene;
 pub mod atlas;
 pub mod capture;
+pub mod catalog;
 pub mod demo;
 mod fullscreen;
 mod gpu;
+pub mod koi_scene;
+pub mod nebula_scene;
 pub mod offscreen;
+pub mod orbital_scene;
 mod renderer;
 mod scene;
 mod vignette;
 
 pub use ascii_scene::LivingRookeryScene;
+pub use catalog::{AppCatalog, CatalogState};
 pub use gpu::Gpu;
+pub use koi_scene::KoiPondScene;
+pub use nebula_scene::CosmicNebulaScene;
+pub use orbital_scene::OrbitalHavenScene;
 pub use renderer::{DisplayStats, Renderer, SceneFactory, SurfaceSize};
 pub use scene::{Pointer, Scene, SceneInput};

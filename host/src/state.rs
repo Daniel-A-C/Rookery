@@ -11,10 +11,11 @@ use rookery_core::governor::{
     DisplayInputs, FrameBudget, GovernorInputs, PauseReason, PowerState, compute,
 };
 use rookery_core::interaction::{Effect, Interaction, InteractionEvent};
+use rookery_core::manifest::{DayNightMapping, ScheduleMode};
 use rookery_core::settings::Settings;
 use rookery_core::world::WorldState;
 use rookery_platform::{DesktopLayer, DisplayInfo};
-use rookery_render::{Gpu, Renderer};
+use rookery_render::{AppCatalog, CatalogState, Gpu, Renderer};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Window};
 
@@ -43,6 +44,7 @@ pub struct HostState {
     pub settings_path: PathBuf,
     pub world_path: PathBuf,
     pub world: Arc<Mutex<WorldState>>,
+    pub catalog_state: CatalogState,
     pub layer: Box<dyn DesktopLayer>,
     pub renderer: Mutex<Option<Renderer>>,
     pub gpu: Arc<Gpu>,
@@ -78,17 +80,53 @@ pub struct RookeryStatus {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct KoiStatus {
+    pub total_fish: u32,
+    pub total_lilies: u32,
+    pub pellets_eaten: u32,
+    pub ripples_created: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NebulaStatus {
+    pub total_particles: u32,
+    pub active_vortices: u32,
+    pub palette: String,
+    pub turbulence: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct OrbitalStatus {
+    pub station_age_hours: f64,
+    pub total_modules: u32,
+    pub solar_wings: u32,
+    pub habitat_sectors: u32,
+    pub comm_arrays: u32,
+    pub focus: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct HostStatus {
     pub displays: Vec<DisplayStatus>,
     pub power: PowerState,
     pub interactive: bool,
     pub user_paused: bool,
+    pub active_app: String,
+    pub schedule_mode: ScheduleMode,
     pub rookery: Option<RookeryStatus>,
+    pub koi: Option<KoiStatus>,
+    pub nebula: Option<NebulaStatus>,
+    pub orbital: Option<OrbitalStatus>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct SettingsPatch {
     pub hotkey: Option<String>,
+    pub popover_hotkey: Option<String>,
+    pub active_app: Option<String>,
+    pub schedule_mode: Option<ScheduleMode>,
+    pub schedule_interval_mins: Option<u32>,
+    pub day_night_mapping: Option<DayNightMapping>,
     pub passive_fps: Option<u32>,
     pub interactive_fps: Option<u32>,
     pub low_power_fps: Option<u32>,
@@ -152,10 +190,35 @@ impl HostState {
             pruned_branches: w.stats.pruned_branches,
             seeds_planted: w.stats.seeds_planted,
             snacks_eaten: w.stats.snacks_eaten,
-            nests_built: w.stats.nests_built,
+            nests_built: w.stats.nests_built + w.stats.houses_built,
+        });
+
+        let koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {
+            total_fish: k.stats.total_fish,
+            total_lilies: k.stats.total_lilies,
+            pellets_eaten: k.stats.pellets_eaten,
+            ripples_created: k.stats.ripples_created,
+        });
+
+        let nebula = self.catalog_state.nebula.lock().ok().map(|n| NebulaStatus {
+            total_particles: n.stats.total_particles,
+            active_vortices: n.stats.active_vortices,
+            palette: n.palette.name().to_string(),
+            turbulence: n.turbulence,
+        });
+
+        let orbital = self.catalog_state.orbital.lock().ok().map(|o| OrbitalStatus {
+            station_age_hours: o.stats.station_age_hours,
+            total_modules: o.stats.total_modules,
+            solar_wings: o.stats.solar_wings,
+            habitat_sectors: o.stats.habitat_sectors,
+            comm_arrays: o.stats.comm_arrays,
+            focus: o.focus.name().to_string(),
         });
 
         let inner = self.inner.lock().expect("host state poisoned");
+        let active_app = inner.settings.active_app.clone();
+        let schedule_mode = inner.settings.schedule_mode;
         let displays = inner
             .displays
             .values()
@@ -178,8 +241,28 @@ impl HostState {
             power: inner.power,
             interactive: inner.interaction.is_interactive(),
             user_paused: inner.user_paused,
+            active_app,
+            schedule_mode,
             rookery,
+            koi,
+            nebula,
+            orbital,
         }
+    }
+
+    /// Hot-switch running scene to a new catalog app.
+    pub fn switch_app(&self, app_id: &str) -> Result<(), String> {
+        let valid_apps = ["living-rookery", "koi-pond", "cosmic-nebula", "orbital-haven"];
+        if !valid_apps.contains(&app_id) {
+            return Err(format!("Unknown app id '{app_id}'"));
+        }
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.settings.active_app = app_id.to_string();
+            let _ = inner.settings.save(&self.settings_path);
+        }
+        let factory = AppCatalog::create_scene_factory(app_id, self.catalog_state.clone());
+        self.with_renderer(|r| r.switch_scene(factory));
+        Ok(())
     }
 
     /// Emit `rookery://status` if and only if the popover window is currently open.
