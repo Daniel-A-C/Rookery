@@ -36,6 +36,7 @@ pub fn open(app: &AppHandle) {
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
             .focused(true)
+            .devtools(true)
             .build()
         {
             Ok(w) => w,
