@@ -263,7 +263,11 @@ pub fn execute_app_action(
             }
         }
         "koi-pond" => {
-            let mut k = state.catalog_state.koi.lock().map_err(|_| "lock poisoned")?;
+            let mut k = state
+                .catalog_state
+                .koi
+                .lock()
+                .map_err(|_| "lock poisoned")?;
             match action.as_str() {
                 "feed_koi" => {
                     k.feed_koi([500.0, 375.0]);
@@ -275,7 +279,11 @@ pub fn execute_app_action(
             }
         }
         "cosmic-nebula" => {
-            let mut n = state.catalog_state.nebula.lock().map_err(|_| "lock poisoned")?;
+            let mut n = state
+                .catalog_state
+                .nebula
+                .lock()
+                .map_err(|_| "lock poisoned")?;
             match action.as_str() {
                 "add_attractor" => {
                     n.add_gravity_well([500.0, 375.0], false);
@@ -290,7 +298,11 @@ pub fn execute_app_action(
             }
         }
         "orbital-haven" => {
-            let mut o = state.catalog_state.orbital.lock().map_err(|_| "lock poisoned")?;
+            let mut o = state
+                .catalog_state
+                .orbital
+                .lock()
+                .map_err(|_| "lock poisoned")?;
             match action.as_str() {
                 "focus_solar" => {
                     o.set_focus(ConstructionFocus::SolarPower);

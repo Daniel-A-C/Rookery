@@ -84,17 +84,15 @@ pub struct OrbitalHavenState {
 impl OrbitalHavenState {
     pub fn new(seed: u64) -> Self {
         let rng = WorldRng::new(seed);
-        let mut shuttles = Vec::new();
-
         // One initial incoming transport shuttle
-        shuttles.push(Shuttle {
+        let shuttles = vec![Shuttle {
             id: 1,
             pos: [180.0, 520.0],
             vel: [22.0, -14.0],
             target_dock: [500.0, 360.0],
             state: ShuttleState::Approaching,
             docking_timer: 0.0,
-        });
+        }];
 
         Self {
             version: ORBITAL_HAVEN_STATE_VERSION,
@@ -132,10 +130,7 @@ impl OrbitalHavenState {
         self.shuttles.push(Shuttle {
             id: self.next_id,
             pos: [500.0, 360.0],
-            vel: [
-                self.rng.range(-35.0, 35.0),
-                self.rng.range(-45.0, -15.0),
-            ],
+            vel: [self.rng.range(-35.0, 35.0), self.rng.range(-45.0, -15.0)],
             target_dock: [500.0, 360.0],
             state: ShuttleState::Departing,
             docking_timer: 0.0,
@@ -154,9 +149,8 @@ impl OrbitalHavenState {
         for _ in 0..modules_earned {
             self.complete_module();
         }
-        self.construction_progress = (self.construction_progress
-            + (capped % 7200.0) as f32 / 7200.0)
-            % 1.0;
+        self.construction_progress =
+            (self.construction_progress + (capped % 7200.0) as f32 / 7200.0) % 1.0;
     }
 
     fn complete_module(&mut self) {
@@ -248,8 +242,9 @@ impl OrbitalHavenState {
         }
 
         // Respawn new incoming shuttle if none are active
-        self.shuttles
-            .retain(|s| s.pos[0] > -100.0 && s.pos[0] < 1100.0 && s.pos[1] > -100.0 && s.pos[1] < 850.0);
+        self.shuttles.retain(|s| {
+            s.pos[0] > -100.0 && s.pos[0] < 1100.0 && s.pos[1] > -100.0 && s.pos[1] < 850.0
+        });
         if self.shuttles.is_empty() {
             self.next_id += 1;
             let start_x = if self.rng.f32() > 0.5 { 120.0 } else { 880.0 };

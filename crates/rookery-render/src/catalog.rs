@@ -7,18 +7,16 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rookery_core::koi::KoiPondState;
-use rookery_core::manifest::{
-    AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata,
-};
+use rookery_core::manifest::{AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata};
 use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
 use rookery_core::world::WorldState;
 
+use crate::SceneFactory;
 use crate::ascii_scene::LivingRookeryScene;
 use crate::koi_scene::KoiPondScene;
 use crate::nebula_scene::CosmicNebulaScene;
 use crate::orbital_scene::OrbitalHavenScene;
-use crate::SceneFactory;
 
 /// Shared container holding simulation state for all installed catalog apps.
 #[derive(Clone)]
@@ -218,10 +216,10 @@ impl AppCatalog {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let toml_path = entry.path().join("rookery.toml");
-                if toml_path.is_file() {
-                    if let Ok(m) = AppManifest::load_from_toml_file(&toml_path) {
-                        manifests.push(m);
-                    }
+                if toml_path.is_file()
+                    && let Ok(m) = AppManifest::load_from_toml_file(&toml_path)
+                {
+                    manifests.push(m);
                 }
             }
         }
@@ -231,13 +229,11 @@ impl AppCatalog {
     /// Construct a [`SceneFactory`] for the given app id.
     pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
         let id_string = app_id.to_string();
-        Box::new(move |gpu, format| {
-            match id_string.as_str() {
-                "koi-pond" => Box::new(KoiPondScene::new(gpu, format, state.koi.clone())),
-                "cosmic-nebula" => Box::new(CosmicNebulaScene::new(gpu, format, state.nebula.clone())),
-                "orbital-haven" => Box::new(OrbitalHavenScene::new(gpu, format, state.orbital.clone())),
-                _ => Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone())),
-            }
+        Box::new(move |gpu, format| match id_string.as_str() {
+            "koi-pond" => Box::new(KoiPondScene::new(gpu, format, state.koi.clone())),
+            "cosmic-nebula" => Box::new(CosmicNebulaScene::new(gpu, format, state.nebula.clone())),
+            "orbital-haven" => Box::new(OrbitalHavenScene::new(gpu, format, state.orbital.clone())),
+            _ => Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone())),
         })
     }
 }

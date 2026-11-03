@@ -92,7 +92,8 @@ pub fn run() {
             }
 
             let initial_app = settings.active_app.clone();
-            let initial_factory = AppCatalog::create_scene_factory(&initial_app, catalog_state.clone());
+            let initial_factory =
+                AppCatalog::create_scene_factory(&initial_app, catalog_state.clone());
 
             let gpu = Gpu::new_blocking()?;
             let renderer = Renderer::spawn(
@@ -238,7 +239,12 @@ fn spawn_governor_thread(app: AppHandle) {
                     ScheduleMode::Interval => {
                         let interval_secs = (interval_mins.max(1) * 60) as u64;
                         if ticks.is_multiple_of(interval_secs) {
-                            let apps = ["living-rookery", "koi-pond", "cosmic-nebula", "orbital-haven"];
+                            let apps = [
+                                "living-rookery",
+                                "koi-pond",
+                                "cosmic-nebula",
+                                "orbital-haven",
+                            ];
                             let cur_pos = apps.iter().position(|&a| a == active_app).unwrap_or(0);
                             let next_app = apps[(cur_pos + 1) % apps.len()];
                             let _ = state.switch_app(next_app);

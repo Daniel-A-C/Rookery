@@ -207,14 +207,19 @@ impl HostState {
             turbulence: n.turbulence,
         });
 
-        let orbital = self.catalog_state.orbital.lock().ok().map(|o| OrbitalStatus {
-            station_age_hours: o.stats.station_age_hours,
-            total_modules: o.stats.total_modules,
-            solar_wings: o.stats.solar_wings,
-            habitat_sectors: o.stats.habitat_sectors,
-            comm_arrays: o.stats.comm_arrays,
-            focus: o.focus.name().to_string(),
-        });
+        let orbital = self
+            .catalog_state
+            .orbital
+            .lock()
+            .ok()
+            .map(|o| OrbitalStatus {
+                station_age_hours: o.stats.station_age_hours,
+                total_modules: o.stats.total_modules,
+                solar_wings: o.stats.solar_wings,
+                habitat_sectors: o.stats.habitat_sectors,
+                comm_arrays: o.stats.comm_arrays,
+                focus: o.focus.name().to_string(),
+            });
 
         let inner = self.inner.lock().expect("host state poisoned");
         let active_app = inner.settings.active_app.clone();
@@ -252,7 +257,12 @@ impl HostState {
 
     /// Hot-switch running scene to a new catalog app.
     pub fn switch_app(&self, app_id: &str) -> Result<(), String> {
-        let valid_apps = ["living-rookery", "koi-pond", "cosmic-nebula", "orbital-haven"];
+        let valid_apps = [
+            "living-rookery",
+            "koi-pond",
+            "cosmic-nebula",
+            "orbital-haven",
+        ];
         if !valid_apps.contains(&app_id) {
             return Err(format!("Unknown app id '{app_id}'"));
         }

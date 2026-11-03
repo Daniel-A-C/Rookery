@@ -116,8 +116,7 @@ impl CosmicNebulaState {
         }
 
         // Initial gentle central gravitational vortex
-        let mut wells = Vec::new();
-        wells.push(GravityWell {
+        let wells = vec![GravityWell {
             id: 1,
             pos: [500.0, 375.0],
             strength: 420.0,
@@ -125,7 +124,7 @@ impl CosmicNebulaState {
             is_repulsor: false,
             life: 0.0,
             max_life: 999999.0, // standing anchor
-        });
+        }];
 
         Self {
             version: COSMIC_NEBULA_STATE_VERSION,
@@ -185,10 +184,12 @@ impl CosmicNebulaState {
         self.stats.simulation_age_secs = self.age_secs;
 
         // Interactive gravity cursor in active mode
-        if interactive && let Some(p) = pointer {
-            if self.rng.f32() < 0.08 && self.wells.len() < 5 {
-                self.add_gravity_well(p, false);
-            }
+        if interactive
+            && let Some(p) = pointer
+            && self.rng.f32() < 0.08
+            && self.wells.len() < 5
+        {
+            self.add_gravity_well(p, false);
         }
 
         // Update gravitational wells

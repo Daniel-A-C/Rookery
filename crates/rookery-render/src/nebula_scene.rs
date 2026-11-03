@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
-use rookery_core::nebula::{CosmicNebulaState, NebulaPalette};
 use rookery_core::Activity;
+use rookery_core::nebula::{CosmicNebulaState, NebulaPalette};
 use wgpu::util::DeviceExt;
 
 use crate::ascii_scene::GlyphInstance;
@@ -70,7 +70,11 @@ pub struct CosmicNebulaScene {
 }
 
 impl CosmicNebulaScene {
-    pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, nebula: Arc<Mutex<CosmicNebulaState>>) -> Self {
+    pub fn new(
+        gpu: &Gpu,
+        format: wgpu::TextureFormat,
+        nebula: Arc<Mutex<CosmicNebulaState>>,
+    ) -> Self {
         let device = &gpu.device;
 
         // 1. Nebula background setup
@@ -103,12 +107,30 @@ impl CosmicNebulaScene {
         let (_atlas_texture, _atlas_view, sampler) = atlas::create_glyph_atlas(gpu);
 
         let quad_vertices = [
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, -0.5], uv: [1.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, 0.5], uv: [0.0, 1.0] },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, -0.5],
+                uv: [1.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, 0.5],
+                uv: [0.0, 1.0],
+            },
         ];
         let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("nebula-quad-buffer"),
@@ -308,19 +330,14 @@ impl CosmicNebulaScene {
     }
 
     fn world_to_screen(&self, pt: [f32; 2]) -> [f32; 2] {
-        [
-            (pt[0] / 1000.0) * self.width,
-            (pt[1] / 750.0) * self.height,
-        ]
+        [(pt[0] / 1000.0) * self.width, (pt[1] / 750.0) * self.height]
     }
 
     fn screen_to_world(&self, pt: Pointer) -> [f32; 2] {
-        [
-            (pt.x / self.width) * 1000.0,
-            (pt.y / self.height) * 750.0,
-        ]
+        [(pt.x / self.width) * 1000.0, (pt.y / self.height) * 750.0]
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_glyph(
         &mut self,
         c: char,
@@ -457,10 +474,16 @@ impl Scene for CosmicNebulaScene {
                 NebulaPalette::SolarFlare => 2.0,
                 NebulaPalette::AuroraVeil => 3.0,
             };
-            let v_pos = guard.wells.first().map(|w| [
-                (w.pos[0] / 1000.0) * self.width,
-                (w.pos[1] / 750.0) * self.height,
-            ]).unwrap_or([self.width * 0.5, self.height * 0.5]);
+            let v_pos = guard
+                .wells
+                .first()
+                .map(|w| {
+                    [
+                        (w.pos[0] / 1000.0) * self.width,
+                        (w.pos[1] / 750.0) * self.height,
+                    ]
+                })
+                .unwrap_or([self.width * 0.5, self.height * 0.5]);
 
             (act, p_idx, guard.turbulence, v_pos)
         };
@@ -473,11 +496,8 @@ impl Scene for CosmicNebulaScene {
             turbulence: turb,
             _pad: 0.0,
         };
-        gpu.queue.write_buffer(
-            &self.bg_uniforms_buf,
-            0,
-            bytemuck::bytes_of(&neb_uniforms),
-        );
+        gpu.queue
+            .write_buffer(&self.bg_uniforms_buf, 0, bytemuck::bytes_of(&neb_uniforms));
 
         let glyph_uniforms = InstanceUniforms {
             resolution: [self.width, self.height],

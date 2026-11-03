@@ -182,3 +182,4 @@ To accommodate users who keep their macOS menu bar hidden or prefer keyboard wor
 - **Default**: `CommandOrControl+Alt+Shift+P`
 - **Behavior**: Toggles the Tauri quick-control popover window from anywhere in the OS without requiring cursor travel to the menu bar icon.
 - **Configurable**: Rebindable dynamically in the Settings section of the Popover UI.
+

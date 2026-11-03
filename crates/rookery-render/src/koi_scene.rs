@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
-use rookery_core::koi::{KoiPondState, KoiVariety};
 use rookery_core::Activity;
+use rookery_core::koi::{KoiPondState, KoiVariety};
 use wgpu::util::DeviceExt;
 
 use crate::ascii_scene::GlyphInstance;
@@ -101,12 +101,30 @@ impl KoiPondScene {
         let (_atlas_texture, _atlas_view, sampler) = atlas::create_glyph_atlas(gpu);
 
         let quad_vertices = [
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, -0.5], uv: [1.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, 0.5], uv: [0.0, 1.0] },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, -0.5],
+                uv: [1.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, 0.5],
+                uv: [0.0, 1.0],
+            },
         ];
         let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("koi-quad-buffer"),
@@ -306,19 +324,14 @@ impl KoiPondScene {
     }
 
     fn world_to_screen(&self, pt: [f32; 2]) -> [f32; 2] {
-        [
-            (pt[0] / 1000.0) * self.width,
-            (pt[1] / 750.0) * self.height,
-        ]
+        [(pt[0] / 1000.0) * self.width, (pt[1] / 750.0) * self.height]
     }
 
     fn screen_to_world(&self, pt: Pointer) -> [f32; 2] {
-        [
-            (pt.x / self.width) * 1000.0,
-            (pt.y / self.height) * 750.0,
-        ]
+        [(pt.x / self.width) * 1000.0, (pt.y / self.height) * 750.0]
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_glyph(
         &mut self,
         c: char,
@@ -398,8 +411,24 @@ impl KoiPondScene {
                     1 => [0.92, 0.38, 0.65, 0.95],
                     _ => [0.98, 0.92, 0.65, 0.95],
                 };
-                self.push_glyph('*', center, fl_size, lily.rotation * 2.0, 0.08, fl_col, 0.03);
-                self.push_glyph('o', center, [fl_size[0] * 0.5, fl_size[1] * 0.5], 0.0, 0.09, [0.98, 0.88, 0.35, 0.98], 0.03);
+                self.push_glyph(
+                    '*',
+                    center,
+                    fl_size,
+                    lily.rotation * 2.0,
+                    0.08,
+                    fl_col,
+                    0.03,
+                );
+                self.push_glyph(
+                    'o',
+                    center,
+                    [fl_size[0] * 0.5, fl_size[1] * 0.5],
+                    0.0,
+                    0.09,
+                    [0.98, 0.88, 0.35, 0.98],
+                    0.03,
+                );
             }
         }
 
@@ -479,8 +508,24 @@ impl KoiPondScene {
                         screen_pos[1] - perp[1] * h * 0.7,
                     ];
 
-                    self.push_glyph('~', left_fin, [fin_w, fin_h], rot + fin_angle, 0.11, [col[0], col[1], col[2], 0.75], 0.0);
-                    self.push_glyph('~', right_fin, [fin_w, fin_h], rot - fin_angle, 0.11, [col[0], col[1], col[2], 0.75], 0.0);
+                    self.push_glyph(
+                        '~',
+                        left_fin,
+                        [fin_w, fin_h],
+                        rot + fin_angle,
+                        0.11,
+                        [col[0], col[1], col[2], 0.75],
+                        0.0,
+                    );
+                    self.push_glyph(
+                        '~',
+                        right_fin,
+                        [fin_w, fin_h],
+                        rot - fin_angle,
+                        0.11,
+                        [col[0], col[1], col[2], 0.75],
+                        0.0,
+                    );
                 }
             }
         }
@@ -490,7 +535,15 @@ impl KoiPondScene {
             let p_pos = self.world_to_screen(pellet.pos);
             let alpha = (1.0 - pellet.sink_depth * 0.7).clamp(0.2, 1.0);
             let pel_col = [0.85, 0.65, 0.32, alpha];
-            self.push_glyph('o', p_pos, [8.0 * scale, 8.0 * scale], 0.0, 0.07, pel_col, 0.0);
+            self.push_glyph(
+                'o',
+                p_pos,
+                [8.0 * scale, 8.0 * scale],
+                0.0,
+                0.07,
+                pel_col,
+                0.0,
+            );
         }
     }
 }

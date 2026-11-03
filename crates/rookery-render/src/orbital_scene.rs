@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
-use rookery_core::orbital::OrbitalHavenState;
 use rookery_core::Activity;
+use rookery_core::orbital::OrbitalHavenState;
 use wgpu::util::DeviceExt;
 
 use crate::ascii_scene::GlyphInstance;
@@ -67,7 +67,11 @@ pub struct OrbitalHavenScene {
 }
 
 impl OrbitalHavenScene {
-    pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, station: Arc<Mutex<OrbitalHavenState>>) -> Self {
+    pub fn new(
+        gpu: &Gpu,
+        format: wgpu::TextureFormat,
+        station: Arc<Mutex<OrbitalHavenState>>,
+    ) -> Self {
         let device = &gpu.device;
 
         // 1. Orbital planet background setup
@@ -100,12 +104,30 @@ impl OrbitalHavenScene {
         let (_atlas_texture, _atlas_view, sampler) = atlas::create_glyph_atlas(gpu);
 
         let quad_vertices = [
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, -0.5], uv: [1.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, -0.5], uv: [0.0, 0.0] },
-            QuadVertex { pos: [0.5, 0.5], uv: [1.0, 1.0] },
-            QuadVertex { pos: [-0.5, 0.5], uv: [0.0, 1.0] },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, -0.5],
+                uv: [1.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, -0.5],
+                uv: [0.0, 0.0],
+            },
+            QuadVertex {
+                pos: [0.5, 0.5],
+                uv: [1.0, 1.0],
+            },
+            QuadVertex {
+                pos: [-0.5, 0.5],
+                uv: [0.0, 1.0],
+            },
         ];
         let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("orbital-quad-buffer"),
@@ -305,12 +327,10 @@ impl OrbitalHavenScene {
     }
 
     fn world_to_screen(&self, pt: [f32; 2]) -> [f32; 2] {
-        [
-            (pt[0] / 1000.0) * self.width,
-            (pt[1] / 750.0) * self.height,
-        ]
+        [(pt[0] / 1000.0) * self.width, (pt[1] / 750.0) * self.height]
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_glyph(
         &mut self,
         c: char,
@@ -357,7 +377,15 @@ impl OrbitalHavenScene {
         // 1. Central Core Hub
         let hub_size = [28.0 * scale, 28.0 * scale];
         self.push_glyph('O', station_pos, hub_size, 0.0, 0.1, hull_col, 0.0);
-        self.push_glyph('+', station_pos, [18.0 * scale, 18.0 * scale], 0.0, 0.11, dark_hull, 0.0);
+        self.push_glyph(
+            '+',
+            station_pos,
+            [18.0 * scale, 18.0 * scale],
+            0.0,
+            0.11,
+            dark_hull,
+            0.0,
+        );
 
         // 2. Rotating Centrifugal Habitat Ring Sectors
         let ring_radius = 68.0 * scale;
@@ -372,15 +400,47 @@ impl OrbitalHavenScene {
             if i % 3 == 0 {
                 let mid_x = (station_pos[0] + sx) * 0.5;
                 let mid_y = (station_pos[1] + sy) * 0.5;
-                self.push_glyph('-', [mid_x, mid_y], [24.0 * scale, 12.0 * scale], angle, 0.08, dark_hull, 0.0);
+                self.push_glyph(
+                    '-',
+                    [mid_x, mid_y],
+                    [24.0 * scale, 12.0 * scale],
+                    angle,
+                    0.08,
+                    dark_hull,
+                    0.0,
+                );
             }
 
             // Ring sector module
             if i < active_sectors {
-                self.push_glyph('o', [sx, sy], [14.0 * scale, 14.0 * scale], angle, 0.12, hull_col, 0.0);
-                self.push_glyph('.', [sx, sy], [8.0 * scale, 8.0 * scale], 0.0, 0.13, window_glow, 0.0);
+                self.push_glyph(
+                    'o',
+                    [sx, sy],
+                    [14.0 * scale, 14.0 * scale],
+                    angle,
+                    0.12,
+                    hull_col,
+                    0.0,
+                );
+                self.push_glyph(
+                    '.',
+                    [sx, sy],
+                    [8.0 * scale, 8.0 * scale],
+                    0.0,
+                    0.13,
+                    window_glow,
+                    0.0,
+                );
             } else {
-                self.push_glyph(':', [sx, sy], [10.0 * scale, 10.0 * scale], angle, 0.06, [0.45, 0.50, 0.55, 0.55], 0.0);
+                self.push_glyph(
+                    ':',
+                    [sx, sy],
+                    [10.0 * scale, 10.0 * scale],
+                    angle,
+                    0.06,
+                    [0.45, 0.50, 0.55, 0.55],
+                    0.0,
+                );
             }
         }
 
@@ -392,7 +452,15 @@ impl OrbitalHavenScene {
             let wing_x = station_pos[0] + side * (ring_radius + seg * 24.0 * scale);
             let wing_y = station_pos[1];
 
-            self.push_glyph('#', [wing_x, wing_y], [20.0 * scale, 16.0 * scale], 0.0, 0.09, solar_col, 0.0);
+            self.push_glyph(
+                '#',
+                [wing_x, wing_y],
+                [20.0 * scale, 16.0 * scale],
+                0.0,
+                0.09,
+                solar_col,
+                0.0,
+            );
         }
 
         // 4. Communication & Sensor Array Dishes
@@ -400,7 +468,15 @@ impl OrbitalHavenScene {
         for d in 0..dish_count {
             let dy = station_pos[1] - (hub_size[1] * 0.7 + (d as f32) * 14.0 * scale);
             let dish_col = [0.92, 0.95, 0.98, 0.95];
-            self.push_glyph(')', [station_pos[0], dy], [14.0 * scale, 14.0 * scale], 1.57, 0.15, dish_col, 0.0);
+            self.push_glyph(
+                ')',
+                [station_pos[0], dy],
+                [14.0 * scale, 14.0 * scale],
+                1.57,
+                0.15,
+                dish_col,
+                0.0,
+            );
         }
 
         // 5. Autonomous Transport Shuttles & Thruster Plumes
@@ -412,7 +488,15 @@ impl OrbitalHavenScene {
             if shuttle.vel[0].abs() > 1.0 || shuttle.vel[1].abs() > 1.0 {
                 let plume_x = s_pos[0] - shuttle.vel[0] * 0.25 * scale;
                 let plume_y = s_pos[1] - shuttle.vel[1] * 0.25 * scale;
-                self.push_glyph('*', [plume_x, plume_y], [12.0 * scale, 12.0 * scale], rot, 0.14, [0.35, 0.75, 0.98, 0.85], 0.0);
+                self.push_glyph(
+                    '*',
+                    [plume_x, plume_y],
+                    [12.0 * scale, 12.0 * scale],
+                    rot,
+                    0.14,
+                    [0.35, 0.75, 0.98, 0.85],
+                    0.0,
+                );
             }
 
             self.push_glyph('>', s_pos, s_size, rot, 0.16, [0.95, 0.92, 0.88, 0.98], 0.0);
@@ -445,11 +529,8 @@ impl Scene for OrbitalHavenScene {
             time: self.time as f32,
             orbit_angle,
         };
-        gpu.queue.write_buffer(
-            &self.bg_uniforms_buf,
-            0,
-            bytemuck::bytes_of(&orb_uniforms),
-        );
+        gpu.queue
+            .write_buffer(&self.bg_uniforms_buf, 0, bytemuck::bytes_of(&orb_uniforms));
 
         let glyph_uniforms = InstanceUniforms {
             resolution: [self.width, self.height],

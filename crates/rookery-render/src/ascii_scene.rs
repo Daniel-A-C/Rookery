@@ -349,7 +349,11 @@ impl LivingRookeryScene {
 
     /// Converts screen pixel pointer coordinates to world coordinates.
     fn screen_to_world(&self, pt: Pointer) -> [f32; 2] {
-        let offset_x = self.world.lock().map(|w| w.viewport_offset_x).unwrap_or(0.0);
+        let offset_x = self
+            .world
+            .lock()
+            .map(|w| w.viewport_offset_x)
+            .unwrap_or(0.0);
         let x = (pt.x / self.width) * 1000.0 + offset_x;
         let ground_y = self.height * 0.90;
         let tree_scale = (self.height / 900.0).clamp(0.6, 2.0);
@@ -662,14 +666,58 @@ impl LivingRookeryScene {
 
         // 6. Draw Birdhouses on mature branches
         for house in &world_guard.houses {
-            if let Some(b) = world_guard.branches.iter().find(|br| br.id == house.branch_id) {
+            if let Some(b) = world_guard
+                .branches
+                .iter()
+                .find(|br| br.id == house.branch_id)
+            {
                 let h_pos = self.world_to_screen(b.point_at(house.t), offset_x);
                 let house_color = [0.75, 0.55, 0.35, 0.95];
-                self.push_glyph('^', [h_pos[0], h_pos[1] - 12.0 * tree_scale], base_glyph_size, 0.0, 0.08, [0.85, 0.45, 0.35, 0.95], b.sway_factor);
-                self.push_glyph('[', [h_pos[0] - 6.0 * tree_scale, h_pos[1]], base_glyph_size, 0.0, 0.08, house_color, b.sway_factor);
-                self.push_glyph('o', [h_pos[0], h_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.08, [0.25, 0.18, 0.12, 0.95], b.sway_factor);
-                self.push_glyph(']', [h_pos[0] + 6.0 * tree_scale, h_pos[1]], base_glyph_size, 0.0, 0.08, house_color, b.sway_factor);
-                self.push_glyph('_', [h_pos[0], h_pos[1] + 6.0 * tree_scale], base_glyph_size, 0.0, 0.08, [0.60, 0.45, 0.30, 0.95], b.sway_factor);
+                self.push_glyph(
+                    '^',
+                    [h_pos[0], h_pos[1] - 12.0 * tree_scale],
+                    base_glyph_size,
+                    0.0,
+                    0.08,
+                    [0.85, 0.45, 0.35, 0.95],
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    '[',
+                    [h_pos[0] - 6.0 * tree_scale, h_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.08,
+                    house_color,
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    'o',
+                    [h_pos[0], h_pos[1]],
+                    [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8],
+                    0.0,
+                    0.08,
+                    [0.25, 0.18, 0.12, 0.95],
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    ']',
+                    [h_pos[0] + 6.0 * tree_scale, h_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.08,
+                    house_color,
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    '_',
+                    [h_pos[0], h_pos[1] + 6.0 * tree_scale],
+                    base_glyph_size,
+                    0.0,
+                    0.08,
+                    [0.60, 0.45, 0.30, 0.95],
+                    b.sway_factor,
+                );
             }
         }
 
@@ -677,10 +725,42 @@ impl LivingRookeryScene {
         for sign in &world_guard.signs {
             let s_pos = self.world_to_screen(sign.pos, offset_x);
             let sign_col = [0.68, 0.52, 0.32, 0.92];
-            self.push_glyph('|', [s_pos[0], s_pos[1] + 8.0 * tree_scale], base_glyph_size, 0.0, 0.02, [0.45, 0.35, 0.22, 0.95], 0.0);
-            self.push_glyph('[', [s_pos[0] - 6.0 * tree_scale, s_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.02, sign_col, 0.0);
-            self.push_glyph('i', [s_pos[0], s_pos[1]], [base_glyph_size[0] * 0.7, base_glyph_size[1] * 0.7], 0.0, 0.02, [0.95, 0.90, 0.75, 0.95], 0.0);
-            self.push_glyph(']', [s_pos[0] + 6.0 * tree_scale, s_pos[1]], [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8], 0.0, 0.02, sign_col, 0.0);
+            self.push_glyph(
+                '|',
+                [s_pos[0], s_pos[1] + 8.0 * tree_scale],
+                base_glyph_size,
+                0.0,
+                0.02,
+                [0.45, 0.35, 0.22, 0.95],
+                0.0,
+            );
+            self.push_glyph(
+                '[',
+                [s_pos[0] - 6.0 * tree_scale, s_pos[1]],
+                [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8],
+                0.0,
+                0.02,
+                sign_col,
+                0.0,
+            );
+            self.push_glyph(
+                'i',
+                [s_pos[0], s_pos[1]],
+                [base_glyph_size[0] * 0.7, base_glyph_size[1] * 0.7],
+                0.0,
+                0.02,
+                [0.95, 0.90, 0.75, 0.95],
+                0.0,
+            );
+            self.push_glyph(
+                ']',
+                [s_pos[0] + 6.0 * tree_scale, s_pos[1]],
+                [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.8],
+                0.0,
+                0.02,
+                sign_col,
+                0.0,
+            );
         }
 
         // 8. Forest Floor Moss and Grass Sprouts

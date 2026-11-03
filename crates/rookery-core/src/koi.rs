@@ -248,10 +248,11 @@ impl KoiPondState {
         self.stats.pond_age_secs = self.age_secs;
 
         // Interactive cursor ripples
-        if interactive && let Some(p) = pointer {
-            if self.rng.f32() < 0.15 {
-                self.add_ripple(p, 0.4);
-            }
+        if interactive
+            && let Some(p) = pointer
+            && self.rng.f32() < 0.15
+        {
+            self.add_ripple(p, 0.4);
         }
 
         // Update ripples
@@ -259,7 +260,8 @@ impl KoiPondState {
             r.radius += r.speed * dt_secs;
             r.amplitude = (r.amplitude - dt_secs * 0.35).max(0.0);
         }
-        self.ripples.retain(|r| r.radius < r.max_radius && r.amplitude > 0.02);
+        self.ripples
+            .retain(|r| r.radius < r.max_radius && r.amplitude > 0.02);
 
         // Update food pellets
         for p in &mut self.pellets {
@@ -353,9 +355,8 @@ impl KoiPondState {
                     let mut joint = [prev[0] + nx * seg_len, prev[1] + ny * seg_len];
 
                     // Add lateral serpentine oscillation
-                    let lateral_wave = (fish.spine_phase - (s as f32) * 0.65).sin()
-                        * (s as f32)
-                        * 0.85;
+                    let lateral_wave =
+                        (fish.spine_phase - (s as f32) * 0.65).sin() * (s as f32) * 0.85;
                     let perp = [-ny, nx];
                     joint[0] += perp[0] * lateral_wave * dt_secs * 10.0;
                     joint[1] += perp[1] * lateral_wave * dt_secs * 10.0;
