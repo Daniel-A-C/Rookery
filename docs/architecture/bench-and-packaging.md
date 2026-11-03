@@ -108,3 +108,4 @@ Milestone 3 equips Rookery with instant sharing tools right from the system tray
   - **Windows**: Modern MSI / NSIS installer package (`.msi` / `.exe`).
 - **Continuous Performance Assurance (`.github/workflows/ci.yml`)**:
   Every PR and commit runs `rookery-bench --assert-budgets` to guarantee that no code change introduces performance or visual regressions.
+
