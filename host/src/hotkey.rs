@@ -54,3 +54,4 @@ pub fn set_escape_listener(app: &AppHandle, enable: bool) {
         let _ = gs.unregister(ESCAPE_SHORTCUT);
     }
 }
+

@@ -77,3 +77,4 @@ npm run dev
 # Build optimized release binary
 cargo build -p rookery-host --release
 ```
+

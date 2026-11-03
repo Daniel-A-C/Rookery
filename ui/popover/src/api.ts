@@ -65,3 +65,4 @@ export const api = {
   onStatus: (cb: (status: HostStatus) => void): Promise<UnlistenFn> =>
     listen<HostStatus>("rookery://status", (ev) => cb(ev.payload)),
 };
+
