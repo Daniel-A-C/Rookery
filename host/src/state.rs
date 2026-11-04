@@ -137,6 +137,8 @@ pub struct SettingsPatch {
     pub audio_enabled: Option<bool>,
     pub audio_volume: Option<f32>,
     pub audio_direct_mode_only: Option<bool>,
+    pub update_auto_check: Option<bool>,
+    pub update_auto_download: Option<bool>,
 }
 
 impl HostState {

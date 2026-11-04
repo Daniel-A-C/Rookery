@@ -73,6 +73,11 @@ export interface AudioSettings {
   direct_mode_only: boolean;
 }
 
+export interface UpdateSettings {
+  auto_check: boolean;
+  auto_download: boolean;
+}
+
 export interface HostStatus {
   displays: DisplayStatus[];
   power: PowerState;
@@ -131,6 +136,7 @@ export interface Settings {
   popover_hotkey: string;
   frame: FrameSettings;
   audio: AudioSettings;
+  update?: UpdateSettings;
   active_app: string;
   schedule_mode: ScheduleMode;
   schedule_interval_mins: number;
@@ -149,6 +155,8 @@ export interface SettingsPatch {
   audio_enabled?: boolean;
   audio_volume?: number;
   audio_direct_mode_only?: boolean;
+  update_auto_check?: boolean;
+  update_auto_download?: boolean;
 }
 
 export const api = {
@@ -187,6 +195,7 @@ export const api = {
   recordLoop: (): Promise<string> => invoke("record_loop"),
   setWorldSeed: (seed: number): Promise<HostStatus> =>
     invoke("set_world_seed", { seed }),
+  relaunchApp: (): Promise<void> => invoke("relaunch_app"),
   quit: (): Promise<void> => invoke("quit"),
   onStatus: (cb: (status: HostStatus) => void): Promise<UnlistenFn> =>
     listen<HostStatus>("rookery://status", (ev) => cb(ev.payload)),

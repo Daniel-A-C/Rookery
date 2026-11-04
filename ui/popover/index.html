@@ -331,6 +331,52 @@
         <p id="hotkey-error" class="error-msg" hidden></p>
       </section>
 
+      <!-- In-App Auto-Updater Card -->
+      <section id="card-updates" class="card">
+        <div class="section-title">Software Updates</div>
+
+        <div class="update-header-row">
+          <div class="update-version-info">
+            <span class="update-status-text" id="update-status-text">Rookery v0.1.0</span>
+            <span class="update-detail-text" id="update-detail-text">Up to date</span>
+          </div>
+          <button id="btn-check-updates" class="btn small" type="button">
+            Check for Updates
+          </button>
+        </div>
+
+        <div id="update-action-panel" class="update-action-panel" hidden>
+          <div class="update-notes-box">
+            <div class="update-badge" id="update-badge">v0.2.0 Available</div>
+            <p id="update-notes" class="update-notes"></p>
+          </div>
+          <div id="update-progress-container" class="update-progress-container" hidden>
+            <div class="update-progress-bar">
+              <div id="update-progress-fill" class="update-progress-fill"></div>
+            </div>
+            <span id="update-progress-text" class="update-progress-text">Downloading… 0%</span>
+          </div>
+          <div class="update-buttons-row">
+            <button id="btn-download-update" class="btn small primary" type="button">
+              Download &amp; Install
+            </button>
+            <button id="btn-restart-update" class="btn small primary" type="button" hidden>
+              Restart Rookery
+            </button>
+          </div>
+        </div>
+
+        <label class="checkbox-row" style="margin-top: 8px;">
+          <input id="chk-auto-check-updates" type="checkbox" checked />
+          <span>Automatically check for updates</span>
+        </label>
+
+        <label class="checkbox-row">
+          <input id="chk-auto-download-updates" type="checkbox" checked />
+          <span>Download updates in background and prompt to restart</span>
+        </label>
+      </section>
+
       <footer class="footer">
         <span class="version">v0.1.0 · MIT</span>
         <button id="btn-quit" class="quit-btn" type="button">

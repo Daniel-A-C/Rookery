@@ -63,6 +63,24 @@ impl AudioSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Automatically check for updates on startup and in the background.
+    pub auto_check: bool,
+    /// Automatically download updates in the background.
+    pub auto_download: bool,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            auto_download: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -75,6 +93,7 @@ pub struct Settings {
     pub day_night_mapping: DayNightMapping,
     pub frame: FrameSettings,
     pub audio: AudioSettings,
+    pub update: UpdateSettings,
     /// Last time the host was known to be running (startup, heartbeat, clean shutdown).
     /// Groundwork for Milestone 2's offline time-delta engine.
     pub last_run_utc: Option<DateTime<Utc>>,
@@ -94,6 +113,7 @@ impl Default for Settings {
             day_night_mapping: DayNightMapping::default(),
             frame: FrameSettings::default(),
             audio: AudioSettings::default(),
+            update: UpdateSettings::default(),
             last_run_utc: None,
             last_shutdown_clean: true,
         }
@@ -280,6 +300,17 @@ mod tests {
         assert_eq!(s.hotkey, DEFAULT_HOTKEY);
         assert_eq!(s.frame.passive_fps, 30);
         assert_eq!(s.frame.interactive_fps, 60);
+    }
+
+    #[test]
+    fn update_settings_defaults() {
+        let default_update = UpdateSettings::default();
+        assert!(default_update.auto_check);
+        assert!(default_update.auto_download);
+
+        let s = Settings::default();
+        assert!(s.update.auto_check);
+        assert!(s.update.auto_download);
     }
 
     #[test]

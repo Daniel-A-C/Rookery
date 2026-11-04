@@ -29,6 +29,7 @@ pub fn run() {
         .try_init();
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             for arg in &args {
                 if arg.starts_with("rookery://") {
@@ -65,6 +66,7 @@ pub fn run() {
             commands::import_world_string,
             commands::capture_snapshot,
             commands::record_loop,
+            commands::relaunch_app,
             commands::quit,
         ])
         .setup(|app| {

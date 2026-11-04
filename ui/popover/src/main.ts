@@ -7,6 +7,7 @@ import {
   ScheduleMode,
   Settings,
 } from "./api";
+import { updater } from "./updater";
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -46,7 +47,13 @@ for (const btn of appSwitcher.querySelectorAll<HTMLButtonElement>(".app-tab-btn"
 }
 
 for (const card of document.querySelectorAll<HTMLElement>('[id^="card-"]')) {
-  if (card.id === "card-scheduler") continue;
+  if (
+    card.id === "card-scheduler" ||
+    card.id === "card-audio" ||
+    card.id === "card-updates"
+  ) {
+    continue;
+  }
   const appId = card.id.replace("card-", "");
   cards[appId] = card;
 }
@@ -127,6 +134,21 @@ const btnRecordHotkey = el<HTMLButtonElement>("btn-record-hotkey");
 const btnRecordPopoverHotkey = el<HTMLButtonElement>("btn-record-popover-hotkey");
 const hotkeyError = el<HTMLParagraphElement>("hotkey-error");
 const btnQuit = el<HTMLButtonElement>("btn-quit");
+
+// Software Updates
+const updateStatusText = el<HTMLSpanElement>("update-status-text");
+const updateDetailText = el<HTMLSpanElement>("update-detail-text");
+const btnCheckUpdates = el<HTMLButtonElement>("btn-check-updates");
+const updateActionPanel = el<HTMLDivElement>("update-action-panel");
+const updateBadge = el<HTMLDivElement>("update-badge");
+const updateNotes = el<HTMLParagraphElement>("update-notes");
+const updateProgressContainer = el<HTMLDivElement>("update-progress-container");
+const updateProgressFill = el<HTMLDivElement>("update-progress-fill");
+const updateProgressText = el<HTMLSpanElement>("update-progress-text");
+const btnDownloadUpdate = el<HTMLButtonElement>("btn-download-update");
+const btnRestartUpdate = el<HTMLButtonElement>("btn-restart-update");
+const chkAutoCheckUpdates = el<HTMLInputElement>("chk-auto-check-updates");
+const chkAutoDownloadUpdates = el<HTMLInputElement>("chk-auto-download-updates");
 
 let currentStatus: HostStatus | null = null;
 let recordingInteractionHotkey = false;
@@ -562,6 +584,11 @@ function renderSettings(st: Settings): void {
   const isInterval = st.schedule_mode === "Interval";
   intervalGroup.hidden = !isInterval;
   sliderInterval.hidden = !isInterval;
+
+  if (st.update) {
+    chkAutoCheckUpdates.checked = st.update.auto_check;
+    chkAutoDownloadUpdates.checked = st.update.auto_download;
+  }
 }
 
 
@@ -947,6 +974,114 @@ btnQuit.addEventListener("click", () => {
   api.quit().catch((err) => console.error("quit error:", err));
 });
 
+// Update Controls Listeners
+chkAutoCheckUpdates.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      update_auto_check: chkAutoCheckUpdates.checked,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings error:", err);
+  }
+});
+
+chkAutoDownloadUpdates.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      update_auto_download: chkAutoDownloadUpdates.checked,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings error:", err);
+  }
+});
+
+btnCheckUpdates.addEventListener("click", async () => {
+  try {
+    await updater.checkForUpdates(false);
+  } catch (err) {
+    console.error("Check for updates error:", err);
+  }
+});
+
+btnDownloadUpdate.addEventListener("click", async () => {
+  btnDownloadUpdate.disabled = true;
+  try {
+    await updater.downloadAndInstall();
+  } catch (err) {
+    console.error("Download update error:", err);
+    btnDownloadUpdate.disabled = false;
+  }
+});
+
+btnRestartUpdate.addEventListener("click", async () => {
+  btnRestartUpdate.disabled = true;
+  btnRestartUpdate.textContent = "Restarting…";
+  try {
+    await updater.restartApp();
+  } catch (err) {
+    console.error("Restart error:", err);
+    btnRestartUpdate.disabled = false;
+    btnRestartUpdate.textContent = "Restart Rookery";
+  }
+});
+
+updater.subscribe((state) => {
+  if (state.currentVersion) {
+    updateStatusText.textContent = `Rookery v${state.currentVersion}`;
+  }
+
+  if (state.checking) {
+    btnCheckUpdates.disabled = true;
+    btnCheckUpdates.textContent = "Checking…";
+    updateDetailText.textContent = "Checking for new releases…";
+    return;
+  }
+
+  btnCheckUpdates.disabled = false;
+  btnCheckUpdates.textContent = "Check for Updates";
+
+  if (state.installed) {
+    updateActionPanel.hidden = false;
+    updateDetailText.textContent = "Ready to install!";
+    updateBadge.textContent = `v${state.version || ""} Ready`;
+    updateNotes.textContent = `Update ${state.version || ""} has been downloaded and installed. Restart Rookery to complete the update.`;
+    btnDownloadUpdate.hidden = true;
+    btnRestartUpdate.hidden = false;
+    updateProgressContainer.hidden = true;
+  } else if (state.downloading) {
+    updateActionPanel.hidden = false;
+    updateDetailText.textContent = "Downloading update…";
+    btnDownloadUpdate.hidden = true;
+    btnRestartUpdate.hidden = true;
+    updateProgressContainer.hidden = false;
+    updateProgressFill.style.width = `${state.downloadProgress}%`;
+    updateProgressText.textContent = `Downloading… ${state.downloadProgress}%`;
+  } else if (state.available) {
+    updateActionPanel.hidden = false;
+    updateDetailText.textContent = `v${state.version} available`;
+    updateBadge.textContent = `v${state.version} Available`;
+    updateNotes.textContent =
+      state.body || "A new release of Rookery is available.";
+    btnDownloadUpdate.hidden = false;
+    btnDownloadUpdate.disabled = false;
+    btnRestartUpdate.hidden = true;
+    updateProgressContainer.hidden = true;
+  } else if (state.error) {
+    updateActionPanel.hidden = true;
+    updateDetailText.textContent =
+      state.error.includes("404") ||
+      state.error.includes("network") ||
+      state.error.includes("connect")
+        ? "Could not reach update server"
+        : `Update check error: ${state.error}`;
+  } else {
+    updateActionPanel.hidden = true;
+    updateDetailText.textContent = "Up to date";
+  }
+});
+
 // Bootstrap: Instant hydration from cache, then live refresh
 (() => {
   try {
@@ -978,6 +1113,17 @@ btnQuit.addEventListener("click", () => {
     applyCatalog();
     renderStatus(status);
     renderSettings(settings);
+
+    // Milestones: Auto-check and background download if configured
+    if (settings.update?.auto_check !== false) {
+      updater.checkForUpdates(true).then((s) => {
+        if (s.available && (settings.update?.auto_download ?? true)) {
+          updater.downloadAndInstall().catch((err) => {
+            console.warn("Background auto-download failed:", err);
+          });
+        }
+      });
+    }
   } catch (err) {
     console.error("bootstrap error:", err);
   }

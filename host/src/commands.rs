@@ -128,6 +128,12 @@ pub fn update_settings(
         if let Some(v) = patch.audio_direct_mode_only {
             inner.settings.audio.direct_mode_only = v;
         }
+        if let Some(v) = patch.update_auto_check {
+            inner.settings.update.auto_check = v;
+        }
+        if let Some(v) = patch.update_auto_download {
+            inner.settings.update.auto_download = v;
+        }
         inner.settings.frame = inner.settings.frame.clamped();
         inner.settings.audio = inner.settings.audio.clamped();
         state.audio.update_settings(inner.settings.audio);
@@ -519,6 +525,12 @@ pub fn set_world_seed(app: AppHandle, state: State<'_, HostState>, seed: u64) ->
     let status = state.status();
     state.emit_status_if_popover_open(&app);
     status
+}
+
+#[tauri::command]
+pub fn relaunch_app(app: AppHandle, state: State<'_, HostState>) {
+    state.clean_shutdown();
+    app.restart();
 }
 
 #[tauri::command]
