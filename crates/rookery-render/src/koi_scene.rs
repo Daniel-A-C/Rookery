@@ -45,6 +45,7 @@ struct QuadVertex {
 
 pub struct KoiPondScene {
     pub pond: Arc<Mutex<KoiPondState>>,
+    pub audio: Option<crate::audio::AudioEngine>,
     width: f32,
     height: f32,
     scale_factor: f32,
@@ -304,6 +305,7 @@ impl KoiPondScene {
 
         Self {
             pond,
+            audio: None,
             width: 800.0,
             height: 600.0,
             scale_factor: 1.0,
@@ -546,6 +548,11 @@ impl KoiPondScene {
             );
         }
     }
+
+    pub fn with_audio(mut self, audio: Option<crate::audio::AudioEngine>) -> Self {
+        self.audio = audio;
+        self
+    }
 }
 
 impl Scene for KoiPondScene {
@@ -571,9 +578,15 @@ impl Scene for KoiPondScene {
                 match input.action {
                     PointerAction::LeftClick => {
                         guard.feed_koi(pw);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::FeedKoi);
+                        }
                     }
                     PointerAction::RightClick => {
                         guard.add_ripple(pw, 1.5);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::WaterRipple);
+                        }
                     }
                     PointerAction::None => {
                         if input.left_held {

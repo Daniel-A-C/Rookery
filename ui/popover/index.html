@@ -251,6 +251,36 @@
         </ul>
       </section>
 
+      <!-- Audio Subsystem Card -->
+      <section id="card-audio" class="card">
+        <div class="section-title">Audio &amp; Ambient Soundscapes</div>
+
+        <label class="checkbox-row">
+          <input id="chk-audio-enabled" type="checkbox" />
+          <span>Enable Ambient Soundscapes &amp; SFX</span>
+        </label>
+
+        <div id="audio-controls-group" hidden>
+          <label class="control-row" for="slider-volume">
+            <span>Audio Volume</span>
+            <strong id="val-volume">50%</strong>
+          </label>
+          <input
+            id="slider-volume"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="50"
+          />
+
+          <label class="checkbox-row" style="margin-top: 6px;">
+            <input id="chk-audio-direct-mode" type="checkbox" />
+            <span>Sound in Direct Mode Only</span>
+          </label>
+        </div>
+      </section>
+
       <section class="card">
         <div class="section-title">Performance &amp; Controls</div>
 

@@ -31,6 +31,7 @@ pub use nebula::{
     CosmicNebulaState, CosmicNebulaStats, GravityWell, NebulaPalette, StellarParticle,
 };
 pub use orbital::{ConstructionFocus, OrbitalHavenState, OrbitalHavenStats, Shuttle, ShuttleState};
+pub use settings::{AudioSettings, Settings};
 pub use world::{
     Bird, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, PlantSign, WORLD_STATE_FILE_NAME,
     WorldRng, WorldState, WorldStats,

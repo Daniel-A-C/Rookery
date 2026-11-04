@@ -47,6 +47,7 @@ struct QuadVertex {
 
 pub struct CosmicNebulaScene {
     pub nebula: Arc<Mutex<CosmicNebulaState>>,
+    pub audio: Option<crate::audio::AudioEngine>,
     width: f32,
     height: f32,
     scale_factor: f32,
@@ -310,6 +311,7 @@ impl CosmicNebulaScene {
 
         Self {
             nebula,
+            audio: None,
             width: 800.0,
             height: 600.0,
             scale_factor: 1.0,
@@ -448,6 +450,11 @@ impl CosmicNebulaScene {
             self.push_glyph(char_choice, screen_pos, sz, rot, 0.1, col, 0.0);
         }
     }
+
+    pub fn with_audio(mut self, audio: Option<crate::audio::AudioEngine>) -> Self {
+        self.audio = audio;
+        self
+    }
 }
 
 impl Scene for CosmicNebulaScene {
@@ -473,9 +480,15 @@ impl Scene for CosmicNebulaScene {
                 match input.action {
                     PointerAction::LeftClick => {
                         guard.add_gravity_well(pw, false);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::NebulaPulse);
+                        }
                     }
                     PointerAction::RightClick => {
                         guard.add_gravity_well(pw, true);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::NebulaPulse);
+                        }
                     }
                     PointerAction::None => {}
                 }

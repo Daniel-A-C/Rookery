@@ -12,10 +12,10 @@ use rookery_core::governor::{
 };
 use rookery_core::interaction::{Effect, Interaction, InteractionEvent};
 use rookery_core::manifest::{DayNightMapping, ScheduleMode};
-use rookery_core::settings::Settings;
+use rookery_core::settings::{AudioSettings, Settings};
 use rookery_core::world::WorldState;
 use rookery_platform::{DesktopLayer, DisplayInfo};
-use rookery_render::{AppCatalog, CatalogState, Gpu, Renderer};
+use rookery_render::{AppCatalog, AudioEngine, CatalogState, Gpu, Renderer};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Window};
 
@@ -46,6 +46,7 @@ pub struct HostState {
     pub apps_dir: Option<PathBuf>,
     pub world: Arc<Mutex<WorldState>>,
     pub catalog_state: CatalogState,
+    pub audio: AudioEngine,
     pub layer: Box<dyn DesktopLayer>,
     pub renderer: Mutex<Option<Renderer>>,
     pub gpu: Arc<Gpu>,
@@ -114,6 +115,7 @@ pub struct HostStatus {
     pub user_paused: bool,
     pub active_app: String,
     pub schedule_mode: ScheduleMode,
+    pub audio: AudioSettings,
     pub rookery: Option<RookeryStatus>,
     pub koi: Option<KoiStatus>,
     pub nebula: Option<NebulaStatus>,
@@ -132,6 +134,9 @@ pub struct SettingsPatch {
     pub interactive_fps: Option<u32>,
     pub low_power_fps: Option<u32>,
     pub pause_on_battery: Option<bool>,
+    pub audio_enabled: Option<bool>,
+    pub audio_volume: Option<f32>,
+    pub audio_direct_mode_only: Option<bool>,
 }
 
 impl HostState {
@@ -168,6 +173,11 @@ impl HostState {
             screens_asleep: inner.screens_asleep,
             settings: &inner.settings.frame,
         });
+
+        let all_paused = budgets
+            .iter()
+            .all(|(_, b)| matches!(b, FrameBudget::Paused(_)));
+        self.audio.set_paused(all_paused);
 
         for (id, budget) in budgets {
             if let Some(d) = inner.displays.get_mut(&id) {
@@ -249,6 +259,7 @@ impl HostState {
             user_paused: inner.user_paused,
             active_app,
             schedule_mode,
+            audio: inner.settings.audio,
             rookery,
             koi,
             nebula,
@@ -271,6 +282,7 @@ impl HostState {
             self.catalog_state.clone(),
             self.apps_dir.as_deref(),
         );
+        self.audio.switch_app(app_id);
         self.with_renderer(|r| r.switch_scene(factory));
         Ok(())
     }
@@ -291,7 +303,10 @@ impl HostState {
                 Ok(g) => g,
                 Err(_) => return,
             };
-            inner.interaction.handle(event)
+            let eff = inner.interaction.handle(event);
+            self.audio
+                .set_interactive(inner.interaction.is_interactive());
+            eff
         };
         if effects.is_empty() {
             return;

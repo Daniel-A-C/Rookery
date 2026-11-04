@@ -12,6 +12,7 @@
 
 pub mod ascii_scene;
 pub mod atlas;
+pub mod audio;
 pub mod capture;
 pub mod catalog;
 pub mod custom_shader;
@@ -27,6 +28,7 @@ mod scene;
 mod vignette;
 
 pub use ascii_scene::LivingRookeryScene;
+pub use audio::{AudioEngine, SoundEffect};
 pub use catalog::{AppCatalog, CatalogState};
 pub use custom_shader::CustomShaderScene;
 pub use gpu::Gpu;

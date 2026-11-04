@@ -110,6 +110,13 @@ const kbdHotkey = el<HTMLElement>("kbd-hotkey");
 const btnPause = el<HTMLButtonElement>("btn-pause");
 const displaysList = el<HTMLUListElement>("displays-list");
 
+// Audio Subsystem Controls
+const chkAudioEnabled = el<HTMLInputElement>("chk-audio-enabled");
+const audioControlsGroup = el<HTMLDivElement>("audio-controls-group");
+const sliderVolume = el<HTMLInputElement>("slider-volume");
+const valVolume = el<HTMLElement>("val-volume");
+const chkAudioDirectMode = el<HTMLInputElement>("chk-audio-direct-mode");
+
 // Performance & Hotkeys
 const sliderPassive = el<HTMLInputElement>("slider-passive");
 const valPassive = el<HTMLElement>("val-passive");
@@ -508,12 +515,31 @@ function renderStatus(s: HostStatus): void {
     li.appendChild(right);
     displaysList.appendChild(li);
   }
+
+  // Audio Subsystem Status
+  if (s.audio) {
+    chkAudioEnabled.checked = s.audio.enabled;
+    audioControlsGroup.hidden = !s.audio.enabled;
+    const volPct = Math.round(s.audio.volume * 100);
+    sliderVolume.value = String(volPct);
+    valVolume.textContent = `${volPct}%`;
+    chkAudioDirectMode.checked = s.audio.direct_mode_only;
+  }
 }
 
 function renderSettings(st: Settings): void {
   try {
     localStorage.setItem("rookery_settings", JSON.stringify(st));
   } catch {}
+
+  if (st.audio) {
+    chkAudioEnabled.checked = st.audio.enabled;
+    audioControlsGroup.hidden = !st.audio.enabled;
+    const volPct = Math.round(st.audio.volume * 100);
+    sliderVolume.value = String(volPct);
+    valVolume.textContent = `${volPct}%`;
+    chkAudioDirectMode.checked = st.audio.direct_mode_only;
+  }
   sliderPassive.value = String(st.frame.passive_fps);
   valPassive.textContent = `${st.frame.passive_fps} fps`;
 
@@ -810,6 +836,45 @@ chkBattery.addEventListener("change", async () => {
   try {
     const st = await api.updateSettings({
       pause_on_battery: chkBattery.checked,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings error:", err);
+  }
+});
+
+// Audio Subsystem Listeners
+chkAudioEnabled.addEventListener("change", async () => {
+  audioControlsGroup.hidden = !chkAudioEnabled.checked;
+  try {
+    const st = await api.updateSettings({
+      audio_enabled: chkAudioEnabled.checked,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings error:", err);
+  }
+});
+
+sliderVolume.addEventListener("input", () => {
+  valVolume.textContent = `${sliderVolume.value}%`;
+});
+
+sliderVolume.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      audio_volume: Number(sliderVolume.value) / 100,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings error:", err);
+  }
+});
+
+chkAudioDirectMode.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      audio_direct_mode_only: chkAudioDirectMode.checked,
     });
     renderSettings(st);
   } catch (err) {

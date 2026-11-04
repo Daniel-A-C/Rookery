@@ -75,6 +75,7 @@ pub struct LivingRookeryScene {
 
     _atlas_texture: wgpu::Texture,
     _atlas_view: wgpu::TextureView,
+    pub audio: Option<crate::audio::AudioEngine>,
 }
 
 impl LivingRookeryScene {
@@ -335,7 +336,13 @@ impl LivingRookeryScene {
             ascii_bind_group1,
             _atlas_texture,
             _atlas_view,
+            audio: None,
         }
+    }
+
+    pub fn with_audio(mut self, audio: Option<crate::audio::AudioEngine>) -> Self {
+        self.audio = audio;
+        self
     }
 
     /// Converts normalized world coordinates [0..1000, 0..800] to current screen viewport pixels.
@@ -810,12 +817,21 @@ impl Scene for LivingRookeryScene {
                     PointerAction::LeftClick => {
                         if pw[1] >= 720.0 {
                             w.plant_seed(pw);
+                            if let Some(ref a) = self.audio {
+                                a.play_sfx(crate::audio::SoundEffect::PlantSeed);
+                            }
                         } else {
                             w.drop_snack(pw);
+                            if let Some(ref a) = self.audio {
+                                a.play_sfx(crate::audio::SoundEffect::BirdChirp);
+                            }
                         }
                     }
                     PointerAction::RightClick => {
                         w.prune_nearest(pw, 80.0);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::Prune);
+                        }
                     }
                     PointerAction::None => {}
                 }

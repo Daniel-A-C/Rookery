@@ -35,6 +35,34 @@ pub enum SettingsError {
     Json(#[from] serde_json::Error),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    /// Global audio toggle. Strictly false (silent) by default.
+    pub enabled: bool,
+    /// Master volume level between 0.0 and 1.0 (clamped).
+    pub volume: f32,
+    /// If true, audio only plays while Direct Interaction Mode is active.
+    pub direct_mode_only: bool,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            volume: 0.5,
+            direct_mode_only: false,
+        }
+    }
+}
+
+impl AudioSettings {
+    pub fn clamped(mut self) -> Self {
+        self.volume = self.volume.clamp(0.0, 1.0);
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -46,6 +74,7 @@ pub struct Settings {
     pub schedule_interval_mins: u32,
     pub day_night_mapping: DayNightMapping,
     pub frame: FrameSettings,
+    pub audio: AudioSettings,
     /// Last time the host was known to be running (startup, heartbeat, clean shutdown).
     /// Groundwork for Milestone 2's offline time-delta engine.
     pub last_run_utc: Option<DateTime<Utc>>,
@@ -64,6 +93,7 @@ impl Default for Settings {
             schedule_interval_mins: 30,
             day_night_mapping: DayNightMapping::default(),
             frame: FrameSettings::default(),
+            audio: AudioSettings::default(),
             last_run_utc: None,
             last_shutdown_clean: true,
         }
@@ -120,6 +150,7 @@ impl Settings {
             self.version = SETTINGS_VERSION;
         }
         self.frame = self.frame.clamped();
+        self.audio = self.audio.clamped();
         if self.hotkey.trim().is_empty() {
             self.hotkey = DEFAULT_HOTKEY.to_owned();
         }
@@ -175,6 +206,30 @@ mod tests {
         assert_eq!(outcome, LoadOutcome::Missing);
         assert_eq!(s, Settings::default());
         assert_eq!(s.hotkey, DEFAULT_HOTKEY);
+    }
+
+    #[test]
+    fn audio_settings_defaults_and_clamping() {
+        let default_audio = AudioSettings::default();
+        assert!(!default_audio.enabled);
+        assert!((default_audio.volume - 0.5).abs() < f32::EPSILON);
+        assert!(!default_audio.direct_mode_only);
+
+        let clamped = AudioSettings {
+            enabled: true,
+            volume: 1.5,
+            direct_mode_only: true,
+        }
+        .clamped();
+        assert_eq!(clamped.volume, 1.0);
+
+        let clamped_low = AudioSettings {
+            enabled: true,
+            volume: -0.5,
+            direct_mode_only: true,
+        }
+        .clamped();
+        assert_eq!(clamped_low.volume, 0.0);
     }
 
     #[test]

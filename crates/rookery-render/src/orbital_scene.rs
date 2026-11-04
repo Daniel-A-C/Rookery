@@ -44,6 +44,7 @@ struct QuadVertex {
 
 pub struct OrbitalHavenScene {
     pub station: Arc<Mutex<OrbitalHavenState>>,
+    pub audio: Option<crate::audio::AudioEngine>,
     width: f32,
     height: f32,
     scale_factor: f32,
@@ -307,6 +308,7 @@ impl OrbitalHavenScene {
 
         Self {
             station,
+            audio: None,
             width: 800.0,
             height: 600.0,
             scale_factor: 1.0,
@@ -502,6 +504,11 @@ impl OrbitalHavenScene {
             self.push_glyph('>', s_pos, s_size, rot, 0.16, [0.95, 0.92, 0.88, 0.98], 0.0);
         }
     }
+
+    pub fn with_audio(mut self, audio: Option<crate::audio::AudioEngine>) -> Self {
+        self.audio = audio;
+        self
+    }
 }
 
 impl Scene for OrbitalHavenScene {
@@ -524,6 +531,9 @@ impl Scene for OrbitalHavenScene {
                 match input.action {
                     PointerAction::LeftClick => {
                         guard.launch_shuttle();
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::ShuttleLaunch);
+                        }
                     }
                     PointerAction::RightClick => {
                         let next_focus = match guard.focus {
@@ -532,6 +542,9 @@ impl Scene for OrbitalHavenScene {
                             ConstructionFocus::CommsGrid => ConstructionFocus::SolarPower,
                         };
                         guard.set_focus(next_focus);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::ModuleConstruct);
+                        }
                     }
                     PointerAction::None => {}
                 }

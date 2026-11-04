@@ -67,6 +67,12 @@ export interface OrbitalStatus {
 
 export type ScheduleMode = "Manual" | "Interval" | "DayNight";
 
+export interface AudioSettings {
+  enabled: boolean;
+  volume: number;
+  direct_mode_only: boolean;
+}
+
 export interface HostStatus {
   displays: DisplayStatus[];
   power: PowerState;
@@ -74,6 +80,7 @@ export interface HostStatus {
   user_paused: boolean;
   active_app: string;
   schedule_mode: ScheduleMode;
+  audio?: AudioSettings;
   rookery?: RookeryStatus;
   koi?: KoiStatus;
   nebula?: NebulaStatus;
@@ -123,6 +130,7 @@ export interface Settings {
   hotkey: string;
   popover_hotkey: string;
   frame: FrameSettings;
+  audio: AudioSettings;
   active_app: string;
   schedule_mode: ScheduleMode;
   schedule_interval_mins: number;
@@ -138,6 +146,9 @@ export interface SettingsPatch {
   active_app?: string;
   schedule_mode?: ScheduleMode;
   schedule_interval_mins?: number;
+  audio_enabled?: boolean;
+  audio_volume?: number;
+  audio_direct_mode_only?: boolean;
 }
 
 export const api = {

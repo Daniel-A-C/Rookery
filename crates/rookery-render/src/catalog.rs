@@ -14,6 +14,7 @@ use rookery_core::world::WorldState;
 
 use crate::SceneFactory;
 use crate::ascii_scene::LivingRookeryScene;
+use crate::audio::AudioEngine;
 use crate::koi_scene::KoiPondScene;
 use crate::nebula_scene::CosmicNebulaScene;
 use crate::orbital_scene::OrbitalHavenScene;
@@ -25,6 +26,7 @@ pub struct CatalogState {
     pub koi: Arc<Mutex<KoiPondState>>,
     pub nebula: Arc<Mutex<CosmicNebulaState>>,
     pub orbital: Arc<Mutex<OrbitalHavenState>>,
+    pub audio: Option<AudioEngine>,
 }
 
 impl CatalogState {
@@ -34,7 +36,13 @@ impl CatalogState {
             koi: Arc::new(Mutex::new(KoiPondState::new(seed))),
             nebula: Arc::new(Mutex::new(CosmicNebulaState::new(seed))),
             orbital: Arc::new(Mutex::new(OrbitalHavenState::new(seed))),
+            audio: None,
         }
+    }
+
+    pub fn with_audio(mut self, audio: AudioEngine) -> Self {
+        self.audio = Some(audio);
+        self
     }
 
     /// Advance offline catchup across all catalog apps.
@@ -245,12 +253,21 @@ impl AppCatalog {
         let external_path = external_dir.map(|p| p.join(&id_string));
 
         Box::new(move |gpu, format| match id_string.as_str() {
-            "koi-pond" => Box::new(KoiPondScene::new(gpu, format, state.koi.clone())),
-            "cosmic-nebula" => Box::new(CosmicNebulaScene::new(gpu, format, state.nebula.clone())),
-            "orbital-haven" => Box::new(OrbitalHavenScene::new(gpu, format, state.orbital.clone())),
-            "living-rookery" => {
-                Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone()))
-            }
+            "koi-pond" => Box::new(
+                KoiPondScene::new(gpu, format, state.koi.clone()).with_audio(state.audio.clone()),
+            ),
+            "cosmic-nebula" => Box::new(
+                CosmicNebulaScene::new(gpu, format, state.nebula.clone())
+                    .with_audio(state.audio.clone()),
+            ),
+            "orbital-haven" => Box::new(
+                OrbitalHavenScene::new(gpu, format, state.orbital.clone())
+                    .with_audio(state.audio.clone()),
+            ),
+            "living-rookery" => Box::new(
+                LivingRookeryScene::new(gpu, format, state.rookery.clone())
+                    .with_audio(state.audio.clone()),
+            ),
             _ => {
                 if let Some(ref dir) = external_path {
                     let shader_path = dir.join("scene.wgsl");
@@ -262,7 +279,10 @@ impl AppCatalog {
                         return Box::new(custom);
                     }
                 }
-                Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone()))
+                Box::new(
+                    LivingRookeryScene::new(gpu, format, state.rookery.clone())
+                        .with_audio(state.audio.clone()),
+                )
             }
         })
     }

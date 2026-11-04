@@ -12,7 +12,7 @@ use rookery_render::capture::{write_gif, write_png};
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
 use rookery_render::{
     AppCatalog, CosmicNebulaScene, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene,
-    SceneInput,
+    SceneInput, SoundEffect,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -119,7 +119,18 @@ pub fn update_settings(
         if let Some(v) = patch.pause_on_battery {
             inner.settings.frame.pause_on_battery = v;
         }
+        if let Some(v) = patch.audio_enabled {
+            inner.settings.audio.enabled = v;
+        }
+        if let Some(v) = patch.audio_volume {
+            inner.settings.audio.volume = v;
+        }
+        if let Some(v) = patch.audio_direct_mode_only {
+            inner.settings.audio.direct_mode_only = v;
+        }
         inner.settings.frame = inner.settings.frame.clamped();
+        inner.settings.audio = inner.settings.audio.clamped();
+        state.audio.update_settings(inner.settings.audio);
         inner
             .settings
             .save(&state.settings_path)
@@ -141,6 +152,7 @@ pub fn plant_seed(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) ->
     if let Ok(mut w) = state.world.lock() {
         w.plant_seed(pos);
     }
+    state.audio.play_sfx(SoundEffect::PlantSeed);
     let status = state.status();
     state.emit_status_if_popover_open(&app);
     status
@@ -156,6 +168,7 @@ pub fn prune_branch(
     if let Ok(mut w) = state.world.lock() {
         w.prune_nearest(pos, radius.unwrap_or(80.0));
     }
+    state.audio.play_sfx(SoundEffect::Prune);
     let status = state.status();
     state.emit_status_if_popover_open(&app);
     status
@@ -166,6 +179,7 @@ pub fn feed_birds(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) ->
     if let Ok(mut w) = state.world.lock() {
         w.drop_snack(pos);
     }
+    state.audio.play_sfx(SoundEffect::BirdChirp);
     let status = state.status();
     state.emit_status_if_popover_open(&app);
     status
@@ -245,13 +259,16 @@ pub fn execute_app_action(
             match action.as_str() {
                 "feed" => {
                     w.drop_snack([500.0, 450.0]);
+                    state.audio.play_sfx(SoundEffect::BirdChirp);
                 }
                 "prune" => {
                     w.prune_nearest([500.0, 400.0], 120.0);
+                    state.audio.play_sfx(SoundEffect::Prune);
                 }
                 "plant" => {
                     let rx = 350.0 + (w.rng.f32() * 300.0);
                     w.plant_seed([rx, 750.0]);
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
                 }
                 "pan_left" => {
                     w.pan_forest(-150.0);
@@ -271,9 +288,11 @@ pub fn execute_app_action(
             match action.as_str() {
                 "feed_koi" | "feed" => {
                     k.feed_koi([500.0, 375.0]);
+                    state.audio.play_sfx(SoundEffect::FeedKoi);
                 }
                 "tap_water" | "pebble" => {
                     k.add_ripple([500.0, 375.0], 0.7);
+                    state.audio.play_sfx(SoundEffect::WaterRipple);
                 }
                 other => return Err(format!("Unknown koi action '{other}'")),
             }
@@ -287,12 +306,15 @@ pub fn execute_app_action(
             match action.as_str() {
                 "add_attractor" => {
                     n.add_gravity_well([500.0, 375.0], false);
+                    state.audio.play_sfx(SoundEffect::NebulaPulse);
                 }
                 "add_repulsor" | "repulsor_pulse" => {
                     n.add_gravity_well([500.0, 375.0], true);
+                    state.audio.play_sfx(SoundEffect::NebulaPulse);
                 }
                 "cycle_palette" => {
                     n.cycle_palette();
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
                 other => return Err(format!("Unknown nebula action '{other}'")),
             }
@@ -306,12 +328,15 @@ pub fn execute_app_action(
             match action.as_str() {
                 "focus_solar" | "add_module" => {
                     o.set_focus(ConstructionFocus::SolarPower);
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
                 }
                 "focus_habitat" => {
                     o.set_focus(ConstructionFocus::HabitatRing);
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
                 }
                 "launch_shuttle" => {
                     o.launch_shuttle();
+                    state.audio.play_sfx(SoundEffect::ShuttleLaunch);
                 }
                 other => return Err(format!("Unknown orbital action '{other}'")),
             }

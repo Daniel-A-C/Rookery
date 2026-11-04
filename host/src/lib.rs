@@ -19,7 +19,7 @@ use rookery_core::manifest::ScheduleMode;
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
 use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
-use rookery_render::{AppCatalog, CatalogState, Gpu, RawPointer, Renderer};
+use rookery_render::{AppCatalog, AudioEngine, CatalogState, Gpu, RawPointer, Renderer};
 use state::{HostInner, HostState};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -85,7 +85,8 @@ pub fn run() {
             let world_path = config_dir.join(WORLD_STATE_FILE_NAME);
             let world = WorldState::load_or_init(&world_path, 42);
 
-            let catalog_state = CatalogState::new(world.seed);
+            let audio = AudioEngine::new(settings.audio, &settings.active_app);
+            let catalog_state = CatalogState::new(world.seed).with_audio(audio.clone());
             *catalog_state.rookery.lock().unwrap() = world;
             let world_arc = catalog_state.rookery.clone();
 
@@ -143,6 +144,7 @@ pub fn run() {
                 apps_dir,
                 world: world_arc,
                 catalog_state,
+                audio,
                 layer: desktop_layer(),
                 renderer: Mutex::new(Some(renderer)),
                 gpu: gpu.clone(),
