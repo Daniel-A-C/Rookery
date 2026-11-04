@@ -68,6 +68,12 @@ pub enum AppControl {
         label: String,
         default_val: String,
     },
+    Select {
+        id: String,
+        label: String,
+        options: Vec<String>,
+        default_val: String,
+    },
 }
 
 /// Target performance budgets declared in `rookery.toml`.
@@ -206,6 +212,12 @@ mod tests {
                     id: "stat-count".into(),
                     label: "Count".into(),
                     default_val: "0".into(),
+                },
+                AppControl::Select {
+                    id: "select-mode".into(),
+                    label: "Mode".into(),
+                    options: vec!["fast".into(), "slow".into()],
+                    default_val: "fast".into(),
                 },
             ],
             budgets: AppBudgets::default(),

@@ -81,7 +81,7 @@ export interface HostStatus {
 }
 
 export interface AppControl {
-  kind: "button" | "slider" | "stat";
+  kind: "button" | "slider" | "stat" | "select";
   id: string;
   label: string;
   icon?: string;
@@ -91,6 +91,7 @@ export interface AppControl {
   step?: number;
   default_val?: number | string;
   unit?: string;
+  options?: string[];
 }
 
 export interface AppManifest {

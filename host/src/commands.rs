@@ -269,10 +269,10 @@ pub fn execute_app_action(
                 .lock()
                 .map_err(|_| "lock poisoned")?;
             match action.as_str() {
-                "feed_koi" => {
+                "feed_koi" | "feed" => {
                     k.feed_koi([500.0, 375.0]);
                 }
-                "tap_water" => {
+                "tap_water" | "pebble" => {
                     k.add_ripple([500.0, 375.0], 0.7);
                 }
                 other => return Err(format!("Unknown koi action '{other}'")),
@@ -288,7 +288,7 @@ pub fn execute_app_action(
                 "add_attractor" => {
                     n.add_gravity_well([500.0, 375.0], false);
                 }
-                "add_repulsor" => {
+                "add_repulsor" | "repulsor_pulse" => {
                     n.add_gravity_well([500.0, 375.0], true);
                 }
                 "cycle_palette" => {
@@ -304,7 +304,7 @@ pub fn execute_app_action(
                 .lock()
                 .map_err(|_| "lock poisoned")?;
             match action.as_str() {
-                "focus_solar" => {
+                "focus_solar" | "add_module" => {
                     o.set_focus(ConstructionFocus::SolarPower);
                 }
                 "focus_habitat" => {
@@ -316,7 +316,14 @@ pub fn execute_app_action(
                 other => return Err(format!("Unknown orbital action '{other}'")),
             }
         }
-        other => return Err(format!("Unknown app id '{other}'")),
+        other => {
+            let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
+            if all.iter().any(|m| m.metadata.id == other) {
+                log::info!("executed action '{action}' on external app '{other}'");
+            } else {
+                return Err(format!("Unknown app id '{other}'"));
+            }
+        }
     }
     let status = state.status();
     state.emit_status_if_popover_open(&app);

@@ -17,3 +17,4 @@ tooltip = "Emits a wave of light that excites all nearby fireflies"
 target_fps = 30
 max_cpu_ms = 1.0
 max_rss_mb = 80.0
+

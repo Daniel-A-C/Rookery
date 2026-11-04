@@ -18,21 +18,38 @@ const el = <T extends HTMLElement>(id: string): T => {
 const powerBadge = el<HTMLSpanElement>("power-badge");
 const appTagline = el<HTMLParagraphElement>("app-tagline");
 
-// App Tabs
-const tabs: Record<string, HTMLButtonElement> = {
-  "living-rookery": el<HTMLButtonElement>("tab-living-rookery"),
-  "koi-pond": el<HTMLButtonElement>("tab-koi-pond"),
-  "cosmic-nebula": el<HTMLButtonElement>("tab-cosmic-nebula"),
-  "orbital-haven": el<HTMLButtonElement>("tab-orbital-haven"),
-};
+// App Switcher Container & Scheduler
+const appSwitcher = el<HTMLElement>("app-switcher");
+const cardScheduler = el<HTMLElement>("card-scheduler");
 
-// Cards
-const cards: Record<string, HTMLElement> = {
-  "living-rookery": el<HTMLElement>("card-living-rookery"),
-  "koi-pond": el<HTMLElement>("card-koi-pond"),
-  "cosmic-nebula": el<HTMLElement>("card-cosmic-nebula"),
-  "orbital-haven": el<HTMLElement>("card-orbital-haven"),
-};
+// App Tabs & Cards Maps
+const tabs: Record<string, HTMLButtonElement> = {};
+const cards: Record<string, HTMLElement> = {};
+
+function bindTabEvents(appId: string, btn: HTMLButtonElement): void {
+  btn.onclick = async () => {
+    try {
+      const s = await api.switchApp(appId);
+      renderStatus(s);
+    } catch (err) {
+      console.error("switchApp error:", err);
+    }
+  };
+}
+
+for (const btn of appSwitcher.querySelectorAll<HTMLButtonElement>(".app-tab-btn")) {
+  const appId = btn.getAttribute("data-app");
+  if (appId) {
+    tabs[appId] = btn;
+    bindTabEvents(appId, btn);
+  }
+}
+
+for (const card of document.querySelectorAll<HTMLElement>('[id^="card-"]')) {
+  if (card.id === "card-scheduler") continue;
+  const appId = card.id.replace("card-", "");
+  cards[appId] = card;
+}
 
 // Living Rookery Stats & Controls
 const statAge = el<HTMLSpanElement>("stat-age");
@@ -117,15 +134,215 @@ const appTaglines: Record<string, string> = {
   "orbital-haven": "Modular Space Station & Planetary Horizon",
 };
 
+function getAppGlyph(m: AppManifest): string {
+  const glyphs: Record<string, string> = {
+    "living-rookery": "🌲",
+    "koi-pond": "🎏",
+    "cosmic-nebula": "🌌",
+    "orbital-haven": "🛰️",
+    "fireflies": "✨",
+  };
+  if (glyphs[m.metadata.id]) return glyphs[m.metadata.id];
+  for (const c of m.controls || []) {
+    if (c.icon) return c.icon;
+  }
+  const archetypes: Record<string, string> = {
+    cozy_ecosystem: "🌿",
+    generative_physics: "⚛️",
+    slow_burn_idle: "⏳",
+    ambient_utility: "🧭",
+  };
+  return archetypes[m.metadata.archetype] || "◆";
+}
+
+function getAppShortName(m: AppManifest): string {
+  const shortNames: Record<string, string> = {
+    "living-rookery": "Rookery",
+    "koi-pond": "Koi Pond",
+    "cosmic-nebula": "Nebula",
+    "orbital-haven": "Orbital",
+    "fireflies": "Fireflies",
+  };
+  if (shortNames[m.metadata.id]) return shortNames[m.metadata.id];
+  const name = m.metadata.name;
+  return name.length > 10 ? name.split(" ")[0] : name;
+}
+
 function applyCatalog(): void {
   for (const m of appCatalog) {
     if (m.metadata?.description) {
       appTaglines[m.metadata.id] = m.metadata.description;
     }
+
+    // 1. Ensure tab exists in switcher
+    if (!tabs[m.metadata.id]) {
+      const tabBtn = document.createElement("button");
+      tabBtn.id = `tab-${m.metadata.id}`;
+      tabBtn.className = "app-tab-btn";
+      tabBtn.type = "button";
+      tabBtn.setAttribute("data-app", m.metadata.id);
+      tabBtn.title = m.metadata.description;
+
+      const glyphSpan = document.createElement("span");
+      glyphSpan.className = "tab-glyph";
+      glyphSpan.textContent = getAppGlyph(m);
+
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = getAppShortName(m);
+
+      tabBtn.appendChild(glyphSpan);
+      tabBtn.appendChild(labelSpan);
+
+      bindTabEvents(m.metadata.id, tabBtn);
+      appSwitcher.appendChild(tabBtn);
+      tabs[m.metadata.id] = tabBtn;
+    }
+
+    // 2. Ensure card exists
+    if (!cards[m.metadata.id]) {
+      const card = document.createElement("section");
+      card.id = `card-${m.metadata.id}`;
+      card.className = "card app-dynamic-card";
+      card.hidden = true;
+
+      const title = document.createElement("div");
+      title.className = "section-title";
+      title.textContent = m.metadata.name;
+      card.appendChild(title);
+
+      const badges = document.createElement("div");
+      badges.className = "app-badges";
+      badges.innerHTML = `
+        <span class="mini-badge">${(m.metadata.archetype || "").replace(/_/g, " ")}</span>
+        <span class="mini-badge">v${m.metadata.version || "1.0"}</span>
+        <span class="mini-badge">${m.budgets?.target_fps ?? 30} FPS</span>
+        <span class="mini-badge">&lt;${m.budgets?.max_cpu_ms ?? 2.0}ms CPU</span>
+      `;
+      card.appendChild(badges);
+
+      // Stat controls
+      const statControls = (m.controls || []).filter((c) => c.kind === "stat");
+      if (statControls.length > 0) {
+        const statsGrid = document.createElement("div");
+        statsGrid.className = "stats-grid";
+        for (const sc of statControls) {
+          const box = document.createElement("div");
+          box.className = "stat-box";
+          box.innerHTML = `
+            <span class="stat-label">${sc.label}</span>
+            <span id="stat-${m.metadata.id}-${sc.id}" class="stat-value">${sc.default_val ?? "-"}</span>
+          `;
+          statsGrid.appendChild(box);
+        }
+        card.appendChild(statsGrid);
+      }
+
+      // Slider controls
+      const sliderControls = (m.controls || []).filter((c) => c.kind === "slider");
+      for (const sl of sliderControls) {
+        const row = document.createElement("div");
+        row.className = "control-row";
+        row.style.marginTop = "6px";
+        const label = document.createElement("span");
+        label.textContent = sl.label;
+        const valBadge = document.createElement("strong");
+        valBadge.id = `val-${m.metadata.id}-${sl.id}`;
+        valBadge.textContent = `${sl.default_val ?? 0}${sl.unit ?? ""}`;
+        row.appendChild(label);
+        row.appendChild(valBadge);
+        card.appendChild(row);
+
+        const input = document.createElement("input");
+        input.id = `slider-${m.metadata.id}-${sl.id}`;
+        input.type = "range";
+        input.min = String(sl.min ?? 0);
+        input.max = String(sl.max ?? 100);
+        input.step = String(sl.step ?? 1);
+        input.value = String(sl.default_val ?? 0);
+        input.addEventListener("input", () => {
+          valBadge.textContent = `${input.value}${sl.unit ?? ""}`;
+        });
+        input.addEventListener("change", async () => {
+          try {
+            await api.executeAppAction(m.metadata.id, sl.id, { value: Number(input.value) });
+          } catch (e) {
+            console.error("slider action error:", e);
+          }
+        });
+        card.appendChild(input);
+      }
+
+      // Select controls
+      const selectControls = (m.controls || []).filter((c) => c.kind === "select");
+      for (const sel of selectControls) {
+        const row = document.createElement("div");
+        row.className = "schedule-row";
+        row.style.marginTop = "6px";
+        const label = document.createElement("label");
+        label.htmlFor = `select-${m.metadata.id}-${sel.id}`;
+        label.textContent = `${sel.label}:`;
+        const selectEl = document.createElement("select");
+        selectEl.id = `select-${m.metadata.id}-${sel.id}`;
+        selectEl.className = "select-input";
+        for (const opt of sel.options || []) {
+          const optEl = document.createElement("option");
+          optEl.value = opt;
+          optEl.textContent = opt;
+          if (opt === sel.default_val) optEl.selected = true;
+          selectEl.appendChild(optEl);
+        }
+        selectEl.addEventListener("change", async () => {
+          try {
+            await api.executeAppAction(m.metadata.id, sel.id, { value: selectEl.value });
+          } catch (e) {
+            console.error("select action error:", e);
+          }
+        });
+        row.appendChild(label);
+        row.appendChild(selectEl);
+        card.appendChild(row);
+      }
+
+      // Button controls
+      const buttonControls = (m.controls || []).filter((c) => c.kind === "button");
+      if (buttonControls.length > 0) {
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "rookery-actions";
+        for (const b of buttonControls) {
+          const btn = document.createElement("button");
+          btn.id = `btn-${m.metadata.id}-${b.id}`;
+          btn.className = "btn small";
+          btn.type = "button";
+          if (b.tooltip) btn.title = b.tooltip;
+          btn.textContent = `${b.icon ? b.icon + " " : ""}${b.label}`;
+          btn.addEventListener("click", async () => {
+            try {
+              const res = await api.executeAppAction(m.metadata.id, b.id);
+              renderStatus(res);
+              showNotification(`${b.icon ? b.icon + " " : ""}${b.label} activated!`);
+            } catch (err) {
+              console.error("action error:", err);
+            }
+          });
+          actionsDiv.appendChild(btn);
+        }
+        card.appendChild(actionsDiv);
+      }
+
+      cardScheduler.parentNode?.insertBefore(card, cardScheduler);
+      cards[m.metadata.id] = card;
+    }
   }
+
   if (currentStatus) {
     const active = currentStatus.active_app || "living-rookery";
     appTagline.textContent = appTaglines[active] ?? "Rookery App";
+    for (const [id, tabBtn] of Object.entries(tabs)) {
+      tabBtn.classList.toggle("active", id === active);
+    }
+    for (const [id, cardEl] of Object.entries(cards)) {
+      cardEl.hidden = id !== active;
+    }
   }
 }
 
@@ -321,17 +538,6 @@ function renderSettings(st: Settings): void {
   sliderInterval.hidden = !isInterval;
 }
 
-// App Switcher Event Handlers
-for (const [id, btn] of Object.entries(tabs)) {
-  btn.addEventListener("click", async () => {
-    try {
-      const s = await api.switchApp(id);
-      renderStatus(s);
-    } catch (err) {
-      console.error("switchApp error:", err);
-    }
-  });
-}
 
 // Living Rookery Action Handlers
 btnFeed.addEventListener("click", async () => {
@@ -679,15 +885,15 @@ btnQuit.addEventListener("click", () => {
 // Bootstrap: Instant hydration from cache, then live refresh
 (() => {
   try {
-    const cachedStatus = localStorage.getItem("rookery_status");
-    if (cachedStatus) renderStatus(JSON.parse(cachedStatus));
-    const cachedSettings = localStorage.getItem("rookery_settings");
-    if (cachedSettings) renderSettings(JSON.parse(cachedSettings));
     const cachedCatalog = localStorage.getItem("rookery_catalog");
     if (cachedCatalog) {
       appCatalog = JSON.parse(cachedCatalog);
       applyCatalog();
     }
+    const cachedStatus = localStorage.getItem("rookery_status");
+    if (cachedStatus) renderStatus(JSON.parse(cachedStatus));
+    const cachedSettings = localStorage.getItem("rookery_settings");
+    if (cachedSettings) renderSettings(JSON.parse(cachedSettings));
   } catch {
     // Ignore cache load errors
   }
