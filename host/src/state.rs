@@ -174,10 +174,8 @@ impl HostState {
             settings: &inner.settings.frame,
         });
 
-        let all_paused = budgets
-            .iter()
-            .all(|(_, b)| matches!(b, FrameBudget::Paused(_)));
-        self.audio.set_paused(all_paused);
+        let audio_paused = inner.user_paused || inner.screens_asleep;
+        self.audio.set_paused(audio_paused);
 
         for (id, budget) in budgets {
             if let Some(d) = inner.displays.get_mut(&id) {

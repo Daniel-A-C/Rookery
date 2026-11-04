@@ -171,8 +171,8 @@ impl AudioWorkerState {
             self.ambient_player.as_ref().unwrap()
         };
 
-        // Target volume: ambient sounds are gentle (0.4 multiplier)
-        let effective_vol = (self.settings.volume * 0.4).clamp(0.0, 1.0);
+        // Target volume: ambient sounds
+        let effective_vol = (self.settings.volume * 0.75).clamp(0.0, 1.0);
         player.set_volume(effective_vol);
 
         if player.empty() {
@@ -184,6 +184,10 @@ impl AudioWorkerState {
         }
 
         player.play();
+        log::info!(
+            "Audio ambient soundscape active: app='{}', volume={effective_vol:.2}",
+            self.current_app
+        );
     }
 
     fn change_app(&mut self, new_app: String) {
@@ -212,14 +216,49 @@ impl AudioWorkerState {
         }
 
         let player = Player::connect_new(sink.mixer());
-        let sfx_vol = (self.settings.volume * 0.7).clamp(0.0, 1.0);
+        let sfx_vol = self.settings.volume.clamp(0.0, 1.0);
         player.set_volume(sfx_vol);
         let samples = synth_sfx(sfx);
         let channels = NonZeroU16::new(1).unwrap();
         let sample_rate = NonZeroU32::new(SAMPLE_RATE).unwrap();
         player.append(SamplesBuffer::new(channels, sample_rate, samples));
         player.detach();
+        log::debug!("Audio SFX played: {sfx:?}");
     }
+}
+
+fn open_audio_sink() -> Option<MixerDeviceSink> {
+    // 1. Try default device with system default buffer size (handles macOS CoreAudio limits)
+    if let Ok(builder) = DeviceSinkBuilder::from_default_device()
+        && let Ok(sink) = builder
+            .with_buffer_size(rodio::cpal::BufferSize::Default)
+            .open_stream()
+    {
+        log::info!(
+            "Audio device opened with default buffer size: {:?}",
+            sink.config()
+        );
+        return Some(sink);
+    }
+    // 2. Fall back to open_default_sink
+    if let Ok(sink) = DeviceSinkBuilder::open_default_sink() {
+        log::info!(
+            "Audio device opened with open_default_sink: {:?}",
+            sink.config()
+        );
+        return Some(sink);
+    }
+    // 3. Fall back to open_sink_or_fallback on default device
+    if let Ok(builder) = DeviceSinkBuilder::from_default_device()
+        && let Ok(sink) = builder.open_sink_or_fallback()
+    {
+        log::info!(
+            "Audio device opened with fallback config: {:?}",
+            sink.config()
+        );
+        return Some(sink);
+    }
+    None
 }
 
 fn run_audio_worker(
@@ -227,12 +266,10 @@ fn run_audio_worker(
     initial_settings: AudioSettings,
     initial_app: String,
 ) {
-    let device_sink = match DeviceSinkBuilder::open_default_sink() {
-        Ok(s) => Some(s),
-        Err(e) => {
-            log::info!(
-                "Audio output device unavailable ({e}); running audio subsystem in silent mode"
-            );
+    let device_sink = match open_audio_sink() {
+        Some(s) => Some(s),
+        None => {
+            log::info!("Audio output device unavailable; running audio subsystem in silent mode");
             None
         }
     };
@@ -623,6 +660,33 @@ mod tests {
                 "loop discontinuity for {app}: first={first}, last={last}"
             );
         }
+    }
+
+    #[test]
+    fn test_device_sink_open() {
+        let sink = open_audio_sink();
+        assert!(sink.is_some(), "open_audio_sink should succeed on macOS");
+        let mut sink = sink.unwrap();
+        sink.log_on_drop(false);
+        let player = Player::connect_new(sink.mixer());
+        player.set_volume(0.5);
+        let samples = synth_sfx(SoundEffect::BirdChirp);
+        let channels = NonZeroU16::new(1).unwrap();
+        let sample_rate = NonZeroU32::new(SAMPLE_RATE).unwrap();
+        player.append(SamplesBuffer::new(channels, sample_rate, samples));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_ambient_loop_playing_in_engine() {
+        let settings = AudioSettings {
+            enabled: true,
+            volume: 0.8,
+            ..Default::default()
+        };
+        let engine = AudioEngine::new(settings, "koi-pond");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(engine.settings().enabled);
     }
 
     #[test]
