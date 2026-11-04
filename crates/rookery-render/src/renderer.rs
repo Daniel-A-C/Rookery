@@ -18,14 +18,13 @@ use rookery_core::{Activity, DisplayId, Rect};
 use serde::Serialize;
 
 use crate::vignette::Vignette;
-use crate::{Gpu, Pointer, Scene, SceneInput};
+use crate::{Gpu, Pointer, PointerAction, RawPointer, Scene, SceneInput};
 
 /// Creates one scene per display.
 pub type SceneFactory = Box<dyn Fn(&Gpu, wgpu::TextureFormat) -> Box<dyn Scene> + Send>;
 
-/// Returns the global cursor position in the platform's native display coordinate space
-/// (the same space as `SurfaceSize::bounds_native`), or `None` if unavailable.
-pub type PointerSource = Arc<dyn Fn() -> Option<(f64, f64)> + Send + Sync>;
+/// Returns the global cursor and button state before display-local coordinate mapping.
+pub type PointerSource = Arc<dyn Fn() -> RawPointer + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SurfaceSize {
@@ -196,6 +195,8 @@ struct RenderThread {
     stats: Arc<Mutex<BTreeMap<DisplayId, DisplayStats>>>,
     displays: BTreeMap<DisplayId, Display>,
     interactive: bool,
+    prev_left_down: bool,
+    prev_right_down: bool,
     vignette: Option<(wgpu::TextureFormat, Vignette)>,
     started: Instant,
 }
@@ -216,6 +217,8 @@ impl RenderThread {
             stats,
             displays: BTreeMap::new(),
             interactive: false,
+            prev_left_down: false,
+            prev_right_down: false,
             vignette: None,
             started: Instant::now(),
         }
@@ -402,11 +405,24 @@ impl RenderThread {
 
     fn render_due(&mut self) {
         let now = Instant::now();
-        let global_pointer = if self.interactive {
+        let raw_pointer = if self.interactive {
             (self.pointer)()
         } else {
-            None
+            RawPointer::default()
         };
+        let left_click = self.interactive && raw_pointer.left_down && !self.prev_left_down;
+        let right_click = self.interactive && raw_pointer.right_down && !self.prev_right_down;
+        self.prev_left_down = self.interactive && raw_pointer.left_down;
+        self.prev_right_down = self.interactive && raw_pointer.right_down;
+
+        let action = if left_click {
+            PointerAction::LeftClick
+        } else if right_click {
+            PointerAction::RightClick
+        } else {
+            PointerAction::None
+        };
+
         let elapsed = self.started.elapsed().as_secs_f32() % 4096.0;
         for d in self.displays.values_mut() {
             let Some(due) = d.next_due else { continue };
@@ -420,7 +436,7 @@ impl RenderThread {
             let interval = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
             let frame_start = Instant::now();
 
-            let pointer = global_pointer.and_then(|(gx, gy)| {
+            let pointer = raw_pointer.position.and_then(|(gx, gy)| {
                 let b = d.size.bounds_native;
                 let (fx, fy) = ((gx - b.x) / b.width, (gy - b.y) / b.height);
                 ((0.0..1.0).contains(&fx) && (0.0..1.0).contains(&fy)).then_some(Pointer {
@@ -428,9 +444,13 @@ impl RenderThread {
                     y: (fy * d.size.height as f64) as f32,
                 })
             });
+            let is_over = pointer.is_some();
             let input = SceneInput {
                 interactive: self.interactive,
                 pointer,
+                action: if is_over { action } else { PointerAction::None },
+                left_held: is_over && raw_pointer.left_down,
+                right_held: is_over && raw_pointer.right_down,
             };
             let dt = frame_start.duration_since(d.last_update);
             d.last_update = frame_start;

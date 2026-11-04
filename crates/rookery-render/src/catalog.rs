@@ -226,14 +226,49 @@ impl AppCatalog {
         manifests
     }
 
-    /// Construct a [`SceneFactory`] for the given app id.
-    pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
+    /// Return all manifests: built-in plus any discovered external apps.
+    pub fn all_manifests(external_dir: Option<&Path>) -> Vec<AppManifest> {
+        let mut all = Self::built_in_manifests();
+        if let Some(dir) = external_dir {
+            all.extend(Self::discover_external_apps(dir));
+        }
+        all
+    }
+
+    /// Construct a [`SceneFactory`] for the given app id, supporting built-in and external WGSL shader apps.
+    pub fn create_scene_factory_with_dir(
+        app_id: &str,
+        state: CatalogState,
+        external_dir: Option<&Path>,
+    ) -> SceneFactory {
         let id_string = app_id.to_string();
+        let external_path = external_dir.map(|p| p.join(&id_string));
+
         Box::new(move |gpu, format| match id_string.as_str() {
             "koi-pond" => Box::new(KoiPondScene::new(gpu, format, state.koi.clone())),
             "cosmic-nebula" => Box::new(CosmicNebulaScene::new(gpu, format, state.nebula.clone())),
             "orbital-haven" => Box::new(OrbitalHavenScene::new(gpu, format, state.orbital.clone())),
-            _ => Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone())),
+            "living-rookery" => {
+                Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone()))
+            }
+            _ => {
+                if let Some(ref dir) = external_path {
+                    let shader_path = dir.join("scene.wgsl");
+                    if shader_path.is_file()
+                        && let Ok(source) = std::fs::read_to_string(&shader_path)
+                        && let Ok(custom) =
+                            crate::custom_shader::CustomShaderScene::new(gpu, format, &source)
+                    {
+                        return Box::new(custom);
+                    }
+                }
+                Box::new(LivingRookeryScene::new(gpu, format, state.rookery.clone()))
+            }
         })
+    }
+
+    /// Construct a [`SceneFactory`] for the given app id.
+    pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
+        Self::create_scene_factory_with_dir(app_id, state, None)
     }
 }

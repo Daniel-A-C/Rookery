@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 use crate::ascii_scene::GlyphInstance;
 use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
 use crate::fullscreen;
-use crate::{Gpu, Pointer, Scene, SceneInput};
+use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
 const MAX_INSTANCES: usize = 4096;
 
@@ -467,6 +467,19 @@ impl Scene for CosmicNebulaScene {
                 Ok(g) => g,
                 Err(_) => return Activity::Idle,
             };
+            if input.interactive
+                && let Some(pw) = pointer_world
+            {
+                match input.action {
+                    PointerAction::LeftClick => {
+                        guard.add_gravity_well(pw, false);
+                    }
+                    PointerAction::RightClick => {
+                        guard.add_gravity_well(pw, true);
+                    }
+                    PointerAction::None => {}
+                }
+            }
             let act = guard.update(dt_secs, input.interactive, pointer_world);
             let p_idx = match guard.palette {
                 NebulaPalette::StellarGold => 0.0,

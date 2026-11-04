@@ -4,6 +4,16 @@
 <dict>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>dev.rookery.host</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>rookery</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
-

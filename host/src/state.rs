@@ -43,6 +43,7 @@ pub struct HostInner {
 pub struct HostState {
     pub settings_path: PathBuf,
     pub world_path: PathBuf,
+    pub apps_dir: Option<PathBuf>,
     pub world: Arc<Mutex<WorldState>>,
     pub catalog_state: CatalogState,
     pub layer: Box<dyn DesktopLayer>,
@@ -257,20 +258,19 @@ impl HostState {
 
     /// Hot-switch running scene to a new catalog app.
     pub fn switch_app(&self, app_id: &str) -> Result<(), String> {
-        let valid_apps = [
-            "living-rookery",
-            "koi-pond",
-            "cosmic-nebula",
-            "orbital-haven",
-        ];
-        if !valid_apps.contains(&app_id) {
+        let all = AppCatalog::all_manifests(self.apps_dir.as_deref());
+        if !all.iter().any(|m| m.metadata.id == app_id) {
             return Err(format!("Unknown app id '{app_id}'"));
         }
         if let Ok(mut inner) = self.inner.lock() {
             inner.settings.active_app = app_id.to_string();
             let _ = inner.settings.save(&self.settings_path);
         }
-        let factory = AppCatalog::create_scene_factory(app_id, self.catalog_state.clone());
+        let factory = AppCatalog::create_scene_factory_with_dir(
+            app_id,
+            self.catalog_state.clone(),
+            self.apps_dir.as_deref(),
+        );
         self.with_renderer(|r| r.switch_scene(factory));
         Ok(())
     }

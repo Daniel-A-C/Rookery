@@ -15,7 +15,7 @@ use wgpu::util::DeviceExt;
 use crate::ascii_scene::GlyphInstance;
 use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
 use crate::fullscreen;
-use crate::{Gpu, Pointer, Scene, SceneInput};
+use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
 const MAX_INSTANCES: usize = 4096;
 
@@ -565,6 +565,23 @@ impl Scene for KoiPondScene {
                 Ok(g) => g,
                 Err(_) => return Activity::Idle,
             };
+            if input.interactive
+                && let Some(pw) = pointer_world
+            {
+                match input.action {
+                    PointerAction::LeftClick => {
+                        guard.feed_koi(pw);
+                    }
+                    PointerAction::RightClick => {
+                        guard.add_ripple(pw, 1.5);
+                    }
+                    PointerAction::None => {
+                        if input.left_held {
+                            guard.add_ripple(pw, 0.6);
+                        }
+                    }
+                }
+            }
             guard.update(dt_secs, input.interactive, pointer_world)
         };
 

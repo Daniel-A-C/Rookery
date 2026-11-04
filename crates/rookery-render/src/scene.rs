@@ -13,6 +13,25 @@ pub struct Pointer {
     pub y: f32,
 }
 
+/// Instantaneous pointer button action occurring on this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PointerAction {
+    #[default]
+    None,
+    /// Left button was clicked (pressed down this frame)
+    LeftClick,
+    /// Right button was clicked (pressed down this frame)
+    RightClick,
+}
+
+/// Raw cursor and button state before display-local coordinate mapping.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RawPointer {
+    pub position: Option<(f64, f64)>,
+    pub left_down: bool,
+    pub right_down: bool,
+}
+
 /// Per-frame input passed to [`Scene::update`].
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SceneInput {
@@ -20,6 +39,12 @@ pub struct SceneInput {
     pub interactive: bool,
     /// Cursor position, only provided while interactive and over this display.
     pub pointer: Option<Pointer>,
+    /// Instantaneous click action on this frame.
+    pub action: PointerAction,
+    /// True if left mouse button is held down over this display.
+    pub left_held: bool,
+    /// True if right mouse button is held down over this display.
+    pub right_held: bool,
 }
 
 /// A renderable, steppable world. One instance is created per display.

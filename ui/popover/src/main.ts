@@ -1,5 +1,6 @@
 import {
   api,
+  AppManifest,
   DisplayStatus,
   FrameBudget,
   HostStatus,
@@ -107,12 +108,26 @@ let currentStatus: HostStatus | null = null;
 let recordingInteractionHotkey = false;
 let recordingPopoverHotkey = false;
 
+let appCatalog: AppManifest[] = [];
+
 const appTaglines: Record<string, string> = {
   "living-rookery": "The Living ASCII Rookery",
   "koi-pond": "Tranquil Koi Pond & Articulated Boids",
   "cosmic-nebula": "Deep Space Procedural Nebula & Gravity Wells",
   "orbital-haven": "Modular Space Station & Planetary Horizon",
 };
+
+function applyCatalog(): void {
+  for (const m of appCatalog) {
+    if (m.metadata?.description) {
+      appTaglines[m.metadata.id] = m.metadata.description;
+    }
+  }
+  if (currentStatus) {
+    const active = currentStatus.active_app || "living-rookery";
+    appTagline.textContent = appTaglines[active] ?? "Rookery App";
+  }
+}
 
 function formatBudget(d: DisplayStatus): { text: string; paused: boolean } {
   const b: FrameBudget = d.budget;
@@ -173,6 +188,9 @@ function showShareNotification(msg: string, isError = false): void {
 
 function renderStatus(s: HostStatus): void {
   currentStatus = s;
+  try {
+    localStorage.setItem("rookery_status", JSON.stringify(s));
+  } catch {}
 
   // Power badge
   const powerLabels: Record<string, string> = {
@@ -276,6 +294,9 @@ function renderStatus(s: HostStatus): void {
 }
 
 function renderSettings(st: Settings): void {
+  try {
+    localStorage.setItem("rookery_settings", JSON.stringify(st));
+  } catch {}
   sliderPassive.value = String(st.frame.passive_fps);
   valPassive.textContent = `${st.frame.passive_fps} fps`;
 
@@ -655,13 +676,35 @@ btnQuit.addEventListener("click", () => {
   api.quit().catch((err) => console.error("quit error:", err));
 });
 
-// Bootstrap
+// Bootstrap: Instant hydration from cache, then live refresh
+(() => {
+  try {
+    const cachedStatus = localStorage.getItem("rookery_status");
+    if (cachedStatus) renderStatus(JSON.parse(cachedStatus));
+    const cachedSettings = localStorage.getItem("rookery_settings");
+    if (cachedSettings) renderSettings(JSON.parse(cachedSettings));
+    const cachedCatalog = localStorage.getItem("rookery_catalog");
+    if (cachedCatalog) {
+      appCatalog = JSON.parse(cachedCatalog);
+      applyCatalog();
+    }
+  } catch {
+    // Ignore cache load errors
+  }
+})();
+
 (async () => {
   try {
-    const [status, settings] = await Promise.all([
+    const [status, settings, catalog] = await Promise.all([
       api.getStatus(),
       api.getSettings(),
+      api.getCatalog(),
     ]);
+    appCatalog = catalog;
+    try {
+      localStorage.setItem("rookery_catalog", JSON.stringify(catalog));
+    } catch {}
+    applyCatalog();
     renderStatus(status);
     renderSettings(settings);
   } catch (err) {

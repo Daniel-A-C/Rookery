@@ -17,6 +17,9 @@ use windows::Win32::Graphics::Dwm::{
     DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
 };
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON,
+};
 use windows::Win32::UI::Shell::{
     QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
 };
@@ -341,4 +344,15 @@ pub fn cursor_position() -> Option<(f64, f64)> {
     let mut pt = POINT::default();
     unsafe { GetCursorPos(&mut pt).ok()? };
     Some((pt.x as f64, pt.y as f64))
+}
+
+pub fn mouse_buttons() -> crate::MouseButtons {
+    let left = unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 };
+    let right = unsafe { (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0 };
+    let middle = unsafe { (GetAsyncKeyState(VK_MBUTTON.0 as i32) as u16 & 0x8000) != 0 };
+    crate::MouseButtons {
+        left,
+        right,
+        middle,
+    }
 }

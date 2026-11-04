@@ -8,13 +8,13 @@ use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
-use rookery_core::orbital::OrbitalHavenState;
+use rookery_core::orbital::{ConstructionFocus, OrbitalHavenState};
 use wgpu::util::DeviceExt;
 
 use crate::ascii_scene::GlyphInstance;
 use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
 use crate::fullscreen;
-use crate::{Gpu, Scene, SceneInput};
+use crate::{Gpu, PointerAction, Scene, SceneInput};
 
 const MAX_INSTANCES: usize = 4096;
 
@@ -520,6 +520,22 @@ impl Scene for OrbitalHavenScene {
                 Ok(g) => g,
                 Err(_) => return Activity::Idle,
             };
+            if input.interactive {
+                match input.action {
+                    PointerAction::LeftClick => {
+                        guard.launch_shuttle();
+                    }
+                    PointerAction::RightClick => {
+                        let next_focus = match guard.focus {
+                            ConstructionFocus::SolarPower => ConstructionFocus::HabitatRing,
+                            ConstructionFocus::HabitatRing => ConstructionFocus::CommsGrid,
+                            ConstructionFocus::CommsGrid => ConstructionFocus::SolarPower,
+                        };
+                        guard.set_focus(next_focus);
+                    }
+                    PointerAction::None => {}
+                }
+            }
             let act = guard.update(dt_secs, input.interactive, None);
             (act, guard.orbit_angle)
         };

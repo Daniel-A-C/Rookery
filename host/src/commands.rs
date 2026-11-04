@@ -206,8 +206,8 @@ pub fn import_world_string(
 }
 
 #[tauri::command]
-pub fn get_catalog() -> Vec<AppManifest> {
-    AppCatalog::built_in_manifests()
+pub fn get_catalog(state: State<'_, HostState>) -> Vec<AppManifest> {
+    AppCatalog::all_manifests(state.apps_dir.as_deref())
 }
 
 #[tauri::command]

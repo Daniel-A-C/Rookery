@@ -80,15 +80,34 @@ export interface HostStatus {
   orbital?: OrbitalStatus;
 }
 
-export interface AppMetadata {
+export interface AppControl {
+  kind: "button" | "slider" | "stat";
   id: string;
-  name: string;
-  tagline: string;
-  version: string;
-  author: string;
-  archetype: string;
-  icon_glyph: string;
-  tags: string[];
+  label: string;
+  icon?: string;
+  tooltip?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  default_val?: number | string;
+  unit?: string;
+}
+
+export interface AppManifest {
+  metadata: {
+    id: string;
+    name: string;
+    description: string;
+    author: string;
+    version: string;
+    archetype: string;
+  };
+  controls: AppControl[];
+  budgets: {
+    target_fps: number;
+    max_cpu_ms: number;
+    max_rss_mb: number;
+  };
 }
 
 export interface FrameSettings {
@@ -122,7 +141,7 @@ export interface SettingsPatch {
 
 export const api = {
   getStatus: (): Promise<HostStatus> => invoke("get_status"),
-  getCatalog: (): Promise<AppMetadata[]> => invoke("get_catalog"),
+  getCatalog: (): Promise<AppManifest[]> => invoke("get_catalog"),
   switchApp: (appId: string): Promise<HostStatus> =>
     invoke("switch_app", { appId }),
   panForest: (deltaX: number): Promise<HostStatus> =>

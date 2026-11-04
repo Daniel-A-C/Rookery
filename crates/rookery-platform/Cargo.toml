@@ -19,7 +19,7 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder", "NSScreen", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSProcessInfo", "NSString"] }
 objc2-core-foundation = { version = "0.3", features = ["CFArray", "CFCGTypes", "CFDictionary", "CFNumber", "CFString"] }
-objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay", "CGDisplayConfiguration", "CGEvent", "CGEventTypes", "CGGeometry", "CGWindow", "CGWindowLevel"] }
+objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay", "CGDisplayConfiguration", "CGEvent", "CGEventSource", "CGEventTypes", "CGGeometry", "CGWindow", "CGWindowLevel"] }
 objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "ps"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -27,6 +27,7 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_System_Power",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

@@ -132,6 +132,14 @@ pub fn screens_asleep() -> bool {
     }
 }
 
+/// Mouse button pressed state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MouseButtons {
+    pub left: bool,
+    pub right: bool,
+    pub middle: bool,
+}
+
 /// Returns the global cursor position in the same coordinate space as [`DisplayInfo::bounds_native`].
 pub fn cursor_position() -> Option<(f64, f64)> {
     #[cfg(target_os = "macos")]
@@ -145,6 +153,22 @@ pub fn cursor_position() -> Option<(f64, f64)> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         None
+    }
+}
+
+/// Returns the global mouse button state.
+pub fn mouse_buttons() -> MouseButtons {
+    #[cfg(target_os = "macos")]
+    {
+        macos::mouse_buttons()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::mouse_buttons()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        stub::mouse_buttons()
     }
 }
 

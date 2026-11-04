@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 
 use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
 use crate::fullscreen;
-use crate::{Gpu, Pointer, Scene, SceneInput};
+use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
 const MAX_INSTANCES: usize = 8192;
 
@@ -803,6 +803,23 @@ impl Scene for LivingRookeryScene {
         let pointer_world = input.pointer.map(|p| self.screen_to_world(p));
 
         let activity = if let Ok(mut w) = self.world.lock() {
+            if input.interactive
+                && let Some(pw) = pointer_world
+            {
+                match input.action {
+                    PointerAction::LeftClick => {
+                        if pw[1] >= 720.0 {
+                            w.plant_seed(pw);
+                        } else {
+                            w.drop_snack(pw);
+                        }
+                    }
+                    PointerAction::RightClick => {
+                        w.prune_nearest(pw, 80.0);
+                    }
+                    PointerAction::None => {}
+                }
+            }
             w.update(dt_secs, input.interactive, pointer_world)
         } else {
             Activity::Idle

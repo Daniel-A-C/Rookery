@@ -12,10 +12,10 @@ use objc2_app_kit::{
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
-    CGDisplayIsAsleep, CGEvent, CGMainDisplayID, CGRectMakeWithDictionaryRepresentation,
-    CGWindowLevelForKey, CGWindowLevelKey, CGWindowListCopyWindowInfo, CGWindowListOption,
-    kCGDesktopIconWindowLevel, kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer,
-    kCGWindowOwnerPID,
+    CGDisplayIsAsleep, CGEvent, CGEventSource, CGEventSourceStateID, CGMainDisplayID,
+    CGMouseButton, CGRectMakeWithDictionaryRepresentation, CGWindowLevelForKey, CGWindowLevelKey,
+    CGWindowListCopyWindowInfo, CGWindowListOption, kCGDesktopIconWindowLevel, kCGNullWindowID,
+    kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
 };
 use objc2_foundation::NSProcessInfo;
 use objc2_io_kit::{IOPSCopyPowerSourcesInfo, IOPSGetProvidingPowerSourceType};
@@ -24,7 +24,7 @@ use rookery_core::governor::PowerState;
 use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, is_covered};
 use rookery_core::{DisplayId, Rect};
 
-use crate::{DesktopLayer, DisplayInfo, OcclusionProbe, PowerProbe};
+use crate::{DesktopLayer, DisplayInfo, MouseButtons, OcclusionProbe, PowerProbe};
 
 /// Map of `DisplayId` -> raw `NSWindow` pointer (only dereferenced on the main thread or for
 /// thread-safe `occlusionState` reads while the window is alive).
@@ -264,4 +264,24 @@ pub fn cursor_position() -> Option<(f64, f64)> {
     let event = CGEvent::new(None)?;
     let pt = CGEvent::location(Some(&event));
     Some((pt.x, pt.y))
+}
+
+pub fn mouse_buttons() -> MouseButtons {
+    let left = CGEventSource::button_state(
+        CGEventSourceStateID::CombinedSessionState,
+        CGMouseButton::Left,
+    );
+    let right = CGEventSource::button_state(
+        CGEventSourceStateID::CombinedSessionState,
+        CGMouseButton::Right,
+    );
+    let middle = CGEventSource::button_state(
+        CGEventSourceStateID::CombinedSessionState,
+        CGMouseButton::Center,
+    );
+    MouseButtons {
+        left,
+        right,
+        middle,
+    }
 }

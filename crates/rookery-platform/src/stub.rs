@@ -49,3 +49,15 @@ impl PowerProbe for StubPowerProbe {
         PowerState::Ac
     }
 }
+
+pub fn screens_asleep() -> bool {
+    false
+}
+
+pub fn cursor_position() -> Option<(f64, f64)> {
+    None
+}
+
+pub fn mouse_buttons() -> crate::MouseButtons {
+    crate::MouseButtons::default()
+}

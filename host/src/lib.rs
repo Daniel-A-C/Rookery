@@ -19,7 +19,7 @@ use rookery_core::manifest::ScheduleMode;
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
 use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
-use rookery_render::{AppCatalog, CatalogState, Gpu, Renderer};
+use rookery_render::{AppCatalog, CatalogState, Gpu, RawPointer, Renderer};
 use state::{HostInner, HostState};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -29,7 +29,19 @@ pub fn run() {
         .try_init();
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            for arg in &args {
+                if arg.starts_with("rookery://") {
+                    let st = app.state::<HostState>();
+                    if let Ok(new_world) = WorldState::from_share_string(arg) {
+                        if let Ok(mut w) = st.world.lock() {
+                            *w = new_world;
+                            let _ = w.save_atomic(&st.world_path);
+                        }
+                        st.emit_status_if_popover_open(app);
+                    }
+                }
+            }
             popover::open(app);
         }))
         .plugin(tauri_plugin_positioner::init())
@@ -91,15 +103,36 @@ pub fn run() {
                 log::warn!("failed to write initial settings heartbeat: {e}");
             }
 
+            let local_apps = std::path::Path::new("apps");
+            let apps_dir = if local_apps.is_dir() {
+                Some(local_apps.to_path_buf())
+            } else {
+                settings_path.parent().map(|p| p.join("apps"))
+            };
+            if let Some(ref d) = apps_dir {
+                let _ = std::fs::create_dir_all(d);
+            }
+
             let initial_app = settings.active_app.clone();
-            let initial_factory =
-                AppCatalog::create_scene_factory(&initial_app, catalog_state.clone());
+            let initial_factory = AppCatalog::create_scene_factory_with_dir(
+                &initial_app,
+                catalog_state.clone(),
+                apps_dir.as_deref(),
+            );
 
             let gpu = Gpu::new_blocking()?;
             let renderer = Renderer::spawn(
                 gpu.clone(),
                 initial_factory,
-                Arc::new(rookery_platform::cursor_position),
+                Arc::new(|| {
+                    let pos = rookery_platform::cursor_position();
+                    let btns = rookery_platform::mouse_buttons();
+                    RawPointer {
+                        position: pos,
+                        left_down: btns.left,
+                        right_down: btns.right,
+                    }
+                }),
             )?;
 
             let initial_hotkey = settings.hotkey.clone();
@@ -107,6 +140,7 @@ pub fn run() {
             let host_state = HostState {
                 settings_path,
                 world_path,
+                apps_dir,
                 world: world_arc,
                 catalog_state,
                 layer: desktop_layer(),
