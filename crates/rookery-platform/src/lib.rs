@@ -56,11 +56,28 @@ pub trait DesktopLayer: Send + Sync {
     fn demote_wallpaper(&self, window: &dyn HasWindowHandle, display: &DisplayInfo) -> Result<()>;
 }
 
+/// Detailed per-display occlusion and desktop coverage state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DisplayOcclusion {
+    /// True if covered >= threshold (occluded) or fullscreen app is active.
+    pub occluded: bool,
+    /// True if desktop is completely uncovered by foreground normal-layer windows.
+    pub uncovered: bool,
+}
+
 /// Queries per-display occlusion state.
 pub trait OcclusionProbe: Send {
     /// Returns a `bool` per entry in `displays` (`true` = covered >= threshold or fullscreen active).
     /// `own_windows` may be passed if needed, though implementations typically filter by PID.
-    fn query(&mut self, displays: &[DisplayInfo]) -> Vec<bool>;
+    fn query(&mut self, displays: &[DisplayInfo]) -> Vec<bool> {
+        self.query_state(displays)
+            .into_iter()
+            .map(|s| s.occluded)
+            .collect()
+    }
+
+    /// Queries detailed occlusion and uncovered status per display.
+    fn query_state(&mut self, displays: &[DisplayInfo]) -> Vec<DisplayOcclusion>;
 }
 
 /// Queries system power state.

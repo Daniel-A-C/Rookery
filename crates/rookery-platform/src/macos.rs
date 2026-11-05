@@ -21,10 +21,12 @@ use objc2_foundation::NSProcessInfo;
 use objc2_io_kit::{IOPSCopyPowerSourcesInfo, IOPSGetProvidingPowerSourceType};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rookery_core::governor::PowerState;
-use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, is_covered};
+use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, UNCOVERED_THRESHOLD, coverage};
 use rookery_core::{DisplayId, Rect};
 
-use crate::{DesktopLayer, DisplayInfo, MouseButtons, OcclusionProbe, PowerProbe};
+use crate::{
+    DesktopLayer, DisplayInfo, DisplayOcclusion, MouseButtons, OcclusionProbe, PowerProbe,
+};
 
 /// Map of `DisplayId` -> raw `NSWindow` pointer (only dereferenced on the main thread or for
 /// thread-safe `occlusionState` reads while the window is alive).
@@ -224,12 +226,25 @@ fn dict_bounds(dict: &CFDictionary) -> Option<Rect> {
 
 impl OcclusionProbe for MacOcclusionProbe {
     fn query(&mut self, displays: &[DisplayInfo]) -> Vec<bool> {
+        self.query_state(displays)
+            .into_iter()
+            .map(|s| s.occluded)
+            .collect()
+    }
+
+    fn query_state(&mut self, displays: &[DisplayInfo]) -> Vec<DisplayOcclusion> {
         let windows = self.visible_window_rects();
         displays
             .iter()
             .map(|d| {
-                Self::is_window_occluded_by_os(&d.id)
-                    || is_covered(d.bounds_native, &windows, DEFAULT_COVERAGE_THRESHOLD)
+                let os_occ = Self::is_window_occluded_by_os(&d.id);
+                let cov = coverage(d.bounds_native, &windows);
+                let occluded = os_occ || cov >= DEFAULT_COVERAGE_THRESHOLD;
+                let uncovered = !os_occ && cov <= UNCOVERED_THRESHOLD;
+                DisplayOcclusion {
+                    occluded,
+                    uncovered,
+                }
             })
             .collect()
     }

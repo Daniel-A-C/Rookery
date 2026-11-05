@@ -215,6 +215,7 @@ pub fn reconcile_on_main_thread(app: &AppHandle) {
                     info,
                     window,
                     occluded: false,
+                    uncovered: false,
                     budget: initial_budget(),
                 },
             );

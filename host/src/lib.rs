@@ -228,16 +228,17 @@ fn spawn_governor_thread(app: AppHandle) {
                     inner.displays.values().map(|d| d.info.clone()).collect()
                 };
 
-                let occluded = occ_probe.query(&display_infos);
+                let occlusion_states = occ_probe.query_state(&display_infos);
                 let power = pwr_probe.query();
                 let asleep = screens_asleep();
 
                 if let Ok(mut inner) = state.inner.lock() {
                     inner.power = power;
                     inner.screens_asleep = asleep;
-                    for (info, is_occ) in display_infos.iter().zip(occluded) {
+                    for (info, occ) in display_infos.iter().zip(occlusion_states) {
                         if let Some(d) = inner.displays.get_mut(&info.id) {
-                            d.occluded = is_occ;
+                            d.occluded = occ.occluded;
+                            d.uncovered = occ.uncovered;
                         }
                     }
 

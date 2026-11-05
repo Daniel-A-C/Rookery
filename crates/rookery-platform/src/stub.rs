@@ -4,7 +4,7 @@ use anyhow::Result;
 use raw_window_handle::HasWindowHandle;
 use rookery_core::governor::PowerState;
 
-use crate::{DesktopLayer, DisplayInfo, OcclusionProbe, PowerProbe};
+use crate::{DesktopLayer, DisplayInfo, DisplayOcclusion, OcclusionProbe, PowerProbe};
 
 pub struct StubDesktopLayer;
 
@@ -39,6 +39,16 @@ pub struct StubOcclusionProbe;
 impl OcclusionProbe for StubOcclusionProbe {
     fn query(&mut self, displays: &[DisplayInfo]) -> Vec<bool> {
         vec![false; displays.len()]
+    }
+
+    fn query_state(&mut self, displays: &[DisplayInfo]) -> Vec<DisplayOcclusion> {
+        vec![
+            DisplayOcclusion {
+                occluded: false,
+                uncovered: true,
+            };
+            displays.len()
+        ]
     }
 }
 

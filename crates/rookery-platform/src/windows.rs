@@ -11,7 +11,7 @@ use anyhow::{Result, bail};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rookery_core::Rect;
 use rookery_core::governor::PowerState;
-use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, is_covered};
+use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, UNCOVERED_THRESHOLD, coverage};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
@@ -34,7 +34,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::BOOL;
 use windows::core::w;
 
-use crate::{DesktopLayer, DisplayInfo, OcclusionProbe, PowerProbe};
+use crate::{DesktopLayer, DisplayInfo, DisplayOcclusion, OcclusionProbe, PowerProbe};
 
 const WM_SPAWN_WORKERW: u32 = 0x052C;
 
@@ -306,13 +306,34 @@ unsafe extern "system" fn collect_windows_proc(hwnd: HWND, lparam: LPARAM) -> BO
 
 impl OcclusionProbe for WinOcclusionProbe {
     fn query(&mut self, displays: &[DisplayInfo]) -> Vec<bool> {
+        self.query_state(displays)
+            .into_iter()
+            .map(|s| s.occluded)
+            .collect()
+    }
+
+    fn query_state(&mut self, displays: &[DisplayInfo]) -> Vec<DisplayOcclusion> {
         if Self::fullscreen_or_busy() {
-            return vec![true; displays.len()];
+            return vec![
+                DisplayOcclusion {
+                    occluded: true,
+                    uncovered: false,
+                };
+                displays.len()
+            ];
         }
         let windows = self.visible_window_rects();
         displays
             .iter()
-            .map(|d| is_covered(d.bounds_native, &windows, DEFAULT_COVERAGE_THRESHOLD))
+            .map(|d| {
+                let cov = coverage(d.bounds_native, &windows);
+                let occluded = cov >= DEFAULT_COVERAGE_THRESHOLD;
+                let uncovered = cov <= UNCOVERED_THRESHOLD;
+                DisplayOcclusion {
+                    occluded,
+                    uncovered,
+                }
+            })
             .collect()
     }
 }

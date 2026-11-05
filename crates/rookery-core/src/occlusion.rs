@@ -12,6 +12,10 @@ use crate::geometry::Rect;
 /// don't keep the simulation running behind a maximized window.
 pub const DEFAULT_COVERAGE_THRESHOLD: f64 = 0.97;
 
+/// Fraction of display coverage below which the desktop is considered completely uncovered.
+/// Set slightly above 0.0 (0.01) so that negligible OS chrome or shadows do not prevent 60 FPS boost.
+pub const UNCOVERED_THRESHOLD: f64 = 0.01;
+
 /// Fraction (0.0–1.0) of `display` covered by the union of `windows`.
 pub fn coverage(display: Rect, windows: &[Rect]) -> f64 {
     let display_area = display.area();
@@ -74,6 +78,11 @@ pub fn is_covered(display: Rect, windows: &[Rect], threshold: f64) -> bool {
     coverage(display, windows) >= threshold
 }
 
+/// True if the desktop display is completely uncovered by foreground windows.
+pub fn is_uncovered(display: Rect, windows: &[Rect]) -> bool {
+    coverage(display, windows) <= UNCOVERED_THRESHOLD
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +97,7 @@ mod tests {
     fn no_windows_is_uncovered() {
         assert_eq!(coverage(DISPLAY, &[]), 0.0);
         assert!(!is_covered(DISPLAY, &[], DEFAULT_COVERAGE_THRESHOLD));
+        assert!(is_uncovered(DISPLAY, &[]));
     }
 
     #[test]
@@ -95,6 +105,7 @@ mod tests {
         let w = [Rect::new(0.0, 0.0, 1920.0, 1080.0)];
         assert!(approx(coverage(DISPLAY, &w), 1.0));
         assert!(is_covered(DISPLAY, &w, DEFAULT_COVERAGE_THRESHOLD));
+        assert!(!is_uncovered(DISPLAY, &w));
     }
 
     #[test]

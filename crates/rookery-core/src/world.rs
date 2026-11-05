@@ -544,16 +544,22 @@ impl WorldState {
 
         self.recompute_stats();
 
-        // Check if anything fast is moving (flying birds, active particles, or interactive mode)
-        let any_flying_birds = self.birds.iter().any(|b| {
+        // Check if anything fast is moving (bird flights, feeding frenzies, active particles, or interactive mode)
+        let any_active_birds = self.birds.iter().any(|b| {
             matches!(
                 b.state,
-                BirdState::Flying { .. } | BirdState::Startled { .. }
+                BirdState::Flying { .. }
+                    | BirdState::Circling { .. }
+                    | BirdState::Startled { .. }
+                    | BirdState::CarryingTwig { .. }
+                    | BirdState::Feeding { .. }
+                    | BirdState::Bathing { .. }
             )
         });
-        let particles_active = !self.notes.is_empty() || !self.chips.is_empty();
+        let active_items =
+            !self.snacks.is_empty() || !self.notes.is_empty() || !self.chips.is_empty();
 
-        if interactive || any_flying_birds || particles_active {
+        if interactive || any_active_birds || active_items {
             Activity::Animating
         } else {
             Activity::Idle

@@ -81,6 +81,7 @@ struct Display {
     cpu_ms_ema: f32,
     last_frame_at: Option<Instant>,
     activity: Activity,
+    last_active_at: Option<Instant>,
 }
 
 /// Handle to the render thread. Dropping it shuts the thread down.
@@ -330,6 +331,7 @@ impl RenderThread {
                 d.next_due = None;
                 d.fps_ema = 0.0;
                 d.last_frame_at = None;
+                d.last_active_at = None;
             }
             FrameBudget::Fps(_) => {
                 let now = Instant::now();
@@ -398,6 +400,7 @@ impl RenderThread {
                 cpu_ms_ema: 0.0,
                 last_frame_at: None,
                 activity: Activity::Idle,
+                last_active_at: None,
             },
         );
         Ok(())
@@ -433,7 +436,6 @@ impl RenderThread {
                 d.next_due = None;
                 continue;
             };
-            let interval = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
             let frame_start = Instant::now();
 
             let pointer = raw_pointer.position.and_then(|(gx, gy)| {
@@ -505,6 +507,44 @@ impl RenderThread {
                 d.fps_ema = ema(d.fps_ema, inst, 0.1);
             }
             d.last_frame_at = Some(frame_start);
+
+            // Dynamic Adaptive Frame Pacing (60 FPS Boost):
+            // Check if active moments (animating scene, interactive mode, or active dragging/clicking) occurred.
+            let is_active = d.activity == Activity::Animating
+                || self.interactive
+                || input.left_held
+                || input.right_held;
+            if is_active {
+                d.last_active_at = Some(frame_start);
+            }
+
+            // Compute effective target FPS:
+            let base_fps = fps as f32;
+            let effective_fps = if base_fps <= 20.0 {
+                // On battery cap or low power, respect the power-saving budget.
+                base_fps
+            } else {
+                let boost_fps = 60.0f32.max(base_fps);
+                if is_active {
+                    boost_fps
+                } else if let Some(last_act) = d.last_active_at {
+                    let elapsed_since_active = frame_start.duration_since(last_act);
+                    if elapsed_since_active < Duration::from_millis(500) {
+                        // Hold boost for 500ms cooldown window to prevent flapping
+                        boost_fps
+                    } else if elapsed_since_active < Duration::from_millis(1500) {
+                        // Gracefully decay from 60 FPS back down to base_fps over 1000ms
+                        let t = (elapsed_since_active.as_secs_f32() - 0.5) / 1.0;
+                        boost_fps - t * (boost_fps - base_fps)
+                    } else {
+                        base_fps
+                    }
+                } else {
+                    base_fps
+                }
+            };
+
+            let interval = Duration::from_secs_f64(1.0 / effective_fps.max(1.0) as f64);
 
             // Advance deadline; if we fell behind by more than a frame, resync to now.
             let mut next = due + interval;

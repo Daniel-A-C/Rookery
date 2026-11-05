@@ -11,7 +11,8 @@
 //! | 5 | On battery + `pause_on_battery`   | `Paused(OnBattery)`                      |
 //! | 6 | Low-power mode                    | `Fps(low_power_fps)`                     |
 //! | 7 | On battery                        | passive rate capped at [`BATTERY_FPS_CAP`] |
-//! | 8 | Otherwise                         | `Idle` → [`IDLE_FPS`], `Animating` → `passive_fps` |
+//! | 8 | Active moments / uncovered desktop| `Fps(interactive_fps)` (60 FPS boost)   |
+//! | 9 | Otherwise                         | `Idle` → [`IDLE_FPS`], `Animating` → `passive_fps` |
 
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +107,23 @@ pub struct DisplayInputs {
     pub id: DisplayId,
     pub occluded: bool,
     pub activity: Activity,
+    pub uncovered: bool,
+}
+
+impl DisplayInputs {
+    pub fn new(id: DisplayId, occluded: bool, activity: Activity) -> Self {
+        Self {
+            id,
+            occluded,
+            activity,
+            uncovered: false,
+        }
+    }
+
+    pub fn with_uncovered(mut self, uncovered: bool) -> Self {
+        self.uncovered = uncovered;
+        self
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -149,10 +167,27 @@ fn budget_for(d: &DisplayInputs, i: &GovernorInputs<'_>, s: &FrameSettings) -> F
         Activity::Idle => IDLE_FPS.min(s.passive_fps),
         Activity::Animating => s.passive_fps,
     };
-    match i.power {
-        PowerState::LowPower => FrameBudget::Fps(s.low_power_fps.min(passive)),
-        PowerState::Battery => FrameBudget::Fps(passive.min(BATTERY_FPS_CAP)),
-        PowerState::Ac => FrameBudget::Fps(passive),
+    if i.power == PowerState::LowPower {
+        return FrameBudget::Fps(s.low_power_fps.min(passive));
+    }
+    if i.power == PowerState::Battery {
+        let battery_rate = if d.uncovered || d.activity == Activity::Animating {
+            s.passive_fps
+        } else {
+            passive
+        };
+        return FrameBudget::Fps(battery_rate.min(BATTERY_FPS_CAP));
+    }
+
+    // On AC:
+    // Dynamic Adaptive Frame Pacing (60 FPS Boost):
+    // Dynamically ramp up to 60 FPS (interactive_fps) during active moments (bird flights,
+    // feeding frenzies, user dragging) or when all foreground windows are minimized/closed (uncovered).
+    // Gracefully fall back to 15-24 FPS during idle passive periods.
+    if d.activity == Activity::Animating || d.uncovered {
+        FrameBudget::Fps(s.interactive_fps)
+    } else {
+        FrameBudget::Fps(passive)
     }
 }
 
@@ -160,11 +195,12 @@ fn budget_for(d: &DisplayInputs, i: &GovernorInputs<'_>, s: &FrameSettings) -> F
 mod tests {
     use super::*;
 
-    fn display(occluded: bool, activity: Activity) -> DisplayInputs {
+    fn display(occluded: bool, activity: Activity, uncovered: bool) -> DisplayInputs {
         DisplayInputs {
             id: DisplayId::new("d0"),
             occluded,
             activity,
+            uncovered,
         }
     }
 
@@ -172,6 +208,7 @@ mod tests {
         name: &'static str,
         occluded: bool,
         activity: Activity,
+        uncovered: bool,
         power: PowerState,
         interactive: bool,
         user_paused: bool,
@@ -186,6 +223,7 @@ mod tests {
                 name: "",
                 occluded: false,
                 activity: Activity::Idle,
+                uncovered: false,
                 power: PowerState::Ac,
                 interactive: false,
                 user_paused: false,
@@ -207,14 +245,34 @@ mod tests {
                 ..Default::default()
             },
             Case {
-                name: "animating on AC uses passive cap",
+                name: "animating on AC ramps to 60 FPS boost",
                 activity: Activity::Animating,
-                expected: Fps(24),
+                expected: Fps(60),
+                ..Default::default()
+            },
+            Case {
+                name: "uncovered on AC ramps to 60 FPS boost",
+                uncovered: true,
+                expected: Fps(60),
+                ..Default::default()
+            },
+            Case {
+                name: "uncovered on battery respects battery cap",
+                uncovered: true,
+                power: PowerState::Battery,
+                expected: Fps(20),
                 ..Default::default()
             },
             Case {
                 name: "occluded pauses",
                 occluded: true,
+                expected: Paused(Occluded),
+                ..Default::default()
+            },
+            Case {
+                name: "occlusion overrides uncovered desktop",
+                occluded: true,
+                uncovered: true,
                 expected: Paused(Occluded),
                 ..Default::default()
             },
@@ -288,7 +346,7 @@ mod tests {
                 pause_on_battery: c.pause_on_battery,
                 ..Default::default()
             };
-            let displays = [display(c.occluded, c.activity)];
+            let displays = [display(c.occluded, c.activity, c.uncovered)];
             let out = compute(&GovernorInputs {
                 displays: &displays,
                 power: c.power,
@@ -308,11 +366,13 @@ mod tests {
                 id: DisplayId::new("a"),
                 occluded: true,
                 activity: Activity::Idle,
+                uncovered: false,
             },
             DisplayInputs {
                 id: DisplayId::new("b"),
                 occluded: false,
                 activity: Activity::Animating,
+                uncovered: false,
             },
         ];
         let settings = FrameSettings::default();
@@ -331,7 +391,7 @@ mod tests {
                 FrameBudget::Paused(PauseReason::Occluded)
             )
         );
-        assert_eq!(out[1], (DisplayId::new("b"), FrameBudget::Fps(24)));
+        assert_eq!(out[1], (DisplayId::new("b"), FrameBudget::Fps(60)));
     }
 
     #[test]
@@ -355,7 +415,7 @@ mod tests {
             passive_fps: 15,
             ..Default::default()
         };
-        let displays = [display(false, Activity::Idle)];
+        let displays = [display(false, Activity::Idle, false)];
         let out = compute(&GovernorInputs {
             displays: &displays,
             power: PowerState::Ac,

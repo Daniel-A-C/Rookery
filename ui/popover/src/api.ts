@@ -22,6 +22,7 @@ export interface DisplayStatus {
   actual_fps: number;
   frame_cpu_ms: number;
   occluded: boolean;
+  uncovered?: boolean;
 }
 
 export interface RookeryStatus {

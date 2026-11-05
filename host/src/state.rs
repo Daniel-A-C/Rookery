@@ -28,6 +28,7 @@ pub struct ManagedDisplay {
     pub info: DisplayInfo,
     pub window: Window,
     pub occluded: bool,
+    pub uncovered: bool,
     pub budget: FrameBudget,
 }
 
@@ -64,6 +65,7 @@ pub struct DisplayStatus {
     pub actual_fps: f32,
     pub frame_cpu_ms: f32,
     pub occluded: bool,
+    pub uncovered: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -164,6 +166,7 @@ impl HostState {
                     .get(&d.info.id)
                     .map(|s| s.activity)
                     .unwrap_or_default(),
+                uncovered: d.uncovered,
             })
             .collect();
 
@@ -249,6 +252,7 @@ impl HostState {
                     actual_fps: st.map(|s| s.actual_fps).unwrap_or(0.0),
                     frame_cpu_ms: st.map(|s| s.frame_cpu_ms).unwrap_or(0.0),
                     occluded: d.occluded,
+                    uncovered: d.uncovered,
                 }
             })
             .collect();
