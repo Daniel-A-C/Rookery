@@ -56,6 +56,12 @@ class UpdaterController {
       return this.getState();
     }
 
+    // In dev mode, skip automatic background checks to avoid spamming 404 errors
+    // against GitHub Releases before any production releases are published.
+    if (import.meta.env.DEV && silent) {
+      return this.getState();
+    }
+
     this.state.checking = true;
     this.state.error = undefined;
     this.notify();

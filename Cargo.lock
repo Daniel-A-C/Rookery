@@ -3754,6 +3754,7 @@ dependencies = [
  "tauri-plugin-positioner",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tempfile",
  "wgpu",
 ]
 

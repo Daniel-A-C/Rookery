@@ -285,3 +285,13 @@ pub fn mouse_buttons() -> MouseButtons {
         middle,
     }
 }
+
+pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()> {
+    let ns_win = ns_window_from_handle(window)?;
+    if let Some(mtm) = MainThreadMarker::new() {
+        let app = NSApplication::sharedApplication(mtm);
+        app.activate();
+    }
+    ns_win.makeKeyAndOrderFront(None);
+    Ok(())
+}

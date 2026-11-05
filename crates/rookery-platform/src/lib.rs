@@ -172,6 +172,19 @@ pub fn mouse_buttons() -> MouseButtons {
     }
 }
 
+/// Activate the application and bring `window` to the front.
+pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::activate_app_and_focus_window(window)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

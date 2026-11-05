@@ -226,4 +226,11 @@ pub fn reconcile_on_main_thread(app: &AppHandle) {
         state.apply_interaction_event(app, InteractionEvent::DisplaysChanged);
         state.recompute_budgets();
     }
+
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_else(|_| "living-rookery".into());
+    crate::webview_sandbox::update_webview_wallpaper(app, &active_app, state.apps_dir.as_deref());
 }

@@ -29,6 +29,15 @@ const cards: Record<string, HTMLElement> = {};
 
 function bindTabEvents(appId: string, btn: HTMLButtonElement): void {
   btn.onclick = async () => {
+    // Optimistic UI update: switch active tab and visible card instantly
+    for (const [id, tabBtn] of Object.entries(tabs)) {
+      tabBtn.classList.toggle("active", id === appId);
+    }
+    for (const [id, cardEl] of Object.entries(cards)) {
+      cardEl.hidden = id !== appId;
+    }
+    appTagline.textContent = appTaglines[appId] ?? "Rookery App";
+
     try {
       const s = await api.switchApp(appId);
       renderStatus(s);
@@ -1058,6 +1067,7 @@ updater.subscribe((state) => {
 
   if (state.installed) {
     updateActionPanel.hidden = false;
+    updateBadge.hidden = false;
     updateDetailText.textContent = "Ready to install!";
     updateBadge.textContent = `v${state.version || ""} Ready`;
     updateNotes.textContent = `Update ${state.version || ""} has been downloaded and installed. Restart Rookery to complete the update.`;
@@ -1066,6 +1076,7 @@ updater.subscribe((state) => {
     updateProgressContainer.hidden = true;
   } else if (state.downloading) {
     updateActionPanel.hidden = false;
+    updateBadge.hidden = false;
     updateDetailText.textContent = "Downloading update…";
     btnDownloadUpdate.hidden = true;
     btnRestartUpdate.hidden = true;
@@ -1074,6 +1085,7 @@ updater.subscribe((state) => {
     updateProgressText.textContent = `Downloading… ${state.downloadProgress}%`;
   } else if (state.available) {
     updateActionPanel.hidden = false;
+    updateBadge.hidden = false;
     updateDetailText.textContent = `v${state.version} available`;
     updateBadge.textContent = `v${state.version} Available`;
     updateNotes.textContent =
@@ -1084,15 +1096,22 @@ updater.subscribe((state) => {
     updateProgressContainer.hidden = true;
   } else if (state.error) {
     updateActionPanel.hidden = true;
+    updateBadge.hidden = true;
     updateDetailText.textContent =
-      state.error.includes("404") ||
-      state.error.includes("network") ||
-      state.error.includes("connect")
-        ? "Could not reach update server"
-        : `Update check error: ${state.error}`;
+      import.meta.env.DEV &&
+      (state.error.includes("status code") || state.error.includes("404"))
+        ? "No release published yet (dev mode)"
+        : state.error.includes("404") ||
+            state.error.includes("network") ||
+            state.error.includes("connect")
+          ? "Could not reach update server"
+          : `Update check error: ${state.error}`;
   } else {
     updateActionPanel.hidden = true;
-    updateDetailText.textContent = "Up to date";
+    updateBadge.hidden = true;
+    updateDetailText.textContent = import.meta.env.DEV
+      ? "Development build"
+      : "Up to date";
   }
 });
 
@@ -1128,8 +1147,8 @@ updater.subscribe((state) => {
     renderStatus(status);
     renderSettings(settings);
 
-    // Milestones: Auto-check and background download if configured
-    if (settings.update?.auto_check !== false) {
+    // Milestones: Auto-check and background download if configured (skip in dev mode)
+    if (!import.meta.env.DEV && settings.update?.auto_check !== false) {
       updater.checkForUpdates(true).then((s) => {
         if (s.available && (settings.update?.auto_download ?? true)) {
           updater.downloadAndInstall().catch((err) => {

@@ -268,14 +268,19 @@ impl HostState {
     }
 
     /// Hot-switch running scene to a new catalog app.
-    pub fn switch_app(&self, app_id: &str) -> Result<(), String> {
+    pub fn switch_app(&self, app: &AppHandle, app_id: &str) -> Result<(), String> {
         let all = AppCatalog::all_manifests(self.apps_dir.as_deref());
         if !all.iter().any(|m| m.metadata.id == app_id) {
+            log::warn!("switch_app: unknown app id '{app_id}'");
             return Err(format!("Unknown app id '{app_id}'"));
         }
         if let Ok(mut inner) = self.inner.lock() {
             inner.settings.active_app = app_id.to_string();
-            let _ = inner.settings.save(&self.settings_path);
+            if let Err(e) = inner.settings.save(&self.settings_path) {
+                log::warn!("switch_app: failed to save settings: {e}");
+            } else {
+                log::info!("switch_app: active_app '{app_id}' saved to settings");
+            }
         }
         let factory = AppCatalog::create_scene_factory_with_dir(
             app_id,
@@ -284,6 +289,23 @@ impl HostState {
         );
         self.audio.switch_app(app_id);
         self.with_renderer(|r| r.switch_scene(factory));
+
+        let app_clone = app.clone();
+        let app_id_str = app_id.to_string();
+        let apps_dir = self.apps_dir.clone();
+        let _ = app.run_on_main_thread(move || {
+            crate::webview_sandbox::update_webview_wallpaper(
+                &app_clone,
+                &app_id_str,
+                apps_dir.as_deref(),
+            );
+            // Ensure popover window retains focus after any wallpaper window adjustments
+            if let Some(p) = app_clone.get_webview_window(POPOVER_LABEL) {
+                let _ = p.set_focus();
+                let _ = rookery_platform::activate_app_and_focus_window(&p);
+            }
+        });
+
         Ok(())
     }
 
@@ -320,6 +342,9 @@ impl HostState {
                     Effect::Promote => {
                         if let Ok(inner) = state.inner.lock() {
                             for d in inner.displays.values() {
+                                crate::webview_sandbox::set_interactive_webviews(
+                                    &app_clone, true, &d.info,
+                                );
                                 if let Err(e) = state.layer.promote_interactive(&d.window, &d.info)
                                 {
                                     log::error!("promote failed on {}: {e:#}", d.info.id);
@@ -330,6 +355,9 @@ impl HostState {
                     Effect::Demote => {
                         if let Ok(inner) = state.inner.lock() {
                             for d in inner.displays.values() {
+                                crate::webview_sandbox::set_interactive_webviews(
+                                    &app_clone, false, &d.info,
+                                );
                                 if let Err(e) = state.layer.demote_wallpaper(&d.window, &d.info) {
                                     log::error!("demote failed on {}: {e:#}", d.info.id);
                                 }

@@ -142,7 +142,7 @@ pub fn update_settings(
     };
 
     if let Some(ref app_id) = patch.active_app {
-        state.switch_app(app_id)?;
+        state.switch_app(&app, app_id)?;
     }
 
     state.recompute_budgets();
@@ -233,7 +233,8 @@ pub fn switch_app(
     state: State<'_, HostState>,
     app_id: String,
 ) -> Result<HostStatus, String> {
-    state.switch_app(&app_id)?;
+    log::info!("IPC switch_app: requested switch to '{app_id}'");
+    state.switch_app(&app, &app_id)?;
     let status = state.status();
     state.emit_status_if_popover_open(&app);
     Ok(status)
@@ -347,6 +348,7 @@ pub fn execute_app_action(
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
             if all.iter().any(|m| m.metadata.id == other) {
+                crate::webview_sandbox::dispatch_action(&app, &action);
                 log::info!("executed action '{action}' on external app '{other}'");
             } else {
                 return Err(format!("Unknown app id '{other}'"));

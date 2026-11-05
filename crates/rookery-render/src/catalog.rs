@@ -278,6 +278,10 @@ impl AppCatalog {
                     {
                         return Box::new(custom);
                     }
+                    let html_path = dir.join("index.html");
+                    if html_path.is_file() {
+                        return Box::new(crate::scene::BlankScene);
+                    }
                 }
                 Box::new(
                     LivingRookeryScene::new(gpu, format, state.rookery.clone())
@@ -290,5 +294,29 @@ impl AppCatalog {
     /// Construct a [`SceneFactory`] for the given app id.
     pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
         Self::create_scene_factory_with_dir(app_id, state, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discover_external_apps_in_apps_dir() {
+        let manifest_list = AppCatalog::discover_external_apps(Path::new("../../apps"));
+        // Should find fireflies and aurora-waves
+        let has_aurora = manifest_list
+            .iter()
+            .any(|m| m.metadata.id == "aurora-waves");
+        let has_fireflies = manifest_list.iter().any(|m| m.metadata.id == "fireflies");
+        assert!(has_aurora, "aurora-waves should be discovered");
+        assert!(has_fireflies, "fireflies should be discovered");
+
+        let aurora = manifest_list
+            .into_iter()
+            .find(|m| m.metadata.id == "aurora-waves")
+            .unwrap();
+        assert_eq!(aurora.metadata.archetype, AppArchetype::WebCanvas);
+        assert_eq!(aurora.controls.len(), 3);
     }
 }

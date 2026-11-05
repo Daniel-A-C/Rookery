@@ -69,6 +69,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<()> {
                 ..
             } = ev
             {
+                log::info!("tray icon left-clicked: opening/toggling popover");
                 popover::toggle(app);
             }
         })

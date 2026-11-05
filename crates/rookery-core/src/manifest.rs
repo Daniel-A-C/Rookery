@@ -20,6 +20,8 @@ pub enum AppArchetype {
     SlowBurnIdle,
     /// Time/weather reactive companions.
     AmbientUtility,
+    /// Sandboxed HTML5 Canvas / WebGL apps.
+    WebCanvas,
 }
 
 impl AppArchetype {
@@ -29,6 +31,7 @@ impl AppArchetype {
             Self::GenerativePhysics => "Generative Physics & Shader",
             Self::SlowBurnIdle => "Slow-Burn Idle World",
             Self::AmbientUtility => "Ambient Utility",
+            Self::WebCanvas => "Lightweight Web Canvas",
         }
     }
 }
@@ -170,6 +173,16 @@ impl DayNightMapping {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn archetype_display_names_and_serde() {
+        let arch = AppArchetype::WebCanvas;
+        assert_eq!(arch.display_name(), "Lightweight Web Canvas");
+        let serialized = serde_json::to_string(&arch).expect("serialize");
+        assert_eq!(serialized, "\"web_canvas\"");
+        let deserialized: AppArchetype = serde_json::from_str(&serialized).expect("deserialize");
+        assert_eq!(deserialized, AppArchetype::WebCanvas);
+    }
 
     #[test]
     fn day_night_mapping_hours() {

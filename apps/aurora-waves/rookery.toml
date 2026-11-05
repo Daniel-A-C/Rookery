@@ -1,0 +1,34 @@
+[metadata]
+id = "aurora-waves"
+name = "Aurora Waves"
+description = "Silky procedural northern lights flowing across a deep starfield with interactive luminous ripples."
+author = "Rookery Sandbox"
+version = "1.0.0"
+archetype = "web_canvas"
+
+[[controls]]
+kind = "button"
+id = "burst"
+label = "Stellar Burst"
+icon = "✨"
+tooltip = "Emits an explosion of glowing stellar sparks"
+
+[[controls]]
+kind = "button"
+id = "cycle_aurora"
+label = "Cycle Palette"
+icon = "🎨"
+tooltip = "Switches between Emerald Borealis, Amethyst Twilight, Solar Flare, and Arctic Cyan palettes"
+
+[[controls]]
+kind = "button"
+id = "shooting_star"
+label = "Shooting Star"
+icon = "🌠"
+tooltip = "Streaks a brilliant meteor across the night sky"
+
+[budgets]
+target_fps = 60
+max_cpu_ms = 1.5
+max_rss_mb = 100.0
+

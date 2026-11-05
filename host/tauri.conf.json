@@ -12,7 +12,7 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' rookery-app: asset: blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' rookery-app:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: rookery-app:; media-src 'self' data: blob: rookery-app:;"
     }
   },
   "bundle": {

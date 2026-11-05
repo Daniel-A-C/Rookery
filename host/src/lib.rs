@@ -6,6 +6,7 @@ pub mod monitors;
 pub mod popover;
 pub mod state;
 pub mod tray;
+pub mod webview_sandbox;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,6 +48,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .register_uri_scheme_protocol("rookery-app", |_ctx, request| {
+            crate::webview_sandbox::handle_custom_protocol(&request)
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::set_paused,
@@ -115,6 +119,7 @@ pub fn run() {
             };
             if let Some(ref d) = apps_dir {
                 let _ = std::fs::create_dir_all(d);
+                crate::webview_sandbox::init_apps_dir(d.clone());
             }
 
             let initial_app = settings.active_app.clone();
@@ -272,7 +277,7 @@ fn spawn_governor_thread(app: AppHandle) {
                         let hour = chrono::Local::now().hour();
                         let target = day_night.app_for_hour(hour);
                         if target != active_app {
-                            let _ = state.switch_app(target);
+                            let _ = state.switch_app(&app, target);
                         }
                     }
                     ScheduleMode::Interval => {
@@ -286,7 +291,7 @@ fn spawn_governor_thread(app: AppHandle) {
                             ];
                             let cur_pos = apps.iter().position(|&a| a == active_app).unwrap_or(0);
                             let next_app = apps[(cur_pos + 1) % apps.len()];
-                            let _ = state.switch_app(next_app);
+                            let _ = state.switch_app(&app, next_app);
                         }
                     }
                 }

@@ -58,3 +58,40 @@ pub trait Scene: Send {
     /// Record draw commands targeting `view` (the surface texture for this frame).
     fn render(&mut self, gpu: &Gpu, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder);
 }
+
+/// A minimal idle passthrough scene that simply clears the surface texture to an ambient dark color.
+///
+/// Used as the wgpu render thread backing when an external webview or canvas app is active.
+pub struct BlankScene;
+
+impl Scene for BlankScene {
+    fn resize(&mut self, _gpu: &Gpu, _width: u32, _height: u32, _scale_factor: f64) {}
+
+    fn update(&mut self, _gpu: &Gpu, _dt: Duration, _input: &SceneInput) -> Activity {
+        Activity::Idle
+    }
+
+    fn render(&mut self, _gpu: &Gpu, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
+        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("blank_passthrough_pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.04,
+                        g: 0.04,
+                        b: 0.07,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+    }
+}
