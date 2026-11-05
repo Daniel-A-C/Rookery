@@ -611,7 +611,11 @@ impl LivingRookeryScene {
 
         // 3. Draw Nests, Building Twigs, Eggs & Chicks
         for nest in &world_guard.nests {
-            if let Some(b) = world_guard.branches.iter().find(|br| br.id == nest.branch_id) {
+            if let Some(b) = world_guard
+                .branches
+                .iter()
+                .find(|br| br.id == nest.branch_id)
+            {
                 let nest_pos = self.world_to_screen(b.point_at(nest.t), offset_x);
                 let nest_col = [0.65, 0.52, 0.35, 0.95];
 
@@ -659,7 +663,10 @@ impl LivingRookeryScene {
                     // Hatched chicks in nest!
                     self.push_glyph(
                         'v',
-                        [nest_pos[0] - 3.5 * tree_scale, nest_pos[1] - 4.0 * tree_scale],
+                        [
+                            nest_pos[0] - 3.5 * tree_scale,
+                            nest_pos[1] - 4.0 * tree_scale,
+                        ],
                         [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
                         0.0,
                         0.07,
@@ -669,7 +676,10 @@ impl LivingRookeryScene {
                     if nest.chicks_count > 1 {
                         self.push_glyph(
                             'v',
-                            [nest_pos[0] + 3.5 * tree_scale, nest_pos[1] - 4.0 * tree_scale],
+                            [
+                                nest_pos[0] + 3.5 * tree_scale,
+                                nest_pos[1] - 4.0 * tree_scale,
+                            ],
                             [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
                             0.0,
                             0.07,
@@ -692,7 +702,10 @@ impl LivingRookeryScene {
                     if nest.eggs_count > 1 {
                         self.push_glyph(
                             'o',
-                            [nest_pos[0] - 4.0 * tree_scale, nest_pos[1] - 1.5 * tree_scale],
+                            [
+                                nest_pos[0] - 4.0 * tree_scale,
+                                nest_pos[1] - 1.5 * tree_scale,
+                            ],
                             [base_glyph_size[0] * 0.6, base_glyph_size[1] * 0.6],
                             0.0,
                             0.07,
@@ -703,7 +716,10 @@ impl LivingRookeryScene {
                     if nest.eggs_count > 2 {
                         self.push_glyph(
                             'o',
-                            [nest_pos[0] + 4.0 * tree_scale, nest_pos[1] - 1.5 * tree_scale],
+                            [
+                                nest_pos[0] + 4.0 * tree_scale,
+                                nest_pos[1] - 1.5 * tree_scale,
+                            ],
                             [base_glyph_size[0] * 0.6, base_glyph_size[1] * 0.6],
                             0.0,
                             0.07,
@@ -759,8 +775,8 @@ impl LivingRookeryScene {
                 BirdSpecies::Robin => [0.95, 0.45, 0.30, 0.95], // warm scarlet robin
                 BirdSpecies::EmeraldDove => [0.35, 0.85, 0.65, 0.95], // emerald dove
                 BirdSpecies::CelestialRaven => [0.75, 0.45, 0.98, 0.98], // shimmering celestial violet-cyan
-                BirdSpecies::RubyTanager => [0.98, 0.26, 0.32, 0.98], // radiant ruby scarlet
-                BirdSpecies::SnowyOwl => [0.95, 0.96, 1.0, 0.98], // luminous snowy owl
+                BirdSpecies::RubyTanager => [0.98, 0.26, 0.32, 0.98],    // radiant ruby scarlet
+                BirdSpecies::SnowyOwl => [0.95, 0.96, 1.0, 0.98],        // luminous snowy owl
             };
 
             let b_scale = bird.size_scale * tree_scale;
@@ -853,7 +869,11 @@ impl LivingRookeryScene {
 
                     // If carrying twig while in flight, show twig clamped in beak
                     if matches!(bird.state, BirdState::CarryingTwig { .. }) {
-                        let beak_ox = if bird.facing_left { -span - 4.0 } else { span + 4.0 };
+                        let beak_ox = if bird.facing_left {
+                            -span - 4.0
+                        } else {
+                            span + 4.0
+                        };
                         self.push_glyph(
                             '-',
                             [screen_pos[0] + beak_ox, screen_pos[1] + 2.0],
@@ -1135,7 +1155,11 @@ impl LivingRookeryScene {
 
         // Dropped Snacks on branches
         for snack in &world_guard.snacks {
-            if let Some(b) = world_guard.branches.iter().find(|br| br.id == snack.branch_id) {
+            if let Some(b) = world_guard
+                .branches
+                .iter()
+                .find(|br| br.id == snack.branch_id)
+            {
                 let sn_pos = self.world_to_screen(b.point_at(snack.t), offset_x);
                 let (snack_char, snack_col) = match snack.snack_type {
                     SnackType::Seeds => ('.', [0.95, 0.85, 0.35, 0.95]),
@@ -1263,12 +1287,12 @@ impl Scene for LivingRookeryScene {
             if input.interactive {
                 if let Some(sp) = input.pointer {
                     // Right-click: immediate branch pruning
-                    if input.action == PointerAction::RightClick {
-                        if let Some(pw) = pointer_world {
-                            w.prune_nearest(pw, 80.0);
-                            if let Some(ref a) = self.audio {
-                                a.play_sfx(crate::audio::SoundEffect::Prune);
-                            }
+                    if input.action == PointerAction::RightClick
+                        && let Some(pw) = pointer_world
+                    {
+                        w.prune_nearest(pw, 80.0);
+                        if let Some(ref a) = self.audio {
+                            a.play_sfx(crate::audio::SoundEffect::Prune);
                         }
                     }
 
@@ -1300,25 +1324,25 @@ impl Scene for LivingRookeryScene {
 
                 // Left mouse button released: if wasn't dragging, execute click interaction
                 if !input.left_held && self.drag_start_screen.is_some() {
-                    if !self.is_dragging_panning {
-                        if let Some(pw) = pointer_world {
-                            if pw[1] >= 720.0 {
-                                w.plant_seed(pw);
-                                if let Some(ref a) = self.audio {
-                                    a.play_sfx(crate::audio::SoundEffect::PlantSeed);
-                                }
-                            } else {
-                                // Cycle snack variety: Seeds, Sweet Berries (attracting Ruby Tanagers), Star Nectar (attracting Celestial Ravens)
-                                let snack_type = match self.snack_click_count % 3 {
-                                    0 => SnackType::Seeds,
-                                    1 => SnackType::SweetBerries,
-                                    _ => SnackType::StarNectar,
-                                };
-                                self.snack_click_count += 1;
-                                w.drop_snack_typed(pw, snack_type);
-                                if let Some(ref a) = self.audio {
-                                    a.play_sfx(crate::audio::SoundEffect::BirdChirp);
-                                }
+                    if !self.is_dragging_panning
+                        && let Some(pw) = pointer_world
+                    {
+                        if pw[1] >= 720.0 {
+                            w.plant_seed(pw);
+                            if let Some(ref a) = self.audio {
+                                a.play_sfx(crate::audio::SoundEffect::PlantSeed);
+                            }
+                        } else {
+                            // Cycle snack variety: Seeds, Sweet Berries (attracting Ruby Tanagers), Star Nectar (attracting Celestial Ravens)
+                            let snack_type = match self.snack_click_count % 3 {
+                                0 => SnackType::Seeds,
+                                1 => SnackType::SweetBerries,
+                                _ => SnackType::StarNectar,
+                            };
+                            self.snack_click_count += 1;
+                            w.drop_snack_typed(pw, snack_type);
+                            if let Some(ref a) = self.audio {
+                                a.play_sfx(crate::audio::SoundEffect::BirdChirp);
                             }
                         }
                     }

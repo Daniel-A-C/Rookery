@@ -139,7 +139,10 @@ pub enum BirdSpecies {
 
 impl BirdSpecies {
     pub fn is_rare(&self) -> bool {
-        matches!(self, Self::CelestialRaven | Self::RubyTanager | Self::SnowyOwl)
+        matches!(
+            self,
+            Self::CelestialRaven | Self::RubyTanager | Self::SnowyOwl
+        )
     }
 
     pub fn display_name(&self) -> &'static str {
@@ -713,7 +716,9 @@ impl WorldState {
             let candidates: Vec<u32> = self
                 .branches
                 .iter()
-                .filter(|b| b.growth_progress >= 0.85 && b.depth >= 1 && b.depth <= 3 && !b.has_nest)
+                .filter(|b| {
+                    b.growth_progress >= 0.85 && b.depth >= 1 && b.depth <= 3 && !b.has_nest
+                })
                 .map(|b| b.id)
                 .collect();
             if !candidates.is_empty() {
@@ -892,7 +897,9 @@ impl WorldState {
                     if *remaining_secs <= 0.0 {
                         // Check if an incomplete nest needs twigs
                         let incomplete_nest = self.nests.iter().find(|n| n.progress < 1.0);
-                        if let Some(nest) = incomplete_nest && self.rng.f32() < 0.45 {
+                        if let Some(nest) = incomplete_nest
+                            && self.rng.f32() < 0.45
+                        {
                             next_state = Some(BirdState::GatheringTwig {
                                 branch_id: *branch_id,
                                 t: *t,
@@ -1011,29 +1018,27 @@ impl WorldState {
                         bird.pos = b.point_at(n.t);
                     }
                     if *remaining_secs <= 0.0 {
-                        if let Some(nest) = self.nests.iter_mut().find(|n| n.id == target_nest_id) {
-                            if nest.eggs_count > 0 && nest.chicks_count == 0 {
-                                let hatched = nest.eggs_count.min(2);
-                                nest.chicks_count = hatched;
-                                nest.eggs_count = 0;
-                                self.stats.chicks_hatched += hatched as u32;
+                        if let Some(nest) = self.nests.iter_mut().find(|n| n.id == target_nest_id)
+                            && nest.eggs_count > 0
+                            && nest.chicks_count == 0
+                        {
+                            let hatched = nest.eggs_count.min(2);
+                            nest.chicks_count = hatched;
+                            nest.eggs_count = 0;
+                            self.stats.chicks_hatched += hatched as u32;
 
-                                for _ in 0..2 {
-                                    new_notes.push(FloatingNote {
-                                        pos: [
-                                            bird.pos[0] + self.rng.range(-4.0, 4.0),
-                                            bird.pos[1] - 8.0,
-                                        ],
-                                        vel: [
-                                            self.rng.range(-12.0, 12.0),
-                                            -self.rng.range(18.0, 30.0),
-                                        ],
-                                        glyph: '♥',
-                                        life: 0.0,
-                                        max_life: 2.5,
-                                        color_idx: 0,
-                                    });
-                                }
+                            for _ in 0..2 {
+                                new_notes.push(FloatingNote {
+                                    pos: [
+                                        bird.pos[0] + self.rng.range(-4.0, 4.0),
+                                        bird.pos[1] - 8.0,
+                                    ],
+                                    vel: [self.rng.range(-12.0, 12.0), -self.rng.range(18.0, 30.0)],
+                                    glyph: '♥',
+                                    life: 0.0,
+                                    max_life: 2.5,
+                                    color_idx: 0,
+                                });
                             }
                         }
                         let tx = self.rng.range(150.0, 850.0);
@@ -1138,7 +1143,11 @@ impl WorldState {
                 },
                 sing_timer: self.rng.range(5.0, 15.0),
                 wing_phase: 0.0,
-                size_scale: if species == BirdSpecies::SnowyOwl { 1.35 } else { 1.0 },
+                size_scale: if species == BirdSpecies::SnowyOwl {
+                    1.35
+                } else {
+                    1.0
+                },
             });
         }
 
@@ -1679,11 +1688,21 @@ mod tests {
         assert_eq!(world.snacks.len(), 1);
         assert_eq!(world.snacks[0].snack_type, SnackType::SweetBerries);
         assert!(world.birds.len() > initial_birds);
-        assert!(world.birds.iter().any(|b| b.species == BirdSpecies::RubyTanager));
+        assert!(
+            world
+                .birds
+                .iter()
+                .any(|b| b.species == BirdSpecies::RubyTanager)
+        );
 
         // Dropping star nectar attracts Celestial Raven
         world.drop_snack_typed([500.0, 680.0], SnackType::StarNectar);
-        assert!(world.birds.iter().any(|b| b.species == BirdSpecies::CelestialRaven));
+        assert!(
+            world
+                .birds
+                .iter()
+                .any(|b| b.species == BirdSpecies::CelestialRaven)
+        );
     }
 
     #[test]
