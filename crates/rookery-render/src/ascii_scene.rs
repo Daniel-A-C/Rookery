@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
-use rookery_core::world::{BirdSpecies, BirdState, WorldState};
+use rookery_core::world::{BirdSpecies, BirdState, SnackType, WorldState};
 use wgpu::util::DeviceExt;
 
 use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
@@ -76,6 +76,12 @@ pub struct LivingRookeryScene {
     _atlas_texture: wgpu::Texture,
     _atlas_view: wgpu::TextureView,
     pub audio: Option<crate::audio::AudioEngine>,
+
+    drag_start_screen: Option<Pointer>,
+    last_screen_pointer: Option<Pointer>,
+    is_dragging_panning: bool,
+    drag_distance_accum: f32,
+    snack_click_count: u32,
 }
 
 impl LivingRookeryScene {
@@ -337,6 +343,11 @@ impl LivingRookeryScene {
             _atlas_texture,
             _atlas_view,
             audio: None,
+            drag_start_screen: None,
+            last_screen_pointer: None,
+            is_dragging_panning: false,
+            drag_distance_accum: 0.0,
+            snack_click_count: 0,
         }
     }
 
@@ -408,7 +419,7 @@ impl LivingRookeryScene {
         let tree_scale = (self.height / 900.0).clamp(0.6, 2.0);
         let base_glyph_size = [12.0 * tree_scale, 20.0 * tree_scale];
 
-        // 1. Draw Tree Branches
+        // 1. Draw Tree Branches with Multi-Column Bark Textures & Base Buttress Roots
         for branch in &world_guard.branches {
             let start = self.world_to_screen(branch.start, offset_x);
             let current_end_world = branch.current_end();
@@ -417,7 +428,7 @@ impl LivingRookeryScene {
             let dx = end[0] - start[0];
             let dy = end[1] - start[1];
             let len = (dx * dx + dy * dy).sqrt();
-            let steps = (len / (base_glyph_size[1] * 0.55)).ceil().max(1.0) as usize;
+            let steps = (len / (base_glyph_size[1] * 0.52)).ceil().max(1.0) as usize;
 
             // Character choice based on angle and depth
             let angle_deg = branch.angle.to_degrees();
@@ -444,12 +455,20 @@ impl LivingRookeryScene {
                 [0.45, 0.50, 0.35, 0.85] // twig green-brown
             };
 
+            // Perpendicular unit vector for multi-column bark widths
+            let perp = if len > 0.01 {
+                [-dy / len, dx / len]
+            } else {
+                [1.0, 0.0]
+            };
+
             for s in 0..=steps {
                 let t = s as f32 / steps as f32;
                 let px = start[0] + dx * t;
                 let py = start[1] + dy * t;
                 let glyph_scale = (branch.thickness / 8.0).clamp(1.0, 2.6);
 
+                // Center trunk/branch spine
                 self.push_glyph(
                     branch_char,
                     [px, py],
@@ -463,60 +482,97 @@ impl LivingRookeryScene {
                     branch.sway_factor,
                 );
 
-                // Multi-column trunk reinforcement for sturdy thick trees
+                // Multi-column trunk reinforcement for sturdy thick trees + buttress roots
                 if branch.depth == 0 {
-                    let col_offset = 7.0 * tree_scale;
+                    let col_inner = 7.0 * tree_scale;
+                    let col_outer = 14.0 * tree_scale;
+
+                    // Inner striated columns
                     self.push_glyph(
                         '|',
-                        [px - col_offset, py],
+                        [px - col_inner, py],
                         [base_glyph_size[0] * 0.9, base_glyph_size[1]],
-                        branch.angle * 0.4,
+                        branch.angle * 0.3,
                         0.05,
                         [0.42, 0.32, 0.22, 0.90],
                         branch.sway_factor,
                     );
                     self.push_glyph(
                         '|',
-                        [px + col_offset, py],
+                        [px + col_inner, py],
                         [base_glyph_size[0] * 0.9, base_glyph_size[1]],
-                        branch.angle * 0.4,
+                        branch.angle * 0.3,
                         0.05,
                         [0.42, 0.32, 0.22, 0.90],
+                        branch.sway_factor,
+                    );
+
+                    // Outer bark columns
+                    self.push_glyph(
+                        '!',
+                        [px - col_outer, py],
+                        [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.95],
+                        branch.angle * 0.2,
+                        0.05,
+                        [0.38, 0.28, 0.18, 0.85],
+                        branch.sway_factor,
+                    );
+                    self.push_glyph(
+                        '!',
+                        [px + col_outer, py],
+                        [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.95],
+                        branch.angle * 0.2,
+                        0.05,
+                        [0.38, 0.28, 0.18, 0.85],
+                        branch.sway_factor,
+                    );
+
+                    // Root buttress flare near the soil bed (t in [0.65, 1.0])
+                    if t > 0.65 {
+                        let flare = ((t - 0.65) / 0.35) * 18.0 * tree_scale;
+                        let root_moss_col = [0.35, 0.42, 0.25, 0.92];
+                        self.push_glyph(
+                            '/',
+                            [px - col_outer - flare, py],
+                            [base_glyph_size[0] * 0.85, base_glyph_size[1]],
+                            -0.25,
+                            0.04,
+                            root_moss_col,
+                            branch.sway_factor * 0.5,
+                        );
+                        self.push_glyph(
+                            '\\',
+                            [px + col_outer + flare, py],
+                            [base_glyph_size[0] * 0.85, base_glyph_size[1]],
+                            0.25,
+                            0.04,
+                            root_moss_col,
+                            branch.sway_factor * 0.5,
+                        );
+                    }
+                } else if branch.depth == 1 || branch.thickness >= 7.0 {
+                    // Primary branch multi-column bark textures
+                    let p_off = (branch.thickness * 0.38).clamp(3.5, 7.5) * tree_scale;
+                    let side_col = [0.46, 0.35, 0.24, 0.85];
+                    self.push_glyph(
+                        if branch_char == '#' { '|' } else { branch_char },
+                        [px - perp[0] * p_off, py - perp[1] * p_off],
+                        [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.85],
+                        branch.angle * 0.4,
+                        branch.depth as f32 * 0.1,
+                        side_col,
+                        branch.sway_factor,
+                    );
+                    self.push_glyph(
+                        if branch_char == '#' { '|' } else { branch_char },
+                        [px + perp[0] * p_off, py + perp[1] * p_off],
+                        [base_glyph_size[0] * 0.8, base_glyph_size[1] * 0.85],
+                        branch.angle * 0.4,
+                        branch.depth as f32 * 0.1,
+                        side_col,
                         branch.sway_factor,
                     );
                 }
-            }
-
-            // Draw nest if present on this branch
-            if branch.has_nest {
-                let nest_pos = self.world_to_screen(branch.point_at(0.4), offset_x);
-                self.push_glyph(
-                    '\\',
-                    [nest_pos[0] - 8.0, nest_pos[1]],
-                    base_glyph_size,
-                    0.0,
-                    0.05,
-                    [0.65, 0.52, 0.35, 0.95],
-                    branch.sway_factor,
-                );
-                self.push_glyph(
-                    '=',
-                    [nest_pos[0], nest_pos[1] + 2.0],
-                    base_glyph_size,
-                    0.0,
-                    0.05,
-                    [0.65, 0.52, 0.35, 0.95],
-                    branch.sway_factor,
-                );
-                self.push_glyph(
-                    '/',
-                    [nest_pos[0] + 8.0, nest_pos[1]],
-                    base_glyph_size,
-                    0.0,
-                    0.05,
-                    [0.65, 0.52, 0.35, 0.95],
-                    branch.sway_factor,
-                );
             }
 
             // 2. Draw Foliage along branch
@@ -553,7 +609,147 @@ impl LivingRookeryScene {
             }
         }
 
-        // 3. Draw Autonomous Birds
+        // 3. Draw Nests, Building Twigs, Eggs & Chicks
+        for nest in &world_guard.nests {
+            if let Some(b) = world_guard.branches.iter().find(|br| br.id == nest.branch_id) {
+                let nest_pos = self.world_to_screen(b.point_at(nest.t), offset_x);
+                let nest_col = [0.65, 0.52, 0.35, 0.95];
+
+                // Nest bowl
+                self.push_glyph(
+                    '\\',
+                    [nest_pos[0] - 8.0 * tree_scale, nest_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.06,
+                    nest_col,
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    '=',
+                    [nest_pos[0], nest_pos[1] + 2.0 * tree_scale],
+                    base_glyph_size,
+                    0.0,
+                    0.06,
+                    nest_col,
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    '/',
+                    [nest_pos[0] + 8.0 * tree_scale, nest_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.06,
+                    nest_col,
+                    b.sway_factor,
+                );
+
+                // Twig weaving progress or inhabitants
+                if nest.progress < 1.0 {
+                    self.push_glyph(
+                        '~',
+                        [nest_pos[0], nest_pos[1] - 3.0 * tree_scale],
+                        [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                        0.0,
+                        0.07,
+                        [0.55, 0.45, 0.30, 0.85],
+                        b.sway_factor,
+                    );
+                } else if nest.chicks_count > 0 {
+                    // Hatched chicks in nest!
+                    self.push_glyph(
+                        'v',
+                        [nest_pos[0] - 3.5 * tree_scale, nest_pos[1] - 4.0 * tree_scale],
+                        [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                        0.0,
+                        0.07,
+                        [0.98, 0.88, 0.30, 0.95],
+                        b.sway_factor,
+                    );
+                    if nest.chicks_count > 1 {
+                        self.push_glyph(
+                            'v',
+                            [nest_pos[0] + 3.5 * tree_scale, nest_pos[1] - 4.0 * tree_scale],
+                            [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                            0.0,
+                            0.07,
+                            [0.98, 0.88, 0.30, 0.95],
+                            b.sway_factor,
+                        );
+                    }
+                } else if nest.eggs_count > 0 {
+                    // Eggs resting in nest
+                    let egg_col = [0.95, 0.95, 0.90, 0.95];
+                    self.push_glyph(
+                        'o',
+                        [nest_pos[0], nest_pos[1] - 2.5 * tree_scale],
+                        [base_glyph_size[0] * 0.65, base_glyph_size[1] * 0.65],
+                        0.0,
+                        0.07,
+                        egg_col,
+                        b.sway_factor,
+                    );
+                    if nest.eggs_count > 1 {
+                        self.push_glyph(
+                            'o',
+                            [nest_pos[0] - 4.0 * tree_scale, nest_pos[1] - 1.5 * tree_scale],
+                            [base_glyph_size[0] * 0.6, base_glyph_size[1] * 0.6],
+                            0.0,
+                            0.07,
+                            egg_col,
+                            b.sway_factor,
+                        );
+                    }
+                    if nest.eggs_count > 2 {
+                        self.push_glyph(
+                            'o',
+                            [nest_pos[0] + 4.0 * tree_scale, nest_pos[1] - 1.5 * tree_scale],
+                            [base_glyph_size[0] * 0.6, base_glyph_size[1] * 0.6],
+                            0.0,
+                            0.07,
+                            egg_col,
+                            b.sway_factor,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Legacy branch.has_nest support if nest entity was pruned
+        for branch in &world_guard.branches {
+            if branch.has_nest && !world_guard.nests.iter().any(|n| n.branch_id == branch.id) {
+                let nest_pos = self.world_to_screen(branch.point_at(0.4), offset_x);
+                self.push_glyph(
+                    '\\',
+                    [nest_pos[0] - 8.0, nest_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.05,
+                    [0.65, 0.52, 0.35, 0.95],
+                    branch.sway_factor,
+                );
+                self.push_glyph(
+                    '=',
+                    [nest_pos[0], nest_pos[1] + 2.0],
+                    base_glyph_size,
+                    0.0,
+                    0.05,
+                    [0.65, 0.52, 0.35, 0.95],
+                    branch.sway_factor,
+                );
+                self.push_glyph(
+                    '/',
+                    [nest_pos[0] + 8.0, nest_pos[1]],
+                    base_glyph_size,
+                    0.0,
+                    0.05,
+                    [0.65, 0.52, 0.35, 0.95],
+                    branch.sway_factor,
+                );
+            }
+        }
+
+        // 4. Draw Autonomous Birds
         for bird in &world_guard.birds {
             let screen_pos = self.world_to_screen(bird.pos, offset_x);
             let bird_color = match bird.species {
@@ -562,13 +758,21 @@ impl LivingRookeryScene {
                 BirdSpecies::Goldfinch => [0.98, 0.82, 0.25, 0.95], // bright goldfinch
                 BirdSpecies::Robin => [0.95, 0.45, 0.30, 0.95], // warm scarlet robin
                 BirdSpecies::EmeraldDove => [0.35, 0.85, 0.65, 0.95], // emerald dove
+                BirdSpecies::CelestialRaven => [0.75, 0.45, 0.98, 0.98], // shimmering celestial violet-cyan
+                BirdSpecies::RubyTanager => [0.98, 0.26, 0.32, 0.98], // radiant ruby scarlet
+                BirdSpecies::SnowyOwl => [0.95, 0.96, 1.0, 0.98], // luminous snowy owl
             };
 
             let b_scale = bird.size_scale * tree_scale;
             let b_size = [base_glyph_size[0] * b_scale, base_glyph_size[1] * b_scale];
 
             match &bird.state {
-                BirdState::Perched { .. } | BirdState::Feeding { .. } => {
+                BirdState::Perched { .. }
+                | BirdState::Feeding { .. }
+                | BirdState::GatheringTwig { .. }
+                | BirdState::BuildingNest { .. }
+                | BirdState::BroodingEggs { .. }
+                | BirdState::Bathing { .. } => {
                     // Perched resting bird: head, body, tail
                     let head_char = if bird.facing_left { '<' } else { '>' };
                     let body_char = 'o';
@@ -598,9 +802,23 @@ impl LivingRookeryScene {
                         bird_color,
                         0.0,
                     );
+
+                    // If gathering twig, show twig in beak
+                    if matches!(bird.state, BirdState::GatheringTwig { .. }) {
+                        self.push_glyph(
+                            '_',
+                            [screen_pos[0] + ox * 1.5, screen_pos[1] - 2.0],
+                            [b_size[0] * 0.8, b_size[1] * 0.8],
+                            0.0,
+                            0.21,
+                            [0.60, 0.45, 0.30, 0.95],
+                            0.0,
+                        );
+                    }
                 }
                 BirdState::Flying { .. }
                 | BirdState::Circling { .. }
+                | BirdState::CarryingTwig { .. }
                 | BirdState::Startled { .. } => {
                     // Flying animated bird: flapping wings based on wing_phase
                     let flap = bird.wing_phase.sin();
@@ -632,11 +850,25 @@ impl LivingRookeryScene {
                         bird_color,
                         0.0,
                     );
+
+                    // If carrying twig while in flight, show twig clamped in beak
+                    if matches!(bird.state, BirdState::CarryingTwig { .. }) {
+                        let beak_ox = if bird.facing_left { -span - 4.0 } else { span + 4.0 };
+                        self.push_glyph(
+                            '-',
+                            [screen_pos[0] + beak_ox, screen_pos[1] + 2.0],
+                            [b_size[0] * 0.8, b_size[1] * 0.8],
+                            0.0,
+                            0.21,
+                            [0.65, 0.50, 0.32, 0.95],
+                            0.0,
+                        );
+                    }
                 }
             }
         }
 
-        // 4. Draw Floating Musical Notes
+        // 5. Draw Floating Musical Notes
         for note in &world_guard.notes {
             let screen_pos = self.world_to_screen(note.pos, offset_x);
             let alpha = (1.0 - (note.life / note.max_life)).clamp(0.0, 1.0);
@@ -656,7 +888,7 @@ impl LivingRookeryScene {
             );
         }
 
-        // 5. Draw Falling Pruning Chips
+        // 6. Draw Falling Pruning Chips
         for chip in &world_guard.chips {
             let screen_pos = self.world_to_screen(chip.pos, offset_x);
             let alpha = (1.0 - (chip.life / chip.max_life)).clamp(0.0, 1.0);
@@ -671,7 +903,7 @@ impl LivingRookeryScene {
             );
         }
 
-        // 6. Draw Birdhouses on mature branches
+        // 7. Draw Birdhouses on mature branches
         for house in &world_guard.houses {
             if let Some(b) = world_guard
                 .branches
@@ -728,19 +960,216 @@ impl LivingRookeryScene {
             }
         }
 
-        // 7. Draw Planted Marker Signs
+        // 8. Draw Forest Micro-Infrastructure (Lanterns, Bird Baths, Resting Perches, Snacks)
+        // Lanterns
+        for lantern in &world_guard.lanterns {
+            if let Some(b) = world_guard
+                .branches
+                .iter()
+                .find(|br| br.id == lantern.branch_id)
+            {
+                let l_pos = self.world_to_screen(b.point_at(lantern.t), offset_x);
+                // Wire/chain
+                self.push_glyph(
+                    '|',
+                    [l_pos[0], l_pos[1] + 6.0 * tree_scale],
+                    [base_glyph_size[0] * 0.7, base_glyph_size[1] * 0.7],
+                    0.0,
+                    0.07,
+                    [0.55, 0.48, 0.35, 0.90],
+                    b.sway_factor,
+                );
+                // Lantern housing
+                self.push_glyph(
+                    '[',
+                    [l_pos[0] - 5.0 * tree_scale, l_pos[1] + 14.0 * tree_scale],
+                    [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                    0.0,
+                    0.07,
+                    [0.85, 0.65, 0.30, 0.95],
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    'o',
+                    [l_pos[0], l_pos[1] + 14.0 * tree_scale],
+                    [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                    0.0,
+                    0.07,
+                    [1.0, 0.92, 0.50, 0.98],
+                    b.sway_factor,
+                );
+                self.push_glyph(
+                    ']',
+                    [l_pos[0] + 5.0 * tree_scale, l_pos[1] + 14.0 * tree_scale],
+                    [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                    0.0,
+                    0.07,
+                    [0.85, 0.65, 0.30, 0.95],
+                    b.sway_factor,
+                );
+                // Warm ambient light halo
+                self.push_glyph(
+                    '*',
+                    [l_pos[0], l_pos[1] + 14.0 * tree_scale],
+                    [base_glyph_size[0] * 1.5, base_glyph_size[1] * 1.5],
+                    0.0,
+                    0.06,
+                    [1.0, 0.85, 0.40, 0.45],
+                    b.sway_factor,
+                );
+            }
+        }
+
+        // Bird Baths
+        for bath in &world_guard.bird_baths {
+            let bb_pos = self.world_to_screen(bath.pos, offset_x);
+            let stone_col = [0.65, 0.68, 0.72, 0.95];
+            let water_col = [0.35, 0.78, 0.96, 0.90];
+
+            // Pedestal
+            self.push_glyph(
+                '|',
+                [bb_pos[0], bb_pos[1] + 8.0 * tree_scale],
+                base_glyph_size,
+                0.0,
+                0.02,
+                stone_col,
+                0.0,
+            );
+            // Basin and rippling water
+            self.push_glyph(
+                '(',
+                [bb_pos[0] - 10.0 * tree_scale, bb_pos[1]],
+                base_glyph_size,
+                0.0,
+                0.02,
+                stone_col,
+                0.0,
+            );
+            self.push_glyph(
+                '~',
+                [bb_pos[0], bb_pos[1] - 1.0 * tree_scale],
+                base_glyph_size,
+                0.0,
+                0.03,
+                water_col,
+                0.0,
+            );
+            self.push_glyph(
+                ')',
+                [bb_pos[0] + 10.0 * tree_scale, bb_pos[1]],
+                base_glyph_size,
+                0.0,
+                0.02,
+                stone_col,
+                0.0,
+            );
+
+            // Water splashing droplets if bird was bathing recently
+            if bath.splash_timer > 0.0 {
+                self.push_glyph(
+                    '.',
+                    [bb_pos[0] - 6.0 * tree_scale, bb_pos[1] - 8.0 * tree_scale],
+                    base_glyph_size,
+                    0.0,
+                    0.04,
+                    water_col,
+                    0.0,
+                );
+                self.push_glyph(
+                    '\'',
+                    [bb_pos[0] + 6.0 * tree_scale, bb_pos[1] - 10.0 * tree_scale],
+                    base_glyph_size,
+                    0.0,
+                    0.04,
+                    water_col,
+                    0.0,
+                );
+            }
+        }
+
+        // Resting Perches
+        for perch in &world_guard.perches {
+            let p_pos = self.world_to_screen(perch.pos, offset_x);
+            let timber_col = [0.58, 0.44, 0.30, 0.95];
+
+            // Post
+            self.push_glyph(
+                '|',
+                [p_pos[0], p_pos[1] + 9.0 * tree_scale],
+                base_glyph_size,
+                0.0,
+                0.02,
+                timber_col,
+                0.0,
+            );
+            // Crossbeam
+            self.push_glyph(
+                '[',
+                [p_pos[0] - 12.0 * tree_scale, p_pos[1]],
+                base_glyph_size,
+                0.0,
+                0.02,
+                timber_col,
+                0.0,
+            );
+            self.push_glyph(
+                '=',
+                [p_pos[0], p_pos[1]],
+                base_glyph_size,
+                0.0,
+                0.02,
+                timber_col,
+                0.0,
+            );
+            self.push_glyph(
+                ']',
+                [p_pos[0] + 12.0 * tree_scale, p_pos[1]],
+                base_glyph_size,
+                0.0,
+                0.02,
+                timber_col,
+                0.0,
+            );
+        }
+
+        // Dropped Snacks on branches
+        for snack in &world_guard.snacks {
+            if let Some(b) = world_guard.branches.iter().find(|br| br.id == snack.branch_id) {
+                let sn_pos = self.world_to_screen(b.point_at(snack.t), offset_x);
+                let (snack_char, snack_col) = match snack.snack_type {
+                    SnackType::Seeds => ('.', [0.95, 0.85, 0.35, 0.95]),
+                    SnackType::SweetBerries => ('8', [0.98, 0.28, 0.35, 0.95]),
+                    SnackType::StarNectar => ('*', [0.70, 0.88, 1.0, 0.98]),
+                };
+                self.push_glyph(
+                    snack_char,
+                    [sn_pos[0], sn_pos[1] - 4.0 * tree_scale],
+                    [base_glyph_size[0] * 0.9, base_glyph_size[1] * 0.9],
+                    0.0,
+                    0.08,
+                    snack_col,
+                    b.sway_factor,
+                );
+            }
+        }
+
+        // 9. Draw Commemorative Planted Marker Signs & Lineage Inscriptions
         for sign in &world_guard.signs {
             let s_pos = self.world_to_screen(sign.pos, offset_x);
-            let sign_col = [0.68, 0.52, 0.32, 0.92];
+            let sign_col = [0.72, 0.54, 0.32, 0.95];
+
+            // Post
             self.push_glyph(
                 '|',
                 [s_pos[0], s_pos[1] + 8.0 * tree_scale],
                 base_glyph_size,
                 0.0,
                 0.02,
-                [0.45, 0.35, 0.22, 0.95],
+                [0.48, 0.38, 0.24, 0.95],
                 0.0,
             );
+            // Sign badge [ i ]
             self.push_glyph(
                 '[',
                 [s_pos[0] - 6.0 * tree_scale, s_pos[1]],
@@ -756,7 +1185,7 @@ impl LivingRookeryScene {
                 [base_glyph_size[0] * 0.7, base_glyph_size[1] * 0.7],
                 0.0,
                 0.02,
-                [0.95, 0.90, 0.75, 0.95],
+                [0.98, 0.92, 0.75, 0.98],
                 0.0,
             );
             self.push_glyph(
@@ -768,28 +1197,49 @@ impl LivingRookeryScene {
                 sign_col,
                 0.0,
             );
+
+            // Commemorative inscription plaque banner displaying tree lineage and date planted
+            let age_str = sign.age_display(world_guard.total_age_secs);
+            let inscription = format!("{} ({})", sign.label, age_str);
+            let char_step = 7.5 * tree_scale;
+            let start_x = s_pos[0] + 16.0 * tree_scale;
+
+            for (idx, ch) in inscription.chars().enumerate() {
+                self.push_glyph(
+                    ch,
+                    [start_x + (idx as f32) * char_step, s_pos[1]],
+                    [base_glyph_size[0] * 0.65, base_glyph_size[1] * 0.65],
+                    0.0,
+                    0.02,
+                    [0.90, 0.82, 0.62, 0.92],
+                    0.0,
+                );
+            }
         }
 
-        // 8. Forest Floor Moss and Grass Sprouts
+        // 10. Forest Floor Moss, Flora Tufts, Ferns, Clovers, Mushrooms & River Stones
         let ground_y = self.height * 0.90;
-        let tuft_chars = ['"', ',', '.', '\'', '~', '☘'];
-        let tufts_count = 24;
-        for i in 0..tufts_count {
-            let fx = (i as f32 / tufts_count as f32) * self.width;
-            let c = tuft_chars[i % tuft_chars.len()];
-            let moss_col = match i % 3 {
-                0 => [0.28, 0.55, 0.30, 0.75],
-                1 => [0.38, 0.65, 0.35, 0.70],
-                _ => [0.45, 0.40, 0.28, 0.65],
+        let ground_chars = ['"', ',', '.', '\'', '~', '☘', '%', '^', 'o', '*'];
+        let items_count = 48;
+        for i in 0..items_count {
+            let fx = (i as f32 / items_count as f32) * self.width;
+            let c = ground_chars[i % ground_chars.len()];
+            let item_col = match i % 5 {
+                0 => [0.24, 0.68, 0.32, 0.80], // emerald moss
+                1 => [0.38, 0.75, 0.42, 0.75], // lush spring lichen
+                2 => [0.88, 0.32, 0.25, 0.90], // mushroom cap red
+                3 => [0.72, 0.76, 0.80, 0.75], // river stone pebble
+                _ => [0.55, 0.48, 0.32, 0.70], // woodland loam
             };
+            let y_wiggle = ((i as f32 * 1.7).sin() * 2.5) * tree_scale;
             self.push_glyph(
                 c,
-                [fx, ground_y + 2.0 * tree_scale],
-                [base_glyph_size[0] * 0.75, base_glyph_size[1] * 0.75],
+                [fx, ground_y + 2.0 * tree_scale + y_wiggle],
+                [base_glyph_size[0] * 0.72, base_glyph_size[1] * 0.72],
                 0.0,
                 0.01,
-                moss_col,
-                0.05,
+                item_col,
+                0.04,
             );
         }
     }
@@ -810,33 +1260,83 @@ impl Scene for LivingRookeryScene {
         let pointer_world = input.pointer.map(|p| self.screen_to_world(p));
 
         let activity = if let Ok(mut w) = self.world.lock() {
-            if input.interactive
-                && let Some(pw) = pointer_world
-            {
-                match input.action {
-                    PointerAction::LeftClick => {
-                        if pw[1] >= 720.0 {
-                            w.plant_seed(pw);
+            if input.interactive {
+                if let Some(sp) = input.pointer {
+                    // Right-click: immediate branch pruning
+                    if input.action == PointerAction::RightClick {
+                        if let Some(pw) = pointer_world {
+                            w.prune_nearest(pw, 80.0);
                             if let Some(ref a) = self.audio {
-                                a.play_sfx(crate::audio::SoundEffect::PlantSeed);
-                            }
-                        } else {
-                            w.drop_snack(pw);
-                            if let Some(ref a) = self.audio {
-                                a.play_sfx(crate::audio::SoundEffect::BirdChirp);
+                                a.play_sfx(crate::audio::SoundEffect::Prune);
                             }
                         }
                     }
-                    PointerAction::RightClick => {
-                        w.prune_nearest(pw, 80.0);
-                        if let Some(ref a) = self.audio {
-                            a.play_sfx(crate::audio::SoundEffect::Prune);
-                        }
+
+                    // Left-click press: initiate drag tracking
+                    if input.action == PointerAction::LeftClick {
+                        self.drag_start_screen = Some(sp);
+                        self.last_screen_pointer = Some(sp);
+                        self.is_dragging_panning = false;
+                        self.drag_distance_accum = 0.0;
                     }
-                    PointerAction::None => {}
+
+                    // While left mouse button held down: check for horizontal forest drag panning
+                    if input.left_held {
+                        if let Some(last) = self.last_screen_pointer {
+                            let dx = sp.x - last.x;
+                            let dy = sp.y - last.y;
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            self.drag_distance_accum += dist;
+
+                            if self.drag_distance_accum > 7.0 {
+                                self.is_dragging_panning = true;
+                                let pan_scale = 1000.0 / self.width.max(1.0);
+                                w.pan_forest(-dx * pan_scale);
+                            }
+                        }
+                        self.last_screen_pointer = Some(sp);
+                    }
                 }
+
+                // Left mouse button released: if wasn't dragging, execute click interaction
+                if !input.left_held && self.drag_start_screen.is_some() {
+                    if !self.is_dragging_panning {
+                        if let Some(pw) = pointer_world {
+                            if pw[1] >= 720.0 {
+                                w.plant_seed(pw);
+                                if let Some(ref a) = self.audio {
+                                    a.play_sfx(crate::audio::SoundEffect::PlantSeed);
+                                }
+                            } else {
+                                // Cycle snack variety: Seeds, Sweet Berries (attracting Ruby Tanagers), Star Nectar (attracting Celestial Ravens)
+                                let snack_type = match self.snack_click_count % 3 {
+                                    0 => SnackType::Seeds,
+                                    1 => SnackType::SweetBerries,
+                                    _ => SnackType::StarNectar,
+                                };
+                                self.snack_click_count += 1;
+                                w.drop_snack_typed(pw, snack_type);
+                                if let Some(ref a) = self.audio {
+                                    a.play_sfx(crate::audio::SoundEffect::BirdChirp);
+                                }
+                            }
+                        }
+                    }
+                    self.drag_start_screen = None;
+                    self.last_screen_pointer = None;
+                    self.is_dragging_panning = false;
+                }
+            } else {
+                self.drag_start_screen = None;
+                self.last_screen_pointer = None;
+                self.is_dragging_panning = false;
             }
-            w.update(dt_secs, input.interactive, pointer_world)
+
+            let mut act = w.update(dt_secs, input.interactive, pointer_world);
+            if self.is_dragging_panning {
+                act = Activity::Animating;
+            }
+            act
         } else {
             Activity::Idle
         };

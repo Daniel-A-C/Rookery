@@ -33,8 +33,8 @@ pub use nebula::{
 pub use orbital::{ConstructionFocus, OrbitalHavenState, OrbitalHavenStats, Shuttle, ShuttleState};
 pub use settings::{AudioSettings, Settings};
 pub use world::{
-    Bird, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, PlantSign, WORLD_STATE_FILE_NAME,
-    WorldRng, WorldState, WorldStats,
+    Bird, BirdBath, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, Lantern, Nest, Perch,
+    PlantSign, Snack, SnackType, WORLD_STATE_FILE_NAME, WorldRng, WorldState, WorldStats,
 };
 
 /// A scene's hint to the governor about how much motion it currently has.

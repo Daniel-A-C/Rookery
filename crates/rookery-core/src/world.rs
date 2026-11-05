@@ -129,6 +129,31 @@ pub enum BirdSpecies {
     Robin,
     /// Emerald / Sage Dove.
     EmeraldDove,
+    /// Ethereal shimmering violet-cyan Celestial Raven (attracted by Star Nectar).
+    CelestialRaven,
+    /// Radiant crimson-and-gold Ruby Tanager (attracted by Sweet Berries).
+    RubyTanager,
+    /// Ghostly luminous silver-white Snowy Owl (rare majestic forest guardian).
+    SnowyOwl,
+}
+
+impl BirdSpecies {
+    pub fn is_rare(&self) -> bool {
+        matches!(self, Self::CelestialRaven | Self::RubyTanager | Self::SnowyOwl)
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Rook => "Rook",
+            Self::AzureJay => "Azure Jay",
+            Self::Goldfinch => "Goldfinch",
+            Self::Robin => "Scarlet Robin",
+            Self::EmeraldDove => "Emerald Dove",
+            Self::CelestialRaven => "Celestial Raven",
+            Self::RubyTanager => "Ruby Tanager",
+            Self::SnowyOwl => "Snowy Owl",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -157,6 +182,28 @@ pub enum BirdState {
         remaining_secs: f32,
         dir: [f32; 2],
     },
+    GatheringTwig {
+        branch_id: u32,
+        t: f32,
+        remaining_secs: f32,
+        target_nest_id: u32,
+    },
+    CarryingTwig {
+        target_nest_id: u32,
+        speed: f32,
+    },
+    BuildingNest {
+        nest_id: u32,
+        remaining_secs: f32,
+    },
+    BroodingEggs {
+        nest_id: u32,
+        remaining_secs: f32,
+    },
+    Bathing {
+        bath_id: u32,
+        remaining_secs: f32,
+    },
 }
 
 /// An autonomous procedural bird in the world.
@@ -173,12 +220,26 @@ pub struct Bird {
     pub size_scale: f32,
 }
 
+/// Snack variety dropped to feed birds and attract rare species.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SnackType {
+    /// Golden birdseed mix for local songbirds.
+    #[default]
+    Seeds,
+    /// Wild forest berries, highly appealing to Ruby Tanagers.
+    SweetBerries,
+    /// Shimmering starlight nectar, attracting Celestial Ravens.
+    StarNectar,
+}
+
 /// A snack / birdseed dropped by the user on a branch.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Snack {
     pub branch_id: u32,
     pub t: f32,
     pub servings_left: u32,
+    #[serde(default)]
+    pub snack_type: SnackType,
 }
 
 /// Floating musical note emitted when birds sing.
@@ -212,6 +273,27 @@ pub struct PlantSign {
     pub pos: [f32; 2],
     pub planted_age_secs: f64,
     pub label: String,
+    #[serde(default)]
+    pub lineage_gen: u32,
+}
+
+impl PlantSign {
+    /// Format sign age relative to world time.
+    pub fn age_display(&self, current_total_age: f64) -> String {
+        let age_secs = (current_total_age - self.planted_age_secs).max(0.0);
+        if age_secs < 60.0 {
+            format!("{:.0}s old", age_secs)
+        } else if age_secs < 3600.0 {
+            format!("{:.0}m old", age_secs / 60.0)
+        } else if age_secs < 86400.0 {
+            let hours = (age_secs / 3600.0).floor();
+            let mins = ((age_secs % 3600.0) / 60.0).floor();
+            format!("{:.0}h {:.0}m old", hours, mins)
+        } else {
+            let days = (age_secs / 86400.0).floor();
+            format!("{:.0}d old", days)
+        }
+    }
 }
 
 /// A cozy little birdhouse built over time on a mature branch.
@@ -222,6 +304,45 @@ pub struct BirdHouse {
     pub t: f32,
     pub house_style: u8,
     pub built_age_secs: f64,
+}
+
+/// A woven bird nest built over time by twigs gathered by birds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Nest {
+    pub id: u32,
+    pub branch_id: u32,
+    pub t: f32,
+    pub progress: f32,
+    pub eggs_count: u8,
+    pub chicks_count: u8,
+    pub age_secs: f64,
+}
+
+/// A cozy hanging forest lantern swaying from a branch.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Lantern {
+    pub id: u32,
+    pub branch_id: u32,
+    pub t: f32,
+    pub light_intensity: f32,
+}
+
+/// A carved stone bird bath on the forest floor where birds splash and bathe.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BirdBath {
+    pub id: u32,
+    pub pos: [f32; 2],
+    pub water_level: f32,
+    #[serde(skip)]
+    pub splash_timer: f32,
+}
+
+/// A rustic wooden resting perch where birds can flock and rest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Perch {
+    pub id: u32,
+    pub pos: [f32; 2],
+    pub width: f32,
 }
 
 /// Statistics and milestones of the living world.
@@ -237,6 +358,10 @@ pub struct WorldStats {
     pub nests_built: u32,
     #[serde(default)]
     pub houses_built: u32,
+    #[serde(default)]
+    pub eggs_laid: u32,
+    #[serde(default)]
+    pub chicks_hatched: u32,
 }
 
 /// Complete serialized state of The Living ASCII Rookery world.
@@ -254,6 +379,14 @@ pub struct WorldState {
     pub signs: Vec<PlantSign>,
     #[serde(default)]
     pub houses: Vec<BirdHouse>,
+    #[serde(default)]
+    pub nests: Vec<Nest>,
+    #[serde(default)]
+    pub lanterns: Vec<Lantern>,
+    #[serde(default)]
+    pub bird_baths: Vec<BirdBath>,
+    #[serde(default)]
+    pub perches: Vec<Perch>,
     #[serde(default)]
     pub viewport_offset_x: f32,
     #[serde(skip)]
@@ -332,6 +465,27 @@ impl WorldState {
             pos: [trunk_base[0] + 34.0, trunk_base[1] + 2.0],
             planted_age_secs: 0.0,
             label: format!("Ancestral Tree · Seed #{seed}"),
+            lineage_gen: 1,
+        }];
+
+        let bird_baths = vec![BirdBath {
+            id: 1,
+            pos: [trunk_base[0] - 160.0, trunk_base[1] + 4.0],
+            water_level: 1.0,
+            splash_timer: 0.0,
+        }];
+
+        let perches = vec![Perch {
+            id: 1,
+            pos: [trunk_base[0] + 160.0, trunk_base[1] - 30.0],
+            width: 44.0,
+        }];
+
+        let lanterns = vec![Lantern {
+            id: 1,
+            branch_id: 1,
+            t: 0.85,
+            light_intensity: 1.0,
         }];
 
         let mut world = Self {
@@ -345,6 +499,10 @@ impl WorldState {
             snacks: Vec::new(),
             signs,
             houses: Vec::new(),
+            nests: Vec::new(),
+            lanterns,
+            bird_baths,
+            perches,
             viewport_offset_x: 0.0,
             notes: Vec::new(),
             chips: Vec::new(),
@@ -506,7 +664,7 @@ impl WorldState {
 
         self.branches.extend(new_branches);
 
-        // Milestone 4: Birds construct little houses on mature branches over time
+        // Milestone 4 & 5: Ecosystem structures on mature branches over time
         if self.houses.len() < 12 && self.rng.f32() < 0.008 * (dt_secs / 10.0).clamp(0.01, 1.0) {
             let candidates: Vec<u32> = self
                 .branches
@@ -529,13 +687,75 @@ impl WorldState {
                 self.stats.houses_built += 1;
             }
         }
+
+        // Hanging lanterns along mature primary branches
+        if self.lanterns.len() < 4 && self.rng.f32() < 0.006 * (dt_secs / 10.0).clamp(0.01, 1.0) {
+            let candidates: Vec<u32> = self
+                .branches
+                .iter()
+                .filter(|b| b.growth_progress >= 0.9 && b.depth == 1)
+                .map(|b| b.id)
+                .collect();
+            if !candidates.is_empty() {
+                let branch_id = candidates[self.rng.range_i32(0, candidates.len() as i32) as usize];
+                self.next_id += 1;
+                self.lanterns.push(Lantern {
+                    id: self.next_id,
+                    branch_id,
+                    t: self.rng.range(0.4, 0.8),
+                    light_intensity: 1.0,
+                });
+            }
+        }
+
+        // Nest establishment: start new twig-built nests
+        if self.nests.len() < 6 && self.rng.f32() < 0.012 * (dt_secs / 10.0).clamp(0.01, 1.0) {
+            let candidates: Vec<u32> = self
+                .branches
+                .iter()
+                .filter(|b| b.growth_progress >= 0.85 && b.depth >= 1 && b.depth <= 3 && !b.has_nest)
+                .map(|b| b.id)
+                .collect();
+            if !candidates.is_empty() {
+                let branch_id = candidates[self.rng.range_i32(0, candidates.len() as i32) as usize];
+                self.next_id += 1;
+                self.nests.push(Nest {
+                    id: self.next_id,
+                    branch_id,
+                    t: self.rng.range(0.35, 0.65),
+                    progress: 0.1,
+                    eggs_count: 0,
+                    chicks_count: 0,
+                    age_secs: self.total_age_secs,
+                });
+            }
+        }
+
+        // Egg laying in mature nests
+        for nest in &mut self.nests {
+            nest.age_secs += dt_secs as f64;
+            if nest.progress >= 1.0
+                && nest.eggs_count == 0
+                && nest.chicks_count == 0
+                && self.rng.f32() < 0.005 * dt_secs
+            {
+                let eggs = self.rng.range_i32(1, 4) as u8;
+                nest.eggs_count = eggs;
+                self.stats.eggs_laid += eggs as u32;
+            }
+        }
     }
 
-    /// Autonomous bird flocking, perching, feeding, and singing AI.
+    /// Autonomous bird flocking, perching, feeding, nesting, and singing AI.
     pub fn update_birds(&mut self, dt_secs: f32, _interactive: bool, _pointer: Option<[f32; 2]>) {
         let branch_count = self.branches.len();
         if branch_count == 0 {
             return;
+        }
+
+        // Decay water splash timers on bird baths
+        for bb in &mut self.bird_baths {
+            bb.splash_timer = (bb.splash_timer - dt_secs).max(0.0);
         }
 
         let mut new_notes = Vec::new();
@@ -555,9 +775,9 @@ impl WorldState {
                     bird.facing_left = dx < 0.0;
 
                     if dist < 15.0 {
-                        // Arrived near target: choose new action (perch, circle, or new destination)
+                        // Arrived near target: choose new action
                         let roll = self.rng.f32();
-                        if roll < 0.5 && branch_count > 1 {
+                        if roll < 0.40 && branch_count > 1 {
                             // Find suitable mature branch to perch on
                             let candidates: Vec<u32> = self
                                 .branches
@@ -572,10 +792,30 @@ impl WorldState {
                                 next_state = Some(BirdState::Perched {
                                     branch_id,
                                     t,
-                                    remaining_secs: self.rng.range(8.0, 25.0),
+                                    remaining_secs: self.rng.range(8.0, 22.0),
                                 });
                             }
-                        } else if roll < 0.8 {
+                        } else if roll < 0.55 && !self.nests.is_empty() {
+                            let n_idx = self.rng.range_i32(0, self.nests.len() as i32) as usize;
+                            let nest = &self.nests[n_idx];
+                            if nest.progress < 1.0 {
+                                next_state = Some(BirdState::BuildingNest {
+                                    nest_id: nest.id,
+                                    remaining_secs: 3.5,
+                                });
+                            } else if nest.eggs_count > 0 {
+                                next_state = Some(BirdState::BroodingEggs {
+                                    nest_id: nest.id,
+                                    remaining_secs: 7.0,
+                                });
+                            }
+                        } else if roll < 0.68 && !self.bird_baths.is_empty() {
+                            let bath_id = self.bird_baths[0].id;
+                            next_state = Some(BirdState::Bathing {
+                                bath_id,
+                                remaining_secs: self.rng.range(4.0, 7.0),
+                            });
+                        } else if roll < 0.82 {
                             next_state = Some(BirdState::Circling {
                                 center: [500.0, 320.0],
                                 radius: self.rng.range(140.0, 300.0),
@@ -610,7 +850,7 @@ impl WorldState {
                     bird.pos[1] = center[1] + angle.sin() * *radius * 0.45;
                     bird.facing_left = *speed < 0.0;
 
-                    // Chance to break into perch or direct flight
+                    // Chance to break into perch, bathing, or direct flight
                     if self.rng.bool_with_prob(0.03 * dt_secs) {
                         let tx = self.rng.range(100.0, 900.0);
                         let ty = self.rng.range(120.0, 450.0);
@@ -650,13 +890,176 @@ impl WorldState {
                     }
 
                     if *remaining_secs <= 0.0 {
-                        // Take flight again
-                        let tx = self.rng.range(100.0, 900.0);
-                        let ty = self.rng.range(80.0, 350.0);
-                        let sp = self.rng.range(50.0, 90.0);
+                        // Check if an incomplete nest needs twigs
+                        let incomplete_nest = self.nests.iter().find(|n| n.progress < 1.0);
+                        if let Some(nest) = incomplete_nest && self.rng.f32() < 0.45 {
+                            next_state = Some(BirdState::GatheringTwig {
+                                branch_id: *branch_id,
+                                t: *t,
+                                remaining_secs: 2.2,
+                                target_nest_id: nest.id,
+                            });
+                        } else {
+                            let tx = self.rng.range(100.0, 900.0);
+                            let ty = self.rng.range(80.0, 350.0);
+                            let sp = self.rng.range(50.0, 90.0);
+                            next_state = Some(BirdState::Flying {
+                                target: [tx, ty],
+                                speed: sp,
+                            });
+                        }
+                    }
+                }
+                BirdState::GatheringTwig {
+                    branch_id,
+                    t,
+                    remaining_secs,
+                    target_nest_id,
+                } => {
+                    *remaining_secs -= dt_secs;
+                    if let Some(b) = self.branches.iter().find(|br| br.id == *branch_id) {
+                        bird.pos = b.point_at(*t);
+                    }
+                    if *remaining_secs <= 0.0 {
+                        next_state = Some(BirdState::CarryingTwig {
+                            target_nest_id: *target_nest_id,
+                            speed: 70.0,
+                        });
+                    }
+                }
+                BirdState::CarryingTwig {
+                    target_nest_id,
+                    speed,
+                } => {
+                    let nest_pos = self
+                        .nests
+                        .iter()
+                        .find(|n| n.id == *target_nest_id)
+                        .and_then(|n| {
+                            self.branches
+                                .iter()
+                                .find(|b| b.id == n.branch_id)
+                                .map(|b| b.point_at(n.t))
+                        });
+
+                    if let Some(target) = nest_pos {
+                        let dx = target[0] - bird.pos[0];
+                        let dy = target[1] - bird.pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        bird.facing_left = dx < 0.0;
+
+                        if dist < 14.0 {
+                            next_state = Some(BirdState::BuildingNest {
+                                nest_id: *target_nest_id,
+                                remaining_secs: 3.5,
+                            });
+                        } else {
+                            let step = (*speed * dt_secs).min(dist);
+                            bird.pos[0] += (dx / dist) * step;
+                            bird.pos[1] += (dy / dist) * step;
+                        }
+                    } else {
+                        // Nest was pruned or missing
+                        let tx = self.rng.range(200.0, 800.0);
+                        let ty = self.rng.range(100.0, 300.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
-                            speed: sp,
+                            speed: 65.0,
+                        });
+                    }
+                }
+                BirdState::BuildingNest {
+                    nest_id,
+                    remaining_secs,
+                } => {
+                    *remaining_secs -= dt_secs;
+                    let target_nest_id = *nest_id;
+                    if let Some(n) = self.nests.iter().find(|n| n.id == target_nest_id)
+                        && let Some(b) = self.branches.iter().find(|br| br.id == n.branch_id)
+                    {
+                        bird.pos = b.point_at(n.t);
+                    }
+                    if *remaining_secs <= 0.0 {
+                        if let Some(nest) = self.nests.iter_mut().find(|n| n.id == target_nest_id) {
+                            nest.progress = (nest.progress + 0.35).min(1.0);
+                            if nest.progress >= 1.0 {
+                                if let Some(b) =
+                                    self.branches.iter_mut().find(|br| br.id == nest.branch_id)
+                                {
+                                    b.has_nest = true;
+                                }
+                                self.stats.nests_built += 1;
+                            }
+                        }
+                        let tx = self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 65.0,
+                        });
+                    }
+                }
+                BirdState::BroodingEggs {
+                    nest_id,
+                    remaining_secs,
+                } => {
+                    *remaining_secs -= dt_secs;
+                    let target_nest_id = *nest_id;
+                    if let Some(n) = self.nests.iter().find(|n| n.id == target_nest_id)
+                        && let Some(b) = self.branches.iter().find(|br| br.id == n.branch_id)
+                    {
+                        bird.pos = b.point_at(n.t);
+                    }
+                    if *remaining_secs <= 0.0 {
+                        if let Some(nest) = self.nests.iter_mut().find(|n| n.id == target_nest_id) {
+                            if nest.eggs_count > 0 && nest.chicks_count == 0 {
+                                let hatched = nest.eggs_count.min(2);
+                                nest.chicks_count = hatched;
+                                nest.eggs_count = 0;
+                                self.stats.chicks_hatched += hatched as u32;
+
+                                for _ in 0..2 {
+                                    new_notes.push(FloatingNote {
+                                        pos: [
+                                            bird.pos[0] + self.rng.range(-4.0, 4.0),
+                                            bird.pos[1] - 8.0,
+                                        ],
+                                        vel: [
+                                            self.rng.range(-12.0, 12.0),
+                                            -self.rng.range(18.0, 30.0),
+                                        ],
+                                        glyph: '♥',
+                                        life: 0.0,
+                                        max_life: 2.5,
+                                        color_idx: 0,
+                                    });
+                                }
+                            }
+                        }
+                        let tx = self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 65.0,
+                        });
+                    }
+                }
+                BirdState::Bathing {
+                    bath_id,
+                    remaining_secs,
+                } => {
+                    *remaining_secs -= dt_secs;
+                    let target_bath_id = *bath_id;
+                    if let Some(bb) = self.bird_baths.iter_mut().find(|b| b.id == target_bath_id) {
+                        bird.pos = [bb.pos[0] + self.rng.range(-5.0, 5.0), bb.pos[1] - 8.0];
+                        bb.splash_timer = 0.5;
+                    }
+                    if *remaining_secs <= 0.0 {
+                        let tx = self.rng.range(200.0, 800.0);
+                        let ty = self.rng.range(120.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 65.0,
                         });
                     }
                 }
@@ -705,6 +1108,39 @@ impl WorldState {
         }
 
         self.notes.extend(new_notes);
+
+        // Wildlife arrivals from off-screen margins
+        if self.birds.len() < 8 && self.rng.bool_with_prob(0.015 * dt_secs) {
+            let from_left = self.rng.f32() < 0.5;
+            let start_x = if from_left { -60.0 } else { 1060.0 };
+            let start_y = self.rng.range(120.0, 360.0);
+            let species_pool = [
+                BirdSpecies::Rook,
+                BirdSpecies::AzureJay,
+                BirdSpecies::Goldfinch,
+                BirdSpecies::Robin,
+                BirdSpecies::EmeraldDove,
+                BirdSpecies::CelestialRaven,
+                BirdSpecies::RubyTanager,
+                BirdSpecies::SnowyOwl,
+            ];
+            let species = species_pool[self.rng.range_i32(0, species_pool.len() as i32) as usize];
+            self.next_id += 1;
+            self.birds.push(Bird {
+                id: self.next_id,
+                species,
+                pos: [start_x, start_y],
+                vel: [if from_left { 65.0 } else { -65.0 }, 0.0],
+                facing_left: !from_left,
+                state: BirdState::Flying {
+                    target: [self.rng.range(300.0, 700.0), self.rng.range(150.0, 400.0)],
+                    speed: self.rng.range(45.0, 80.0),
+                },
+                sing_timer: self.rng.range(5.0, 15.0),
+                wing_phase: 0.0,
+                size_scale: if species == BirdSpecies::SnowyOwl { 1.35 } else { 1.0 },
+            });
+        }
 
         // Check if snacks attract perched birds
         if !self.snacks.is_empty() {
@@ -839,21 +1275,26 @@ impl WorldState {
         }
 
         self.branches.retain(|b| !to_remove.contains(&b.id));
+        self.nests.retain(|n| !to_remove.contains(&n.branch_id));
+        self.houses.retain(|h| !to_remove.contains(&h.branch_id));
+        self.lanterns.retain(|l| !to_remove.contains(&l.branch_id));
+        self.snacks.retain(|s| !to_remove.contains(&s.branch_id));
 
-        // Reassign any perched birds on deleted branches
+        // Reassign any birds active on deleted branches
         for bird in &mut self.birds {
-            match &bird.state {
-                BirdState::Perched { branch_id, .. } | BirdState::Feeding { branch_id, .. }
-                    if to_remove.contains(branch_id) =>
-                {
-                    let tx = self.rng.range(200.0, 800.0);
-                    let ty = self.rng.range(100.0, 300.0);
-                    bird.state = BirdState::Flying {
-                        target: [tx, ty],
-                        speed: 70.0,
-                    };
-                }
-                _ => {}
+            let needs_flight = match &bird.state {
+                BirdState::Perched { branch_id, .. }
+                | BirdState::Feeding { branch_id, .. }
+                | BirdState::GatheringTwig { branch_id, .. } => to_remove.contains(branch_id),
+                _ => false,
+            };
+            if needs_flight {
+                let tx = self.rng.range(200.0, 800.0);
+                let ty = self.rng.range(100.0, 300.0);
+                bird.state = BirdState::Flying {
+                    target: [tx, ty],
+                    speed: 70.0,
+                };
             }
         }
     }
@@ -882,13 +1323,14 @@ impl WorldState {
         self.branches.push(branch);
         self.stats.seeds_planted += 1;
 
-        // Milestone 4: Erect a little plant sign marker with timestamp/seed
+        // Erect a commemorative plant sign marker with timestamp and lineage
         self.signs.push(PlantSign {
             id: self.next_id + 1,
             tree_root_id: id,
             pos: [pos[0] + 28.0, pos[1] + 2.0],
             planted_age_secs: self.total_age_secs,
             label: format!("Sapling #{}", self.stats.seeds_planted),
+            lineage_gen: 2,
         });
     }
 
@@ -899,14 +1341,19 @@ impl WorldState {
 
     /// User micro-interaction: drop a snack on nearest branch to attract birds.
     pub fn drop_snack(&mut self, pos: [f32; 2]) -> bool {
+        self.drop_snack_typed(pos, SnackType::Seeds)
+    }
+
+    /// User micro-interaction: drop a specific snack type on nearest branch.
+    pub fn drop_snack_typed(&mut self, pos: [f32; 2], snack_type: SnackType) -> bool {
         let mut best_id = None;
-        let mut min_dist = 60.0;
+        let mut min_dist = 85.0;
 
         for b in &self.branches {
             let mid = b.point_at(0.5);
-            let dx = mid[0] - pointer_dist(mid, pos);
-            if dx < min_dist {
-                min_dist = dx;
+            let dist = pointer_dist(mid, pos);
+            if dist < min_dist {
+                min_dist = dist;
                 best_id = Some(b.id);
             }
         }
@@ -915,8 +1362,49 @@ impl WorldState {
             self.snacks.push(Snack {
                 branch_id: id,
                 t: 0.5,
-                servings_left: 2,
+                servings_left: 3,
+                snack_type,
             });
+
+            // Special berries or nectar attract visiting or rare birds from off-screen margins
+            if matches!(snack_type, SnackType::SweetBerries | SnackType::StarNectar)
+                || self.rng.f32() < 0.35
+            {
+                let from_left = self.rng.f32() < 0.5;
+                let start_x = if from_left { -70.0 } else { 1070.0 };
+                let start_y = self.rng.range(100.0, 320.0);
+                let species = match snack_type {
+                    SnackType::SweetBerries => BirdSpecies::RubyTanager,
+                    SnackType::StarNectar => BirdSpecies::CelestialRaven,
+                    SnackType::Seeds => {
+                        if self.rng.f32() < 0.4 {
+                            BirdSpecies::SnowyOwl
+                        } else {
+                            BirdSpecies::Goldfinch
+                        }
+                    }
+                };
+                self.next_id += 1;
+                self.birds.push(Bird {
+                    id: self.next_id,
+                    species,
+                    pos: [start_x, start_y],
+                    vel: [if from_left { 70.0 } else { -70.0 }, 0.0],
+                    facing_left: !from_left,
+                    state: BirdState::Flying {
+                        target: pos,
+                        speed: 75.0,
+                    },
+                    sing_timer: self.rng.range(3.0, 8.0),
+                    wing_phase: 0.0,
+                    size_scale: if species == BirdSpecies::SnowyOwl {
+                        1.35
+                    } else {
+                        1.05
+                    },
+                });
+            }
+
             true
         } else {
             false
@@ -961,11 +1449,18 @@ impl WorldState {
             .filter(|b| {
                 matches!(
                     b.state,
-                    BirdState::Perched { .. } | BirdState::Feeding { .. }
+                    BirdState::Perched { .. }
+                        | BirdState::Feeding { .. }
+                        | BirdState::GatheringTwig { .. }
+                        | BirdState::BuildingNest { .. }
+                        | BirdState::BroodingEggs { .. }
+                        | BirdState::Bathing { .. }
                 )
             })
             .count() as u32;
-        self.stats.nests_built = self.branches.iter().filter(|b| b.has_nest).count() as u32;
+        self.stats.nests_built = self.branches.iter().filter(|b| b.has_nest).count() as u32
+            + self.nests.iter().filter(|n| n.progress >= 1.0).count() as u32;
+        self.stats.houses_built = self.houses.len() as u32;
     }
 
     /// Load persisted world state from disk, falling back to a freshly seeded world if missing or corrupt.
@@ -1152,6 +1647,82 @@ mod tests {
         assert_eq!(loaded.seed, world.seed);
         assert_eq!(loaded.branches.len(), world.branches.len());
         assert_eq!(loaded.birds.len(), world.birds.len());
+        assert_eq!(loaded.bird_baths.len(), world.bird_baths.len());
+        assert_eq!(loaded.lanterns.len(), world.lanterns.len());
+        assert_eq!(loaded.perches.len(), world.perches.len());
+    }
+
+    #[test]
+    fn plant_sign_age_display_and_seeding() {
+        let mut world = WorldState::new(555);
+        assert_eq!(world.signs.len(), 1);
+        assert_eq!(world.signs[0].lineage_gen, 1);
+        assert_eq!(world.signs[0].age_display(0.0), "0s old");
+        assert_eq!(world.signs[0].age_display(125.0), "2m old");
+        assert_eq!(world.signs[0].age_display(3665.0), "1h 1m old");
+        assert_eq!(world.signs[0].age_display(90000.0), "1d old");
+
+        world.plant_seed([550.0, 750.0]);
+        assert_eq!(world.signs.len(), 2);
+        assert_eq!(world.signs[1].lineage_gen, 2);
+        assert_eq!(world.stats.seeds_planted, 1);
+    }
+
+    #[test]
+    fn rare_birds_and_special_snacks() {
+        let mut world = WorldState::new(101);
+        let initial_birds = world.birds.len();
+
+        // Dropping sweet berries attracts Ruby Tanager from off-screen
+        let dropped = world.drop_snack_typed([500.0, 680.0], SnackType::SweetBerries);
+        assert!(dropped);
+        assert_eq!(world.snacks.len(), 1);
+        assert_eq!(world.snacks[0].snack_type, SnackType::SweetBerries);
+        assert!(world.birds.len() > initial_birds);
+        assert!(world.birds.iter().any(|b| b.species == BirdSpecies::RubyTanager));
+
+        // Dropping star nectar attracts Celestial Raven
+        world.drop_snack_typed([500.0, 680.0], SnackType::StarNectar);
+        assert!(world.birds.iter().any(|b| b.species == BirdSpecies::CelestialRaven));
+    }
+
+    #[test]
+    fn nesting_lifecycle_and_infrastructure() {
+        let mut world = WorldState::new(202);
+        assert!(!world.bird_baths.is_empty(), "must have initial bird bath");
+        assert!(!world.perches.is_empty(), "must have initial perch");
+        assert!(!world.lanterns.is_empty(), "must have initial lantern");
+
+        // Manually introduce a nest and advance lifecycle
+        world.nests.push(Nest {
+            id: 99,
+            branch_id: 1,
+            t: 0.5,
+            progress: 0.2,
+            eggs_count: 0,
+            chicks_count: 0,
+            age_secs: 0.0,
+        });
+
+        // Twig gathering and nest completion simulation
+        world.birds[0].state = BirdState::BuildingNest {
+            nest_id: 99,
+            remaining_secs: 0.05,
+        };
+        world.update_birds(0.1, false, None);
+        assert!(world.nests[0].progress > 0.2);
+
+        // Brooding eggs to hatch chicks
+        world.nests[0].progress = 1.0;
+        world.nests[0].eggs_count = 2;
+        world.birds[0].state = BirdState::BroodingEggs {
+            nest_id: 99,
+            remaining_secs: 0.05,
+        };
+        world.update_birds(0.1, false, None);
+        assert_eq!(world.nests[0].chicks_count, 2);
+        assert_eq!(world.nests[0].eggs_count, 0);
+        assert_eq!(world.stats.chicks_hatched, 2);
     }
 
     #[test]
