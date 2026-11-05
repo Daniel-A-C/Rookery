@@ -66,6 +66,7 @@ pub fn run() {
             commands::import_world_string,
             commands::capture_snapshot,
             commands::record_loop,
+            commands::record_video,
             commands::relaunch_app,
             commands::quit,
         ])

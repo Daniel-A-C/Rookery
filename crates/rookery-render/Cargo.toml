@@ -18,6 +18,8 @@ anyhow.workspace = true
 serde.workspace = true
 png.workspace = true
 gif.workspace = true
+openh264.workspace = true
+mp4e.workspace = true
 rodio.workspace = true
 
 [dev-dependencies]

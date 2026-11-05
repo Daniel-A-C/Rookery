@@ -145,6 +145,10 @@ h1 {
   margin-top: 4px;
 }
 
+#btn-record-video {
+  grid-column: span 2;
+}
+
 .import-group {
   display: flex;
   gap: 6px;

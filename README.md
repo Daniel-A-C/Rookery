@@ -44,7 +44,7 @@
 - **Power-Aware Pacing**: Dynamically throttles tick rates when running on battery or low-power modes.
 
 ### 📸 Sharing, Viral Export & Distribution
-- **One-Click Snapshots & GIF Loops**: Export clean, icon-free PNG screenshots and 5-second animated GIF loops directly to `~/Pictures/Rookery`.
+- **One-Click Snapshots, GIF Loops & 60 FPS MP4 Video**: Export clean, icon-free PNG screenshots, 5-second animated GIF loops, and silky-smooth 60 FPS H.264 MP4 videos directly to `~/Pictures/Rookery`.
 - **Shareable Seeds & State URIs**: Copy `rookery://tree/seed-<hex>` or full snapshot `rookery://tree/state-<base64>` strings to share worlds with friends or restore past ecosystems.
 - **Cross-Platform One-Click Installers**: Automated GitHub Actions releases building Universal macOS `.dmg` and Windows `.msi` / `.exe` installers.
 

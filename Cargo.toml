@@ -37,6 +37,8 @@ gif = "0.13"
 base64 = "0.22"
 toml = "0.8"
 rodio = "0.23"
+openh264 = "0.9"
+mp4e = "1.0"
 
 [profile.release]
 codegen-units = 1

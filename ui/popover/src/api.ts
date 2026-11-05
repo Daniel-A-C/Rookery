@@ -193,6 +193,7 @@ export const api = {
     invoke("import_world_string", { input }),
   captureSnapshot: (): Promise<string> => invoke("capture_snapshot"),
   recordLoop: (): Promise<string> => invoke("record_loop"),
+  recordVideo: (): Promise<string> => invoke("record_video"),
   setWorldSeed: (seed: number): Promise<HostStatus> =>
     invoke("set_world_seed", { seed }),
   relaunchApp: (): Promise<void> => invoke("relaunch_app"),

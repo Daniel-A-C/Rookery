@@ -8,12 +8,9 @@ use rookery_core::manifest::AppManifest;
 use rookery_core::orbital::ConstructionFocus;
 use rookery_core::settings::Settings;
 use rookery_core::world::WorldState;
-use rookery_render::capture::{write_gif, write_png};
+use rookery_render::capture::{encode_mp4_stream, write_gif, write_png};
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
-use rookery_render::{
-    AppCatalog, CosmicNebulaScene, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene,
-    SceneInput, SoundEffect,
-};
+use rookery_render::{AppCatalog, SceneInput, SoundEffect};
 use tauri::{AppHandle, Manager, State};
 
 use crate::hotkey;
@@ -384,28 +381,12 @@ pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<S
     let height = 720u32;
 
     let offscreen = Offscreen::new(&state.gpu, width, height);
-    let mut scene: Box<dyn Scene> = match active_app.as_str() {
-        "koi-pond" => Box::new(KoiPondScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.koi.clone(),
-        )),
-        "cosmic-nebula" => Box::new(CosmicNebulaScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.nebula.clone(),
-        )),
-        "orbital-haven" => Box::new(OrbitalHavenScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.orbital.clone(),
-        )),
-        _ => Box::new(LivingRookeryScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.world.clone(),
-        )),
-    };
+    let factory = AppCatalog::create_scene_factory_with_dir(
+        &active_app,
+        state.catalog_state.clone(),
+        state.apps_dir.as_deref(),
+    );
+    let mut scene = factory(&state.gpu, OFFSCREEN_FORMAT);
     scene.resize(&state.gpu, width, height, 1.0);
 
     let input = SceneInput::default();
@@ -457,28 +438,12 @@ pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String
     let delay_centisecs = 8u16;
 
     let offscreen = Offscreen::new(&state.gpu, width, height);
-    let mut scene: Box<dyn Scene> = match active_app.as_str() {
-        "koi-pond" => Box::new(KoiPondScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.koi.clone(),
-        )),
-        "cosmic-nebula" => Box::new(CosmicNebulaScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.nebula.clone(),
-        )),
-        "orbital-haven" => Box::new(OrbitalHavenScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.catalog_state.orbital.clone(),
-        )),
-        _ => Box::new(LivingRookeryScene::new(
-            &state.gpu,
-            OFFSCREEN_FORMAT,
-            state.world.clone(),
-        )),
-    };
+    let factory = AppCatalog::create_scene_factory_with_dir(
+        &active_app,
+        state.catalog_state.clone(),
+        state.apps_dir.as_deref(),
+    );
+    let mut scene = factory(&state.gpu, OFFSCREEN_FORMAT);
     scene.resize(&state.gpu, width, height, 1.0);
 
     let input = SceneInput::default();
@@ -513,6 +478,65 @@ pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String
     .map_err(|e| format!("Failed to encode GIF: {e}"))?;
 
     log::info!("Exported loop to {}", filepath.display());
+    Ok(filepath.display().to_string())
+}
+
+#[tauri::command]
+pub fn record_video(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_else(|_| "living-rookery".into());
+
+    let pictures_dir = app
+        .path()
+        .picture_dir()
+        .or_else(|_| app.path().download_dir())
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("Rookery");
+
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("clip_{active_app}_{timestamp}.mp4");
+    let filepath = pictures_dir.join(filename);
+
+    let width = 1280u32;
+    let height = 720u32;
+    let fps = 60u32;
+    let total_frames = 300u32;
+    let dt = Duration::from_micros(16_667);
+
+    let offscreen = Offscreen::new(&state.gpu, width, height);
+    let factory = AppCatalog::create_scene_factory_with_dir(
+        &active_app,
+        state.catalog_state.clone(),
+        state.apps_dir.as_deref(),
+    );
+    let mut scene = factory(&state.gpu, OFFSCREEN_FORMAT);
+    scene.resize(&state.gpu, width, height, 1.0);
+
+    let input = SceneInput::default();
+
+    let frame_iter = (0..total_frames).map(|_| {
+        scene.update(&state.gpu, dt, &input);
+        let view = offscreen.create_view();
+        let mut encoder =
+            state
+                .gpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("video-frame-encoder"),
+                });
+        scene.render(&state.gpu, &view, &mut encoder);
+        state.gpu.queue.submit(Some(encoder.finish()));
+
+        offscreen.readback_rgba(&state.gpu)
+    });
+
+    encode_mp4_stream(&filepath, width, height, fps, frame_iter)
+        .map_err(|e| format!("Failed to encode MP4 video: {e}"))?;
+
+    log::info!("Exported MP4 video to {}", filepath.display());
     Ok(filepath.display().to_string())
 }
 

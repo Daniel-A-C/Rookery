@@ -104,6 +104,7 @@ const valInterval = el<HTMLElement>("val-interval");
 // Share & Capture
 const btnSnapshot = el<HTMLButtonElement>("btn-snapshot");
 const btnRecordLoop = el<HTMLButtonElement>("btn-record-loop");
+const btnRecordVideo = el<HTMLButtonElement>("btn-record-video");
 const btnCopySeed = el<HTMLButtonElement>("btn-copy-seed");
 const btnCopyState = el<HTMLButtonElement>("btn-copy-state");
 const inputImportWorld = el<HTMLInputElement>("input-import-world");
@@ -773,6 +774,19 @@ btnRecordLoop.addEventListener("click", async () => {
     showShareNotification(`Record loop failed: ${err}`, true);
   } finally {
     btnRecordLoop.disabled = false;
+  }
+});
+
+btnRecordVideo.addEventListener("click", async () => {
+  try {
+    btnRecordVideo.disabled = true;
+    showShareNotification("🎥 Recording 5s 60 FPS MP4…");
+    const path = await api.recordVideo();
+    showShareNotification(`🎥 Video saved: ${path}`);
+  } catch (err) {
+    showShareNotification(`Record video failed: ${err}`, true);
+  } finally {
+    btnRecordVideo.disabled = false;
   }
 });
 
