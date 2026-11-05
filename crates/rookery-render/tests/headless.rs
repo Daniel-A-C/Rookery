@@ -143,7 +143,8 @@ fn gif_and_png_encoding_smoke_test() {
 
     let stream_mp4_path = tmp.path().join("test_stream.mp4");
     let stream_frames = vec![Ok(mp4_f1), Ok(mp4_f2)];
-    rookery_render::capture::encode_mp4_stream(&stream_mp4_path, 64, 64, 30, stream_frames).unwrap();
+    rookery_render::capture::encode_mp4_stream(&stream_mp4_path, 64, 64, 30, stream_frames)
+        .unwrap();
     assert!(stream_mp4_path.exists());
     assert!(std::fs::metadata(&stream_mp4_path).unwrap().len() > 0);
 }

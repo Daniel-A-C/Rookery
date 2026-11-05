@@ -89,14 +89,17 @@ where
 
     for (idx, frame_res) in frames.into_iter().enumerate() {
         let rgba = frame_res.with_context(|| format!("failed to yield frame {idx}"))?;
-        let rgba_source = openh264::formats::RgbaSliceU8::new(rgba.as_ref(), (width as usize, height as usize));
+        let rgba_source =
+            openh264::formats::RgbaSliceU8::new(rgba.as_ref(), (width as usize, height as usize));
         let yuv = openh264::formats::YUVBuffer::from_rgb_source(rgba_source);
         let bitstream = encoder
             .encode(&yuv)
             .with_context(|| format!("failed to encode frame {idx}"))?;
         let bytes = bitstream.to_vec();
         if !bytes.is_empty() {
-            let duration_ms = (((idx as u64 + 1) * 1000 / safe_fps) - (idx as u64 * 1000 / safe_fps)).max(1) as u32;
+            let duration_ms = (((idx as u64 + 1) * 1000 / safe_fps)
+                - (idx as u64 * 1000 / safe_fps))
+                .max(1) as u32;
             muxer
                 .encode_video(&bytes, duration_ms)
                 .with_context(|| format!("failed to mux frame {idx} into MP4"))?;
@@ -113,12 +116,6 @@ where
 }
 
 /// Writes multiple RGBA8 frames as an MP4 video (H.264 / AVC).
-pub fn write_mp4(
-    path: &Path,
-    width: u32,
-    height: u32,
-    frames: &[Vec<u8>],
-    fps: u32,
-) -> Result<()> {
+pub fn write_mp4(path: &Path, width: u32, height: u32, frames: &[Vec<u8>], fps: u32) -> Result<()> {
     encode_mp4_stream(path, width, height, fps, frames.iter().map(Ok))
 }
