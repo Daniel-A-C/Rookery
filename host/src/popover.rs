@@ -4,7 +4,10 @@
 //! closed. Clicking the tray icon builds the `popover` `WebviewWindow`, positions it next to
 //! the tray icon via `tauri-plugin-positioner`, and destroys it as soon as it loses focus.
 
-use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
+};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 use crate::state::POPOVER_LABEL;
