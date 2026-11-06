@@ -54,6 +54,8 @@ pub enum AppControl {
     Button {
         id: String,
         label: String,
+        /// Semantic icon name from `ui/icons/icons.config.json` (e.g. `"sparkle"`, `"palette"`),
+        /// with automatic fallback for legacy emoji strings.
         icon: Option<String>,
         tooltip: Option<String>,
     },
@@ -209,7 +211,7 @@ mod tests {
                 AppControl::Button {
                     id: "btn-action".into(),
                     label: "Action".into(),
-                    icon: Some("✨".into()),
+                    icon: Some("sparkle".into()),
                     tooltip: Some("Does something".into()),
                 },
                 AppControl::Slider {

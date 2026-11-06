@@ -8,6 +8,7 @@ import {
   Settings,
 } from "./api";
 import { updater } from "./updater";
+import { icon, iconLabel, setIcon, type IconName } from "./icons/icon";
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -17,14 +18,14 @@ const el = <T extends HTMLElement>(id: string): T => {
 
 // Root & Header Elements
 const popoverRoot = el<HTMLElement>("popover-root");
-const brandGlyph = el<HTMLSpanElement>("brand-glyph");
+const brandGlyph = el<HTMLElement>("brand-glyph");
 const brandTitle = el<HTMLHeadingElement>("brand-title");
 const powerBadge = el<HTMLSpanElement>("power-badge");
 const appTagline = el<HTMLParagraphElement>("app-tagline");
 
 // View Toggle (Realm HUD vs Settings Menu)
 const btnToggleSettings = el<HTMLButtonElement>("btn-toggle-settings");
-const settingsToggleIcon = el<HTMLSpanElement>("settings-toggle-icon");
+const settingsToggleIcon = el<HTMLElement>("settings-toggle-icon");
 const settingsToggleLabel = el<HTMLSpanElement>("settings-toggle-label");
 const viewRealm = el<HTMLDivElement>("view-realm");
 const viewSettings = el<HTMLDivElement>("view-settings");
@@ -57,10 +58,10 @@ function setSettingsOpen(open: boolean): void {
   btnToggleSettings.classList.toggle("active", open);
   btnToggleSettings.setAttribute("aria-expanded", String(open));
   if (open) {
-    settingsToggleIcon.textContent = "◀";
+    setIcon(settingsToggleIcon, "caret-left");
     settingsToggleLabel.textContent = "Realm";
   } else {
-    settingsToggleIcon.textContent = "⚙";
+    setIcon(settingsToggleIcon, "settings");
     settingsToggleLabel.textContent = "Settings";
   }
 }
@@ -80,53 +81,48 @@ const cards: Record<string, HTMLElement> = {};
 interface AppThemeMeta {
   title: string;
   tagline: string;
-  glyph: string;
-  ornamentLeft: string;
-  ornamentRight: string;
+  /** Icon name (see ui/icons/icons.config.json); legacy emoji still render as text. */
+  glyph: IconName | string;
+  /** Icon flanking the realm card banner (mirrored on the right). */
+  ornament: IconName | string;
 }
 
 const appThemes: Record<string, AppThemeMeta> = {
   "living-rookery": {
     title: "The Living Rookery",
-    tagline: "✦ Woodland Sanctuary · ASCII Realm ✦",
-    glyph: "🌲",
-    ornamentLeft: "╔❖",
-    ornamentRight: "❖╗",
+    tagline: "Woodland Sanctuary · ASCII Realm",
+    glyph: "tree-evergreen",
+    ornament: "leaf",
   },
   "koi-pond": {
     title: "Tranquil Koi Pond",
-    tagline: "༺ Imperial Lotus Sanctuary ༻",
-    glyph: "🎏",
-    ornamentLeft: "༺🪷",
-    ornamentRight: "🪷༻",
+    tagline: "Imperial Lotus Sanctuary",
+    glyph: "koi",
+    ornament: "flower-lotus",
   },
   "cosmic-nebula": {
     title: "Cosmic Nebula",
-    tagline: "⟪ Astral Singularity Forge ⟫",
-    glyph: "🌌",
-    ornamentLeft: "⟪✦",
-    ornamentRight: "✦⟫",
+    tagline: "Astral Singularity Forge",
+    glyph: "nebula",
+    ornament: "star-four",
   },
   "orbital-haven": {
     title: "Orbital Haven",
-    tagline: "◢ Aegis-VII Orbital Command ◣",
-    glyph: "🛰️",
-    ornamentLeft: "◢⌬",
-    ornamentRight: "⌬◣",
+    tagline: "Aegis-VII Orbital Command",
+    glyph: "satellite",
+    ornament: "hexagon",
   },
   "aurora-waves": {
     title: "Aurora Waves",
-    tagline: "❖ Borealis Sky Observatory ❖",
-    glyph: "🌠",
-    ornamentLeft: "❖✧",
-    ornamentRight: "✧❖",
+    tagline: "Borealis Sky Observatory",
+    glyph: "shooting-star",
+    ornament: "star-four",
   },
   fireflies: {
     title: "Twilight Fireflies",
-    tagline: "✧ Enchanted Gloaming Glade ✧",
-    glyph: "✨",
-    ornamentLeft: "✧❀",
-    ornamentRight: "❀✧",
+    tagline: "Enchanted Gloaming Glade",
+    glyph: "sparkle",
+    ornament: "sparkle",
   },
 };
 
@@ -134,13 +130,13 @@ function applyThemeForApp(appId: string): void {
   popoverRoot.setAttribute("data-theme", appId);
   const meta = appThemes[appId];
   if (meta) {
-    brandGlyph.textContent = meta.glyph;
+    setIcon(brandGlyph, meta.glyph);
     brandTitle.textContent = meta.title;
     appTagline.textContent = meta.tagline;
   } else {
-    brandGlyph.textContent = "◆";
+    setIcon(brandGlyph, "diamond");
     brandTitle.textContent = appId.replace(/-/g, " ");
-    appTagline.textContent = "✦ Custom Rookery Realm ✦";
+    appTagline.textContent = "Custom Rookery Realm";
   }
 }
 
@@ -235,6 +231,8 @@ const btnInteractive = el<HTMLButtonElement>("btn-interactive");
 const lblInteractive = el<HTMLSpanElement>("lbl-interactive");
 const kbdHotkey = el<HTMLElement>("kbd-hotkey");
 const btnPause = el<HTMLButtonElement>("btn-pause");
+const icoPause = el<HTMLElement>("ico-pause");
+const lblPause = el<HTMLSpanElement>("lbl-pause");
 const displaysList = el<HTMLUListElement>("displays-list");
 
 // Audio Subsystem Controls
@@ -281,14 +279,14 @@ function getAppGlyph(m: AppManifest): string {
   for (const c of m.controls || []) {
     if (c.icon) return c.icon;
   }
-  const archetypes: Record<string, string> = {
-    cozy_ecosystem: "🌿",
-    generative_physics: "⚛️",
-    slow_burn_idle: "⏳",
-    ambient_utility: "🧭",
-    web_canvas: "🌠",
+  const archetypes: Record<string, IconName> = {
+    cozy_ecosystem: "leaf",
+    generative_physics: "atom",
+    slow_burn_idle: "hourglass",
+    ambient_utility: "compass",
+    web_canvas: "shooting-star",
   };
-  return archetypes[m.metadata.archetype] || "◆";
+  return archetypes[m.metadata.archetype] || "diamond";
 }
 
 function getAppShortName(m: AppManifest): string {
@@ -310,10 +308,9 @@ function applyCatalog(): void {
     if (!appThemes[m.metadata.id]) {
       appThemes[m.metadata.id] = {
         title: m.metadata.name,
-        tagline: `✦ ${m.metadata.description || "Custom Rookery Realm"} ✦`,
+        tagline: m.metadata.description || "Custom Rookery Realm",
         glyph: getAppGlyph(m),
-        ornamentLeft: "❖✧",
-        ornamentRight: "✧❖",
+        ornament: "sparkle",
       };
     }
 
@@ -326,9 +323,7 @@ function applyCatalog(): void {
       tabBtn.setAttribute("data-app", m.metadata.id);
       tabBtn.title = m.metadata.description;
 
-      const glyphSpan = document.createElement("span");
-      glyphSpan.className = "tab-glyph";
-      glyphSpan.textContent = getAppGlyph(m);
+      const glyphSpan = icon(getAppGlyph(m), "tab-glyph");
 
       const labelSpan = document.createElement("span");
       labelSpan.textContent = getAppShortName(m);
@@ -351,11 +346,16 @@ function applyCatalog(): void {
 
       const banner = document.createElement("div");
       banner.className = "hud-banner";
-      banner.innerHTML = `
-        <span class="hud-ornament" aria-hidden="true">${themeMeta.ornamentLeft}</span>
-        <span class="section-title">${m.metadata.name}</span>
-        <span class="hud-ornament" aria-hidden="true">${themeMeta.ornamentRight}</span>
-      `;
+      const ornamentLeft = document.createElement("span");
+      ornamentLeft.className = "hud-ornament left";
+      ornamentLeft.appendChild(icon(themeMeta.ornament));
+      const bannerTitle = document.createElement("span");
+      bannerTitle.className = "section-title";
+      bannerTitle.textContent = m.metadata.name;
+      const ornamentRight = document.createElement("span");
+      ornamentRight.className = "hud-ornament right";
+      ornamentRight.appendChild(icon(themeMeta.ornament));
+      banner.append(ornamentLeft, bannerTitle, ornamentRight);
       card.appendChild(banner);
 
       const badges = document.createElement("div");
@@ -462,12 +462,12 @@ function applyCatalog(): void {
           btn.className = `btn game-cmd-btn small${isOddLast ? " span-2" : ""}`;
           btn.type = "button";
           if (b.tooltip) btn.title = b.tooltip;
-          btn.textContent = `${b.icon ? b.icon + " " : ""}${b.label}`;
+          iconLabel(btn, b.icon, b.label);
           btn.addEventListener("click", async () => {
             try {
               const res = await api.executeAppAction(m.metadata.id, b.id);
               renderStatus(res);
-              showNotification(`▸ ${b.icon ? b.icon + " " : ""}${b.label} activated!`);
+              showNotification(b.icon || "check-circle", `${b.label} activated!`);
             } catch (err) {
               console.error("action error:", err);
             }
@@ -525,8 +525,8 @@ function formatAge(secs: number): string {
 }
 
 let notificationTimer: number | null = null;
-function showNotification(msg: string): void {
-  seedNotification.textContent = msg;
+function showNotification(iconName: IconName | string, msg: string): void {
+  iconLabel(seedNotification, iconName, msg);
   seedNotification.hidden = false;
   if (notificationTimer !== null) {
     window.clearTimeout(notificationTimer);
@@ -538,8 +538,8 @@ function showNotification(msg: string): void {
 }
 
 let shareNotificationTimer: number | null = null;
-function showShareNotification(msg: string, isError = false): void {
-  shareNotification.textContent = msg;
+function showShareNotification(iconName: IconName, msg: string, isError = false): void {
+  iconLabel(shareNotification, isError ? "warning" : iconName, msg);
   shareNotification.style.color = isError ? "var(--danger)" : "var(--ok)";
   shareNotification.hidden = false;
   if (shareNotificationTimer !== null) {
@@ -618,11 +618,12 @@ function renderStatus(s: HostStatus): void {
   // Interactive button
   btnInteractive.classList.toggle("active", s.interactive);
   lblInteractive.textContent = s.interactive
-    ? "⚔ Desktop Interactive"
-    : "⚔ Interact on Desktop";
+    ? "Desktop Interactive"
+    : "Interact on Desktop";
 
   // Pause button
-  btnPause.textContent = s.user_paused ? "▶ Resume" : "⏸ Pause";
+  setIcon(icoPause, s.user_paused ? "play" : "pause");
+  lblPause.textContent = s.user_paused ? "Resume" : "Pause";
 
   // Displays list
   displaysList.innerHTML = "";
@@ -715,7 +716,7 @@ btnFeed.addEventListener("click", async () => {
   try {
     const s = await api.feedBirds([500.0, 400.0]);
     renderStatus(s);
-    showNotification("▸ 🌾 Snacks scattered across the boughs!");
+    showNotification("grains", "Snacks scattered across the boughs!");
   } catch (err) {
     console.error("feed error:", err);
   }
@@ -725,7 +726,7 @@ btnPrune.addEventListener("click", async () => {
   try {
     const s = await api.pruneBranch([500.0, 300.0], 80.0);
     renderStatus(s);
-    showNotification("▸ ✂️ Outer canopy pruned gently!");
+    showNotification("scissors", "Outer canopy pruned gently!");
   } catch (err) {
     console.error("prune error:", err);
   }
@@ -735,7 +736,7 @@ btnPlant.addEventListener("click", async () => {
   try {
     const s = await api.plantSeed([500.0, 750.0]);
     renderStatus(s);
-    showNotification("▸ 🌱 Sapling seed planted at the roots!");
+    showNotification("plant", "Sapling seed planted at the roots!");
   } catch (err) {
     console.error("plant error:", err);
   }
@@ -745,7 +746,7 @@ btnPanLeft.addEventListener("click", async () => {
   try {
     const s = await api.panForest(-80.0);
     renderStatus(s);
-    showNotification("▸ ◀ Forest horizon panned west");
+    showNotification("caret-left", "Forest horizon panned west");
   } catch (err) {
     console.error("panForest error:", err);
   }
@@ -755,7 +756,7 @@ btnPanRight.addEventListener("click", async () => {
   try {
     const s = await api.panForest(80.0);
     renderStatus(s);
-    showNotification("▸ Forest horizon panned east ▶");
+    showNotification("caret-right", "Forest horizon panned east");
   } catch (err) {
     console.error("panForest error:", err);
   }
@@ -768,7 +769,7 @@ btnKoiFeed.addEventListener("click", async () => {
       pos: [500.0, 375.0],
     });
     renderStatus(s);
-    showNotification("▸ 🪱 Nourishing pellets dropped into the lagoon!");
+    showNotification("pellets", "Nourishing pellets dropped into the lagoon!");
   } catch (err) {
     console.error("koi feed error:", err);
   }
@@ -781,7 +782,7 @@ btnKoiPebble.addEventListener("click", async () => {
       radius: 80.0,
     });
     renderStatus(s);
-    showNotification("▸ 💧 Smooth pebble skipped across the water!");
+    showNotification("ripple", "Smooth pebble skipped across the water!");
   } catch (err) {
     console.error("koi pebble error:", err);
   }
@@ -794,7 +795,7 @@ btnNebulaAttractor.addEventListener("click", async () => {
       pos: [500.0, 375.0],
     });
     renderStatus(s);
-    showNotification("▸ 🌀 Gravitational singularity vortex spawned!");
+    showNotification("spiral", "Gravitational singularity vortex spawned!");
   } catch (err) {
     console.error("nebula attractor error:", err);
   }
@@ -806,7 +807,7 @@ btnNebulaRepulsor.addEventListener("click", async () => {
       strength: 400.0,
     });
     renderStatus(s);
-    showNotification("▸ 💥 Supernova shockwave repelled stellar dust!");
+    showNotification("nova", "Supernova shockwave repelled stellar dust!");
   } catch (err) {
     console.error("nebula repulsor error:", err);
   }
@@ -816,7 +817,7 @@ btnNebulaPalette.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("cosmic-nebula", "cycle_palette");
     renderStatus(s);
-    showNotification("▸ 🎨 Nebular spectrum shifted!");
+    showNotification("palette", "Nebular spectrum shifted!");
   } catch (err) {
     console.error("nebula palette error:", err);
   }
@@ -827,7 +828,7 @@ btnOrbitalModule.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("orbital-haven", "add_module");
     renderStatus(s);
-    showNotification("▸ 🛰️ New station module deployed into orbit!");
+    showNotification("satellite", "New station module deployed into orbit!");
   } catch (err) {
     console.error("orbital module error:", err);
   }
@@ -837,7 +838,7 @@ btnOrbitalLaunch.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("orbital-haven", "launch_shuttle");
     renderStatus(s);
-    showNotification("▸ 🚀 Transport shuttle launched from docking ring!");
+    showNotification("rocket-launch", "Transport shuttle launched from docking ring!");
   } catch (err) {
     console.error("orbital launch error:", err);
   }
@@ -873,9 +874,9 @@ btnQuickSnapshot.addEventListener("click", async () => {
   try {
     btnQuickSnapshot.disabled = true;
     const path = await api.captureSnapshot();
-    showNotification(`▸ 📸 Snapshot saved: ${path}`);
+    showNotification("camera", `Snapshot saved: ${path}`);
   } catch (err) {
-    showNotification(`▸ Snapshot failed: ${err}`);
+    showNotification("warning", `Snapshot failed: ${err}`);
   } finally {
     btnQuickSnapshot.disabled = false;
   }
@@ -885,9 +886,9 @@ btnSnapshot.addEventListener("click", async () => {
   try {
     btnSnapshot.disabled = true;
     const path = await api.captureSnapshot();
-    showShareNotification(`📸 Snapshot saved: ${path}`);
+    showShareNotification("camera", `Snapshot saved: ${path}`);
   } catch (err) {
-    showShareNotification(`Snapshot failed: ${err}`, true);
+    showShareNotification("warning", `Snapshot failed: ${err}`, true);
   } finally {
     btnSnapshot.disabled = false;
   }
@@ -896,11 +897,11 @@ btnSnapshot.addEventListener("click", async () => {
 btnRecordLoop.addEventListener("click", async () => {
   try {
     btnRecordLoop.disabled = true;
-    showShareNotification("🎞️ Recording 5s loop…");
+    showShareNotification("film-strip", "Recording 5s loop…");
     const path = await api.recordLoop();
-    showShareNotification(`🎞️ GIF saved: ${path}`);
+    showShareNotification("film-strip", `GIF saved: ${path}`);
   } catch (err) {
-    showShareNotification(`Record loop failed: ${err}`, true);
+    showShareNotification("warning", `Record loop failed: ${err}`, true);
   } finally {
     btnRecordLoop.disabled = false;
   }
@@ -909,11 +910,11 @@ btnRecordLoop.addEventListener("click", async () => {
 btnRecordVideo.addEventListener("click", async () => {
   try {
     btnRecordVideo.disabled = true;
-    showShareNotification("🎥 Recording 5s 60 FPS MP4…");
+    showShareNotification("video-camera", "Recording 5s 60 FPS MP4…");
     const path = await api.recordVideo();
-    showShareNotification(`🎥 Video saved: ${path}`);
+    showShareNotification("video-camera", `Video saved: ${path}`);
   } catch (err) {
-    showShareNotification(`Record video failed: ${err}`, true);
+    showShareNotification("warning", `Record video failed: ${err}`, true);
   } finally {
     btnRecordVideo.disabled = false;
   }
@@ -923,9 +924,9 @@ btnCopySeed.addEventListener("click", async () => {
   try {
     const uri = await api.getWorldSeed();
     await navigator.clipboard.writeText(uri);
-    showShareNotification("🌱 Copied World Seed URI!");
+    showShareNotification("plant", "Copied World Seed URI!");
   } catch (err) {
-    showShareNotification(`Copy seed failed: ${err}`, true);
+    showShareNotification("warning", `Copy seed failed: ${err}`, true);
   }
 });
 
@@ -933,9 +934,9 @@ btnCopyState.addEventListener("click", async () => {
   try {
     const uri = await api.getWorldStateString();
     await navigator.clipboard.writeText(uri);
-    showShareNotification("📦 Copied full World State snapshot!");
+    showShareNotification("package", "Copied full World State snapshot!");
   } catch (err) {
-    showShareNotification(`Copy state failed: ${err}`, true);
+    showShareNotification("warning", `Copy state failed: ${err}`, true);
   }
 });
 
@@ -946,9 +947,9 @@ btnImportWorld.addEventListener("click", async () => {
     const s = await api.importWorldString(text);
     renderStatus(s);
     inputImportWorld.value = "";
-    showShareNotification("✨ World imported successfully!");
+    showShareNotification("check-circle", "World imported successfully!");
   } catch (err) {
-    showShareNotification(`Import failed: ${err}`, true);
+    showShareNotification("warning", `Import failed: ${err}`, true);
   }
 });
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <g class="rk-duo" fill="currentColor" opacity="0.2">
+    <path d="M32,132C56,88,120,76,172,116l44-36v100l-44-36C120,184,56,176,32,132Z"/>
+  </g>
+  <g class="rk-line" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32,132C56,88,120,76,172,116l44-36v100l-44-36C120,184,56,176,32,132Z"/>
+    <path d="M96,94c8-22,32-34,56-26"/>
+    <path d="M104,170c4,14,16,22,32,22"/>
+    <path d="M40,144c-8,10-10,24-4,36"/>
+  </g>
+  <circle cx="72" cy="122" r="12" fill="currentColor"/>
+</svg>

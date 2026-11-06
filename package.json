@@ -10,10 +10,13 @@
     "build:ui": "npm run build --workspace ui/popover",
     "dev:ui": "npm run dev --workspace ui/popover",
     "dev": "tauri dev -c host/tauri.conf.json",
-    "build": "tauri build -c host/tauri.conf.json"
+    "build": "tauri build -c host/tauri.conf.json",
+    "icons": "node ui/icons/build.mjs",
+    "icons:sync": "node ui/icons/build.mjs --sync"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "2.1.1",
+    "@resvg/resvg-js": "2.6.2",
     "@tauri-apps/cli": "^2.5.0"
   }
 }
-

@@ -100,7 +100,7 @@ tagline = "Articulated koi fish, blooming water lilies, and gentle ripples"
 version = "0.1.0"
 author = "Rookery Team"
 archetype = "Ecosystem"
-icon_glyph = "🎏"
+icon_glyph = "koi"
 tags = ["aquatic", "koi", "zen", "nature"]
 
 [budgets]

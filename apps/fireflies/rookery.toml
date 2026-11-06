@@ -10,7 +10,7 @@ archetype = "generative_physics"
 kind = "button"
 id = "pulse"
 label = "Pulse Light"
-icon = "✨"
+icon = "sparkle"
 tooltip = "Emits a wave of light that excites all nearby fireflies"
 
 [budgets]

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <g class="rk-duo" fill="currentColor" opacity="0.2">
+    <path d="M96,152Q91,112,52,100Q57,140,96,152Z"/>
+    <path d="M148,100Q162,132,196,124Q182,92,148,100Z"/>
+    <path d="M176,80Q210,74,216,40Q182,46,176,80Z"/>
+  </g>
+  <g class="rk-line" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40,216C88,176,152,128,208,48"/>
+    <path d="M96,152Q91,112,52,100Q57,140,96,152Z"/>
+    <path d="M148,100Q162,132,196,124Q182,92,148,100Z"/>
+    <path d="M176,80Q210,74,216,40Q182,46,176,80Z"/>
+  </g>
+</svg>

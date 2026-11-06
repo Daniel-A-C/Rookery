@@ -12,14 +12,14 @@
       <header class="header">
         <div class="brand">
           <div class="crest-frame">
-            <span id="brand-glyph" class="bird-glyph" aria-hidden="true">🌲</span>
+            <span class="bird-glyph"><rk-icon id="brand-glyph" name="tree-evergreen"></rk-icon></span>
           </div>
           <div class="brand-titles">
             <div class="title-row">
               <h1 id="brand-title">The Living Rookery</h1>
               <span id="power-badge" class="badge">AC</span>
             </div>
-            <p id="app-tagline" class="subtitle">✦ Woodland Sanctuary · ASCII Realm ✦</p>
+            <p id="app-tagline" class="subtitle">Woodland Sanctuary · ASCII Realm</p>
           </div>
         </div>
         <button
@@ -29,7 +29,7 @@
           aria-expanded="false"
           title="Open General Settings &amp; System Menu"
         >
-          <span id="settings-toggle-icon" aria-hidden="true">⚙</span>
+          <rk-icon id="settings-toggle-icon" name="settings"></rk-icon>
           <span id="settings-toggle-label">Settings</span>
         </button>
       </header>
@@ -46,7 +46,7 @@
             type="button"
             data-app="living-rookery"
           >
-            <span class="tab-glyph" aria-hidden="true">🌲</span>
+            <rk-icon class="tab-glyph" name="tree-evergreen"></rk-icon>
             <span>Rookery</span>
           </button>
           <button
@@ -55,7 +55,7 @@
             type="button"
             data-app="koi-pond"
           >
-            <span class="tab-glyph" aria-hidden="true">🎏</span>
+            <rk-icon class="tab-glyph" name="koi"></rk-icon>
             <span>Koi Pond</span>
           </button>
           <button
@@ -64,7 +64,7 @@
             type="button"
             data-app="cosmic-nebula"
           >
-            <span class="tab-glyph" aria-hidden="true">🌌</span>
+            <rk-icon class="tab-glyph" name="nebula"></rk-icon>
             <span>Nebula</span>
           </button>
           <button
@@ -73,7 +73,7 @@
             type="button"
             data-app="orbital-haven"
           >
-            <span class="tab-glyph" aria-hidden="true">🛰️</span>
+            <rk-icon class="tab-glyph" name="satellite"></rk-icon>
             <span>Orbital</span>
           </button>
         </section>
@@ -83,25 +83,25 @@
           <!-- Living Rookery Card -->
           <section id="card-living-rookery" class="card hud-card rookery-card">
             <div class="hud-banner">
-              <span class="hud-ornament" aria-hidden="true">╔❖</span>
+              <span class="hud-ornament left"><rk-icon name="leaf"></rk-icon></span>
               <span class="section-title">Sylvan Sanctuary Chronicle</span>
-              <span class="hud-ornament" aria-hidden="true">❖╗</span>
+              <span class="hud-ornament right"><rk-icon name="leaf"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label">⏳ Tree Age</span>
+                <span class="stat-label"><rk-icon name="hourglass"></rk-icon>Tree Age</span>
                 <span id="stat-age" class="stat-value">0h 00m</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🌿 Boughs</span>
+                <span class="stat-label"><rk-icon name="branch"></rk-icon>Boughs</span>
                 <span id="stat-branches" class="stat-value">0</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🍃 Canopy Buds</span>
+                <span class="stat-label"><rk-icon name="leaf"></rk-icon>Canopy Buds</span>
                 <span id="stat-foliage" class="stat-value">0</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🦅 Sky Flock</span>
+                <span class="stat-label"><rk-icon name="bird"></rk-icon>Sky Flock</span>
                 <span id="stat-birds" class="stat-value">4 birds</span>
               </div>
             </div>
@@ -112,7 +112,7 @@
                 type="button"
                 title="Place snacks on branches to entice birds"
               >
-                🌾 Scatter Feed
+                <rk-icon name="grains"></rk-icon><span>Scatter Feed</span>
               </button>
               <button
                 id="btn-prune"
@@ -120,7 +120,7 @@
                 type="button"
                 title="Gently prune branches to shape the canopy"
               >
-                ✂️ Prune Boughs
+                <rk-icon name="scissors"></rk-icon><span>Prune Boughs</span>
               </button>
               <button
                 id="btn-plant"
@@ -128,7 +128,7 @@
                 type="button"
                 title="Drop a seed to grow a new sapling"
               >
-                🌱 Plant Sapling
+                <rk-icon name="plant"></rk-icon><span>Plant Sapling</span>
               </button>
               <div class="pan-inline-group">
                 <button
@@ -137,7 +137,7 @@
                   type="button"
                   title="Pan forest horizon west"
                 >
-                  ◀ West
+                  <rk-icon name="caret-left"></rk-icon><span>West</span>
                 </button>
                 <button
                   id="btn-pan-right"
@@ -145,7 +145,7 @@
                   type="button"
                   title="Pan forest horizon east"
                 >
-                  East ▶
+                  <span>East</span><rk-icon name="caret-right"></rk-icon>
                 </button>
               </div>
             </div>
@@ -154,25 +154,25 @@
           <!-- Tranquil Koi Pond Card -->
           <section id="card-koi-pond" class="card hud-card koi-card" hidden>
             <div class="hud-banner">
-              <span class="hud-ornament" aria-hidden="true">༺🪷</span>
+              <span class="hud-ornament left"><rk-icon name="flower-lotus"></rk-icon></span>
               <span class="section-title">Imperial Pond Scroll</span>
-              <span class="hud-ornament" aria-hidden="true">🪷༻</span>
+              <span class="hud-ornament right"><rk-icon name="flower-lotus"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label">🎏 Koi School</span>
+                <span class="stat-label"><rk-icon name="koi"></rk-icon>Koi School</span>
                 <span id="stat-koi-count" class="stat-value">12</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🪷 Lily Pads</span>
+                <span class="stat-label"><rk-icon name="lily-pad"></rk-icon>Lily Pads</span>
                 <span id="stat-koi-lilies" class="stat-value">9</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🌸 Lotus Blooms</span>
+                <span class="stat-label"><rk-icon name="flower-lotus"></rk-icon>Lotus Blooms</span>
                 <span id="stat-koi-lotuses" class="stat-value">3</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">💧 Water Ripples</span>
+                <span class="stat-label"><rk-icon name="ripple"></rk-icon>Water Ripples</span>
                 <span id="stat-koi-ripples" class="stat-value">0</span>
               </div>
             </div>
@@ -183,7 +183,7 @@
                 type="button"
                 title="Drop nutritious floating food pellets"
               >
-                🪱 Scatter Pellets
+                <rk-icon name="pellets"></rk-icon><span>Scatter Pellets</span>
               </button>
               <button
                 id="btn-koi-pebble"
@@ -191,7 +191,7 @@
                 type="button"
                 title="Cast a smooth pebble to stir gentle ripples"
               >
-                💧 Skip Pebble
+                <rk-icon name="ripple"></rk-icon><span>Skip Pebble</span>
               </button>
             </div>
           </section>
@@ -199,25 +199,25 @@
           <!-- Cosmic Nebula Card -->
           <section id="card-cosmic-nebula" class="card hud-card nebula-card" hidden>
             <div class="hud-banner">
-              <span class="hud-ornament" aria-hidden="true">⟪✦</span>
+              <span class="hud-ornament left"><rk-icon name="star-four"></rk-icon></span>
               <span class="section-title">Astral Star-Chart Deck</span>
-              <span class="hud-ornament" aria-hidden="true">✦⟫</span>
+              <span class="hud-ornament right"><rk-icon name="star-four"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label">✦ Stellar Dust</span>
+                <span class="stat-label"><rk-icon name="sparkle"></rk-icon>Stellar Dust</span>
                 <span id="stat-nebula-particles" class="stat-value">1500</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🌀 Singularities</span>
+                <span class="stat-label"><rk-icon name="spiral"></rk-icon>Singularities</span>
                 <span id="stat-nebula-wells" class="stat-value">2</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🎨 Spectrum</span>
+                <span class="stat-label"><rk-icon name="palette"></rk-icon>Spectrum</span>
                 <span id="stat-nebula-palette" class="stat-value">Pillars of Creation</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">⚡ Flux Index</span>
+                <span class="stat-label"><rk-icon name="lightning"></rk-icon>Flux Index</span>
                 <span id="stat-nebula-turb" class="stat-value">1.0x</span>
               </div>
             </div>
@@ -228,7 +228,7 @@
                 type="button"
                 title="Add a gravitational vortex attractor"
               >
-                🌀 Spawn Vortex
+                <rk-icon name="spiral"></rk-icon><span>Spawn Vortex</span>
               </button>
               <button
                 id="btn-nebula-repulsor"
@@ -236,7 +236,7 @@
                 type="button"
                 title="Pulse a supernova repulsor well"
               >
-                💥 Nova Pulse
+                <rk-icon name="nova"></rk-icon><span>Nova Pulse</span>
               </button>
               <button
                 id="btn-nebula-palette"
@@ -244,7 +244,7 @@
                 type="button"
                 title="Cycle through Hubble / JWST color palettes"
               >
-                🎨 Shift Nebular Spectrum
+                <rk-icon name="palette"></rk-icon><span>Shift Nebular Spectrum</span>
               </button>
             </div>
           </section>
@@ -252,25 +252,25 @@
           <!-- Orbital Haven Card -->
           <section id="card-orbital-haven" class="card hud-card orbital-card" hidden>
             <div class="hud-banner">
-              <span class="hud-ornament" aria-hidden="true">◢⌬</span>
+              <span class="hud-ornament left"><rk-icon name="hexagon"></rk-icon></span>
               <span class="section-title">Orbital Telemetry &amp; Ops</span>
-              <span class="hud-ornament" aria-hidden="true">⌬◣</span>
+              <span class="hud-ornament right"><rk-icon name="hexagon"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label">⌬ Hull Modules</span>
+                <span class="stat-label"><rk-icon name="hexagon"></rk-icon>Hull Modules</span>
                 <span id="stat-orbital-modules" class="stat-value">7</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">☀️ Solar Arrays</span>
+                <span class="stat-label"><rk-icon name="solar-panel"></rk-icon>Solar Arrays</span>
                 <span id="stat-orbital-solar" class="stat-value">4</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🛸 Hab Rings</span>
+                <span class="stat-label"><rk-icon name="hab-ring"></rk-icon>Hab Rings</span>
                 <span id="stat-orbital-rings" class="stat-value">1</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label">🚀 Docked Fleet</span>
+                <span class="stat-label"><rk-icon name="rocket"></rk-icon>Docked Fleet</span>
                 <span id="stat-orbital-shuttles" class="stat-value">2</span>
               </div>
             </div>
@@ -281,7 +281,7 @@
                 type="button"
                 title="Construct a new module extension"
               >
-                🛰️ Deploy Module
+                <rk-icon name="satellite"></rk-icon><span>Deploy Module</span>
               </button>
               <button
                 id="btn-orbital-launch"
@@ -289,7 +289,7 @@
                 type="button"
                 title="Launch a research transport shuttle"
               >
-                🚀 Launch Shuttle
+                <rk-icon name="rocket-launch"></rk-icon><span>Launch Shuttle</span>
               </button>
             </div>
           </section>
@@ -300,19 +300,20 @@
         <!-- Primary Bottom Command Strip -->
         <section class="actions-row">
           <button id="btn-interactive" class="btn primary game-cmd-btn" type="button">
-            <span id="lbl-interactive">⚔ Interact on Desktop</span>
+            <span class="btn-label"><rk-icon id="ico-interactive" name="cursor-click"></rk-icon><span id="lbl-interactive">Interact on Desktop</span></span>
             <kbd id="kbd-hotkey">⌘⌥⇧R</kbd>
           </button>
           <button id="btn-pause" class="btn secondary game-cmd-btn" type="button">
-            Pause
+            <rk-icon id="ico-pause" name="pause"></rk-icon><span id="lbl-pause">Pause</span>
           </button>
           <button
             id="btn-quick-snapshot"
             class="btn icon-cmd-btn game-cmd-btn"
             type="button"
             title="Capture Desktop Snapshot PNG"
+            aria-label="Capture Desktop Snapshot PNG"
           >
-            📸
+            <rk-icon name="camera"></rk-icon>
           </button>
         </section>
       </div>
@@ -328,21 +329,21 @@
             class="settings-nav-btn active"
             data-settings-tab="general"
           >
-            ⚙ General
+            <rk-icon name="settings"></rk-icon><span>General</span>
           </button>
           <button
             type="button"
             class="settings-nav-btn"
             data-settings-tab="controls"
           >
-            ⚡ Controls &amp; FPS
+            <rk-icon name="gauge"></rk-icon><span>Controls &amp; FPS</span>
           </button>
           <button
             type="button"
             class="settings-nav-btn"
             data-settings-tab="share"
           >
-            📸 Capture &amp; Data
+            <rk-icon name="camera"></rk-icon><span>Capture &amp; Data</span>
           </button>
         </nav>
 
@@ -485,7 +486,7 @@
                 type="button"
                 title="Capture clean desktop snapshot PNG"
               >
-                📸 Snapshot
+                <rk-icon name="camera"></rk-icon><span>Snapshot</span>
               </button>
               <button
                 id="btn-record-loop"
@@ -493,7 +494,7 @@
                 type="button"
                 title="Record 5-second clean GIF loop"
               >
-                🎞️ GIF Loop
+                <rk-icon name="film-strip"></rk-icon><span>GIF Loop</span>
               </button>
               <button
                 id="btn-record-video"
@@ -501,7 +502,7 @@
                 type="button"
                 title="Record 5-second 60 FPS MP4 video"
               >
-                🎥 60FPS MP4
+                <rk-icon name="video-camera"></rk-icon><span>60FPS MP4</span>
               </button>
               <button
                 id="btn-copy-seed"
@@ -509,7 +510,7 @@
                 type="button"
                 title="Copy shareable World Seed URI"
               >
-                🌱 Copy Seed
+                <rk-icon name="plant"></rk-icon><span>Copy Seed</span>
               </button>
               <button
                 id="btn-copy-state"
@@ -517,7 +518,7 @@
                 type="button"
                 title="Copy full World State snapshot"
               >
-                📦 Copy Full World State
+                <rk-icon name="package"></rk-icon><span>Copy Full World State</span>
               </button>
             </div>
             <div class="import-group">
@@ -585,7 +586,7 @@
         <footer class="footer">
           <span class="version">Rookery v0.1.0 · MIT</span>
           <button id="btn-quit" class="quit-btn" type="button">
-            ⏻ Quit Rookery
+            <rk-icon name="power"></rk-icon><span>Quit Rookery</span>
           </button>
         </footer>
       </div>

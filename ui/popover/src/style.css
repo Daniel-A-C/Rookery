@@ -67,6 +67,11 @@
     --ok: #34d399;
     --scrollbar-thumb: #366847;
     --scrollbar-track: #0c1912;
+
+    /* Iconography System Variables */
+    --icon-primary: currentColor;
+    --icon-secondary: var(--accent-secondary);
+    --icon-secondary-opacity: 0.42;
   }
 
   /* Theme 2: Tranquil Koi Pond (Imperial Zen Garden & Vermilion Lacquer Scroll) */
@@ -287,7 +292,8 @@
     height: 100%;
     border-radius: 7px;
     background: rgba(8, 12, 18, 0.35);
-    font-size: 16px;
+    color: var(--text);
+    font-size: 17px;
   }
 
   .brand-titles {
@@ -415,8 +421,8 @@
   }
 
   .app-tab-btn .tab-glyph {
-    font-size: 14px;
-    line-height: 1.1;
+    font-size: 16px;
+    line-height: 1;
   }
 
   .app-tab-btn:hover:not(:disabled) {
@@ -471,10 +477,29 @@
   }
 
   .hud-ornament {
-    font-family: var(--font-display);
-    font-size: 10.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     color: var(--accent-secondary);
-    letter-spacing: 0.05em;
+    font-size: 12px;
+  }
+
+  .hud-ornament.left::after,
+  .hud-ornament.right::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent-secondary), transparent);
+    opacity: 0.65;
+  }
+
+  .hud-ornament.right::before {
+    background: linear-gradient(270deg, var(--accent-secondary), transparent);
+  }
+
+  .hud-ornament.right rk-icon {
+    transform: scaleX(-1);
   }
 
   .section-title {
@@ -505,11 +530,19 @@
   }
 
   .stat-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-family: var(--font-display);
     font-size: 9.5px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .stat-label rk-icon {
+    font-size: 12px;
+    color: var(--accent);
   }
 
   .stat-value {
@@ -622,13 +655,17 @@
   }
 
   .notification-text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
     font-family: var(--font-display);
     font-size: 10.5px;
     color: var(--ok);
     background: var(--card-inner);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 3px 8px;
+    padding: 4px 8px;
     text-align: center;
   }
 
@@ -645,6 +682,10 @@
   }
 
   .settings-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     padding: 5px 6px;
     border-radius: 7px;
     border: 1px solid transparent;
@@ -931,6 +972,9 @@
   }
 
   .quit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     border: 1px solid rgba(251, 113, 133, 0.35);
     border-radius: 6px;
     padding: 3px 8px;
@@ -940,10 +984,59 @@
     font-size: 10.5px;
     font-weight: 600;
     cursor: pointer;
+    --icon-secondary: var(--danger);
   }
 
   .quit-btn:hover:not(:disabled) {
     background: rgba(251, 113, 133, 0.22);
     border-color: var(--danger);
+  }
+
+  /* ================================================================= */
+  /* Duotone SVG Icon System (<rk-icon>)                               */
+  /* ================================================================= */
+  rk-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+    line-height: 1;
+    vertical-align: -0.15em;
+  }
+
+  rk-icon .rk-icon {
+    width: 100%;
+    height: 100%;
+    display: block;
+    color: var(--icon-primary, currentColor);
+    overflow: visible;
+  }
+
+  rk-icon .rk-icon .rk-duo {
+    color: var(--icon-secondary, var(--accent-secondary));
+    opacity: var(--icon-secondary-opacity, 0.42);
+    transition:
+      color 0.16s ease,
+      opacity 0.16s ease;
+  }
+
+  rk-icon .rk-icon .rk-line {
+    color: var(--icon-primary, currentColor);
+    transition: color 0.16s ease;
+  }
+
+  .btn-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn:hover:not(:disabled) rk-icon .rk-duo,
+  .app-tab-btn.active rk-icon .rk-duo,
+  .settings-nav-btn.active rk-icon .rk-duo,
+  .settings-toggle-btn:hover:not(:disabled) rk-icon .rk-duo {
+    --icon-secondary-opacity: 0.56;
   }
 }

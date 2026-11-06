@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <g class="rk-duo" fill="currentColor" opacity="0.2">
+    <path d="M128,132V44a88,88,0,1,0,62.2,25.8Z"/>
+  </g>
+  <g class="rk-line" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M128,132V44a88,88,0,1,0,62.2,25.8Z"/>
+    <path d="M100,184a56,56,0,0,1-24-28"/>
+  </g>
+  <circle cx="128" cy="132" r="12" fill="currentColor"/>
+</svg>

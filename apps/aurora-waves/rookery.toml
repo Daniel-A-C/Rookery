@@ -10,21 +10,21 @@ archetype = "web_canvas"
 kind = "button"
 id = "burst"
 label = "Stellar Burst"
-icon = "✨"
+icon = "sparkle"
 tooltip = "Emits an explosion of glowing stellar sparks"
 
 [[controls]]
 kind = "button"
 id = "cycle_aurora"
 label = "Cycle Palette"
-icon = "🎨"
+icon = "palette"
 tooltip = "Switches between Emerald Borealis, Amethyst Twilight, Solar Flare, and Arctic Cyan palettes"
 
 [[controls]]
 kind = "button"
 id = "shooting_star"
 label = "Shooting Star"
-icon = "🌠"
+icon = "shooting-star"
 tooltip = "Streaks a brilliant meteor across the night sky"
 
 [budgets]

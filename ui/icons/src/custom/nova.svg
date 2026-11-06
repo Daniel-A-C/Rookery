@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <g class="rk-duo" fill="currentColor" opacity="0.2">
+    <path d="M128.0,28.0 L145.6,85.5 L183.2,72.8 L170.5,110.4 L228.0,128.0 L170.5,145.6 L183.2,183.2 L145.6,170.5 L128.0,228.0 L110.4,170.5 L72.8,183.2 L85.5,145.6 L28.0,128.0 L85.5,110.4 L72.8,72.8 L110.4,85.5Z"/>
+  </g>
+  <g class="rk-line" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M128.0,28.0 L145.6,85.5 L183.2,72.8 L170.5,110.4 L228.0,128.0 L170.5,145.6 L183.2,183.2 L145.6,170.5 L128.0,228.0 L110.4,170.5 L72.8,183.2 L85.5,145.6 L28.0,128.0 L85.5,110.4 L72.8,72.8 L110.4,85.5Z"/>
+    <circle cx="128" cy="128" r="16"/>
+  </g>
+</svg>
