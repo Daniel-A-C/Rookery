@@ -39,12 +39,12 @@ pub fn replace_interaction_hotkey(
     Ok(())
 }
 
-/// Register the global shortcut to summon / toggle the Rookery popover window.
+/// Register the global shortcut to summon / toggle the Rookery popover window at the mouse cursor.
 pub fn register_popover_hotkey(app: &AppHandle, shortcut: &str) -> Result<()> {
     let gs = app.global_shortcut();
     gs.on_shortcut(shortcut, |app, _sc, ev| {
         if ev.state == ShortcutState::Pressed {
-            crate::popover::toggle(app);
+            crate::popover::toggle_at_cursor(app);
         }
     })
     .with_context(|| format!("failed to register popover hotkey '{shortcut}'"))

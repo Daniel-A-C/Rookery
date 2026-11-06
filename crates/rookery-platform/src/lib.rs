@@ -202,6 +202,19 @@ pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()>
     }
 }
 
+/// Apply native transparent rounded-corner styling and shadow masking to the popover window.
+pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::style_popover_window(window, corner_radius)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, corner_radius);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

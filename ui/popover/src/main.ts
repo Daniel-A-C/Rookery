@@ -15,28 +15,144 @@ const el = <T extends HTMLElement>(id: string): T => {
   return node as T;
 };
 
-// Header & Power
+// Root & Header Elements
+const popoverRoot = el<HTMLElement>("popover-root");
+const brandGlyph = el<HTMLSpanElement>("brand-glyph");
+const brandTitle = el<HTMLHeadingElement>("brand-title");
 const powerBadge = el<HTMLSpanElement>("power-badge");
 const appTagline = el<HTMLParagraphElement>("app-tagline");
 
-// App Switcher Container & Scheduler
+// View Toggle (Realm HUD vs Settings Menu)
+const btnToggleSettings = el<HTMLButtonElement>("btn-toggle-settings");
+const settingsToggleIcon = el<HTMLSpanElement>("settings-toggle-icon");
+const settingsToggleLabel = el<HTMLSpanElement>("settings-toggle-label");
+const viewRealm = el<HTMLDivElement>("view-realm");
+const viewSettings = el<HTMLDivElement>("view-settings");
+
+// Settings Sub-Tabs
+const settingsPanels: Record<string, HTMLElement> = {
+  general: el<HTMLElement>("settings-panel-general"),
+  controls: el<HTMLElement>("settings-panel-controls"),
+  share: el<HTMLElement>("settings-panel-share"),
+};
+const settingsNavBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav-btn");
+
+for (const navBtn of settingsNavBtns) {
+  navBtn.addEventListener("click", () => {
+    const targetTab = navBtn.getAttribute("data-settings-tab") || "general";
+    for (const b of settingsNavBtns) {
+      b.classList.toggle("active", b === navBtn);
+    }
+    for (const [key, panel] of Object.entries(settingsPanels)) {
+      panel.hidden = key !== targetTab;
+    }
+  });
+}
+
+let isSettingsOpen = false;
+function setSettingsOpen(open: boolean): void {
+  isSettingsOpen = open;
+  viewRealm.hidden = open;
+  viewSettings.hidden = !open;
+  btnToggleSettings.classList.toggle("active", open);
+  btnToggleSettings.setAttribute("aria-expanded", String(open));
+  if (open) {
+    settingsToggleIcon.textContent = "◀";
+    settingsToggleLabel.textContent = "Realm";
+  } else {
+    settingsToggleIcon.textContent = "⚙";
+    settingsToggleLabel.textContent = "Settings";
+  }
+}
+
+btnToggleSettings.addEventListener("click", () => {
+  setSettingsOpen(!isSettingsOpen);
+});
+
+// App Switcher Container & Realm Cards Container
 const appSwitcher = el<HTMLElement>("app-switcher");
-const cardScheduler = el<HTMLElement>("card-scheduler");
+const realmCardsContainer = el<HTMLElement>("realm-cards-container");
 
 // App Tabs & Cards Maps
 const tabs: Record<string, HTMLButtonElement> = {};
 const cards: Record<string, HTMLElement> = {};
 
+interface AppThemeMeta {
+  title: string;
+  tagline: string;
+  glyph: string;
+  ornamentLeft: string;
+  ornamentRight: string;
+}
+
+const appThemes: Record<string, AppThemeMeta> = {
+  "living-rookery": {
+    title: "The Living Rookery",
+    tagline: "✦ Woodland Sanctuary · ASCII Realm ✦",
+    glyph: "🌲",
+    ornamentLeft: "╔❖",
+    ornamentRight: "❖╗",
+  },
+  "koi-pond": {
+    title: "Tranquil Koi Pond",
+    tagline: "༺ Imperial Lotus Sanctuary ༻",
+    glyph: "🎏",
+    ornamentLeft: "༺🪷",
+    ornamentRight: "🪷༻",
+  },
+  "cosmic-nebula": {
+    title: "Cosmic Nebula",
+    tagline: "⟪ Astral Singularity Forge ⟫",
+    glyph: "🌌",
+    ornamentLeft: "⟪✦",
+    ornamentRight: "✦⟫",
+  },
+  "orbital-haven": {
+    title: "Orbital Haven",
+    tagline: "◢ Aegis-VII Orbital Command ◣",
+    glyph: "🛰️",
+    ornamentLeft: "◢⌬",
+    ornamentRight: "⌬◣",
+  },
+  "aurora-waves": {
+    title: "Aurora Waves",
+    tagline: "❖ Borealis Sky Observatory ❖",
+    glyph: "🌠",
+    ornamentLeft: "❖✧",
+    ornamentRight: "✧❖",
+  },
+  fireflies: {
+    title: "Twilight Fireflies",
+    tagline: "✧ Enchanted Gloaming Glade ✧",
+    glyph: "✨",
+    ornamentLeft: "✧❀",
+    ornamentRight: "❀✧",
+  },
+};
+
+function applyThemeForApp(appId: string): void {
+  popoverRoot.setAttribute("data-theme", appId);
+  const meta = appThemes[appId];
+  if (meta) {
+    brandGlyph.textContent = meta.glyph;
+    brandTitle.textContent = meta.title;
+    appTagline.textContent = meta.tagline;
+  } else {
+    brandGlyph.textContent = "◆";
+    brandTitle.textContent = appId.replace(/-/g, " ");
+    appTagline.textContent = "✦ Custom Rookery Realm ✦";
+  }
+}
+
 function bindTabEvents(appId: string, btn: HTMLButtonElement): void {
   btn.onclick = async () => {
-    // Optimistic UI update: switch active tab and visible card instantly
     for (const [id, tabBtn] of Object.entries(tabs)) {
       tabBtn.classList.toggle("active", id === appId);
     }
     for (const [id, cardEl] of Object.entries(cards)) {
       cardEl.hidden = id !== appId;
     }
-    appTagline.textContent = appTaglines[appId] ?? "Rookery App";
+    applyThemeForApp(appId);
 
     try {
       const s = await api.switchApp(appId);
@@ -55,14 +171,7 @@ for (const btn of appSwitcher.querySelectorAll<HTMLButtonElement>(".app-tab-btn"
   }
 }
 
-for (const card of document.querySelectorAll<HTMLElement>('[id^="card-"]')) {
-  if (
-    card.id === "card-scheduler" ||
-    card.id === "card-audio" ||
-    card.id === "card-updates"
-  ) {
-    continue;
-  }
+for (const card of realmCardsContainer.querySelectorAll<HTMLElement>('[id^="card-"]')) {
   const appId = card.id.replace("card-", "");
   cards[appId] = card;
 }
@@ -111,6 +220,7 @@ const sliderInterval = el<HTMLInputElement>("slider-interval");
 const valInterval = el<HTMLElement>("val-interval");
 
 // Share & Capture
+const btnQuickSnapshot = el<HTMLButtonElement>("btn-quick-snapshot");
 const btnSnapshot = el<HTMLButtonElement>("btn-snapshot");
 const btnRecordLoop = el<HTMLButtonElement>("btn-record-loop");
 const btnRecordVideo = el<HTMLButtonElement>("btn-record-video");
@@ -166,22 +276,8 @@ let recordingPopoverHotkey = false;
 
 let appCatalog: AppManifest[] = [];
 
-const appTaglines: Record<string, string> = {
-  "living-rookery": "The Living ASCII Rookery",
-  "koi-pond": "Tranquil Koi Pond & Articulated Boids",
-  "cosmic-nebula": "Deep Space Procedural Nebula & Gravity Wells",
-  "orbital-haven": "Modular Space Station & Planetary Horizon",
-};
-
 function getAppGlyph(m: AppManifest): string {
-  const glyphs: Record<string, string> = {
-    "living-rookery": "🌲",
-    "koi-pond": "🎏",
-    "cosmic-nebula": "🌌",
-    "orbital-haven": "🛰️",
-    "fireflies": "✨",
-  };
-  if (glyphs[m.metadata.id]) return glyphs[m.metadata.id];
+  if (appThemes[m.metadata.id]) return appThemes[m.metadata.id].glyph;
   for (const c of m.controls || []) {
     if (c.icon) return c.icon;
   }
@@ -190,6 +286,7 @@ function getAppGlyph(m: AppManifest): string {
     generative_physics: "⚛️",
     slow_burn_idle: "⏳",
     ambient_utility: "🧭",
+    web_canvas: "🌠",
   };
   return archetypes[m.metadata.archetype] || "◆";
 }
@@ -200,17 +297,24 @@ function getAppShortName(m: AppManifest): string {
     "koi-pond": "Koi Pond",
     "cosmic-nebula": "Nebula",
     "orbital-haven": "Orbital",
-    "fireflies": "Fireflies",
+    "aurora-waves": "Aurora",
+    fireflies: "Fireflies",
   };
   if (shortNames[m.metadata.id]) return shortNames[m.metadata.id];
   const name = m.metadata.name;
-  return name.length > 10 ? name.split(" ")[0] : name;
+  return name.length > 9 ? name.split(" ")[0] : name;
 }
 
 function applyCatalog(): void {
   for (const m of appCatalog) {
-    if (m.metadata?.description) {
-      appTaglines[m.metadata.id] = m.metadata.description;
+    if (!appThemes[m.metadata.id]) {
+      appThemes[m.metadata.id] = {
+        title: m.metadata.name,
+        tagline: `✦ ${m.metadata.description || "Custom Rookery Realm"} ✦`,
+        glyph: getAppGlyph(m),
+        ornamentLeft: "❖✧",
+        ornamentRight: "✧❖",
+      };
     }
 
     // 1. Ensure tab exists in switcher
@@ -237,17 +341,22 @@ function applyCatalog(): void {
       tabs[m.metadata.id] = tabBtn;
     }
 
-    // 2. Ensure card exists
+    // 2. Ensure card exists inside realmCardsContainer
     if (!cards[m.metadata.id]) {
+      const themeMeta = appThemes[m.metadata.id];
       const card = document.createElement("section");
       card.id = `card-${m.metadata.id}`;
-      card.className = "card app-dynamic-card";
+      card.className = "card hud-card app-dynamic-card";
       card.hidden = true;
 
-      const title = document.createElement("div");
-      title.className = "section-title";
-      title.textContent = m.metadata.name;
-      card.appendChild(title);
+      const banner = document.createElement("div");
+      banner.className = "hud-banner";
+      banner.innerHTML = `
+        <span class="hud-ornament" aria-hidden="true">${themeMeta.ornamentLeft}</span>
+        <span class="section-title">${m.metadata.name}</span>
+        <span class="hud-ornament" aria-hidden="true">${themeMeta.ornamentRight}</span>
+      `;
+      card.appendChild(banner);
 
       const badges = document.createElement("div");
       badges.className = "app-badges";
@@ -281,7 +390,6 @@ function applyCatalog(): void {
       for (const sl of sliderControls) {
         const row = document.createElement("div");
         row.className = "control-row";
-        row.style.marginTop = "6px";
         const label = document.createElement("span");
         label.textContent = sl.label;
         const valBadge = document.createElement("strong");
@@ -316,7 +424,6 @@ function applyCatalog(): void {
       for (const sel of selectControls) {
         const row = document.createElement("div");
         row.className = "schedule-row";
-        row.style.marginTop = "6px";
         const label = document.createElement("label");
         label.htmlFor = `select-${m.metadata.id}-${sel.id}`;
         label.textContent = `${sel.label}:`;
@@ -347,10 +454,12 @@ function applyCatalog(): void {
       if (buttonControls.length > 0) {
         const actionsDiv = document.createElement("div");
         actionsDiv.className = "rookery-actions";
-        for (const b of buttonControls) {
+        buttonControls.forEach((b, idx) => {
           const btn = document.createElement("button");
           btn.id = `btn-${m.metadata.id}-${b.id}`;
-          btn.className = "btn small";
+          const isOddLast =
+            buttonControls.length % 2 === 1 && idx === buttonControls.length - 1;
+          btn.className = `btn game-cmd-btn small${isOddLast ? " span-2" : ""}`;
           btn.type = "button";
           if (b.tooltip) btn.title = b.tooltip;
           btn.textContent = `${b.icon ? b.icon + " " : ""}${b.label}`;
@@ -358,24 +467,24 @@ function applyCatalog(): void {
             try {
               const res = await api.executeAppAction(m.metadata.id, b.id);
               renderStatus(res);
-              showNotification(`${b.icon ? b.icon + " " : ""}${b.label} activated!`);
+              showNotification(`▸ ${b.icon ? b.icon + " " : ""}${b.label} activated!`);
             } catch (err) {
               console.error("action error:", err);
             }
           });
           actionsDiv.appendChild(btn);
-        }
+        });
         card.appendChild(actionsDiv);
       }
 
-      cardScheduler.parentNode?.insertBefore(card, cardScheduler);
+      realmCardsContainer.appendChild(card);
       cards[m.metadata.id] = card;
     }
   }
 
   if (currentStatus) {
     const active = currentStatus.active_app || "living-rookery";
-    appTagline.textContent = appTaglines[active] ?? "Rookery App";
+    applyThemeForApp(active);
     for (const [id, tabBtn] of Object.entries(tabs)) {
       tabBtn.classList.toggle("active", id === active);
     }
@@ -425,7 +534,7 @@ function showNotification(msg: string): void {
   notificationTimer = window.setTimeout(() => {
     seedNotification.hidden = true;
     notificationTimer = null;
-  }, 3000);
+  }, 2800);
 }
 
 let shareNotificationTimer: number | null = null;
@@ -456,9 +565,9 @@ function renderStatus(s: HostStatus): void {
   };
   powerBadge.textContent = powerLabels[s.power] ?? s.power.toUpperCase();
 
-  // Active App Tabs & Cards
+  // Active App Theme, Tabs & Cards
   const activeApp = s.active_app || "living-rookery";
-  appTagline.textContent = appTaglines[activeApp] ?? "Rookery App";
+  applyThemeForApp(activeApp);
 
   for (const [id, tabBtn] of Object.entries(tabs)) {
     tabBtn.classList.toggle("active", id === activeApp);
@@ -509,11 +618,11 @@ function renderStatus(s: HostStatus): void {
   // Interactive button
   btnInteractive.classList.toggle("active", s.interactive);
   lblInteractive.textContent = s.interactive
-    ? "Desktop Interactive"
-    : "Interact on Desktop";
+    ? "⚔ Desktop Interactive"
+    : "⚔ Interact on Desktop";
 
   // Pause button
-  btnPause.textContent = s.user_paused ? "Resume" : "Pause";
+  btnPause.textContent = s.user_paused ? "▶ Resume" : "⏸ Pause";
 
   // Displays list
   displaysList.innerHTML = "";
@@ -522,30 +631,29 @@ function renderStatus(s: HostStatus): void {
     li.className = "empty";
     li.textContent = "No active displays";
     displaysList.appendChild(li);
-    return;
-  }
+  } else {
+    for (const d of s.displays) {
+      const li = document.createElement("li");
+      li.className = "display-item";
 
-  for (const d of s.displays) {
-    const li = document.createElement("li");
-    li.className = "display-item";
+      const left = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = d.name;
+      const meta = document.createElement("span");
+      meta.className = "display-meta";
+      meta.textContent = `${d.width}×${d.height}`;
+      left.appendChild(name);
+      left.appendChild(meta);
 
-    const left = document.createElement("div");
-    const name = document.createElement("strong");
-    name.textContent = d.name;
-    const meta = document.createElement("span");
-    meta.className = "display-meta";
-    meta.textContent = `${d.width}×${d.height}`;
-    left.appendChild(name);
-    left.appendChild(meta);
+      const right = document.createElement("span");
+      const info = formatBudget(d);
+      right.className = info.paused ? "status-pill paused" : "status-pill";
+      right.textContent = info.text;
 
-    const right = document.createElement("span");
-    const info = formatBudget(d);
-    right.className = info.paused ? "status-pill paused" : "status-pill";
-    right.textContent = info.text;
-
-    li.appendChild(left);
-    li.appendChild(right);
-    displaysList.appendChild(li);
+      li.appendChild(left);
+      li.appendChild(right);
+      displaysList.appendChild(li);
+    }
   }
 
   // Audio Subsystem Status
@@ -586,7 +694,8 @@ function renderSettings(st: Settings): void {
     .replace("Shift", "⇧");
   btnRecordHotkey.textContent = st.hotkey;
 
-  btnRecordPopoverHotkey.textContent = st.popover_hotkey || "CommandOrControl+Alt+Shift+P";
+  btnRecordPopoverHotkey.textContent =
+    st.popover_hotkey || "CommandOrControl+Alt+Shift+P";
 
   selectScheduleMode.value = st.schedule_mode;
   sliderInterval.value = String(st.schedule_interval_mins);
@@ -601,13 +710,12 @@ function renderSettings(st: Settings): void {
   }
 }
 
-
 // Living Rookery Action Handlers
 btnFeed.addEventListener("click", async () => {
   try {
     const s = await api.feedBirds([500.0, 400.0]);
     renderStatus(s);
-    showNotification("🌾 Snacks placed on branches!");
+    showNotification("▸ 🌾 Snacks scattered across the boughs!");
   } catch (err) {
     console.error("feed error:", err);
   }
@@ -617,7 +725,7 @@ btnPrune.addEventListener("click", async () => {
   try {
     const s = await api.pruneBranch([500.0, 300.0], 80.0);
     renderStatus(s);
-    showNotification("✂️ Branches pruned gently!");
+    showNotification("▸ ✂️ Outer canopy pruned gently!");
   } catch (err) {
     console.error("prune error:", err);
   }
@@ -627,7 +735,7 @@ btnPlant.addEventListener("click", async () => {
   try {
     const s = await api.plantSeed([500.0, 750.0]);
     renderStatus(s);
-    showNotification("🌱 Sapling seed planted at roots!");
+    showNotification("▸ 🌱 Sapling seed planted at the roots!");
   } catch (err) {
     console.error("plant error:", err);
   }
@@ -637,7 +745,7 @@ btnPanLeft.addEventListener("click", async () => {
   try {
     const s = await api.panForest(-80.0);
     renderStatus(s);
-    showNotification("◀ Forest panned left");
+    showNotification("▸ ◀ Forest horizon panned west");
   } catch (err) {
     console.error("panForest error:", err);
   }
@@ -647,7 +755,7 @@ btnPanRight.addEventListener("click", async () => {
   try {
     const s = await api.panForest(80.0);
     renderStatus(s);
-    showNotification("Forest panned right ▶");
+    showNotification("▸ Forest horizon panned east ▶");
   } catch (err) {
     console.error("panForest error:", err);
   }
@@ -660,7 +768,7 @@ btnKoiFeed.addEventListener("click", async () => {
       pos: [500.0, 375.0],
     });
     renderStatus(s);
-    showNotification("🪱 Nourishing food pellets dropped into the pond!");
+    showNotification("▸ 🪱 Nourishing pellets dropped into the lagoon!");
   } catch (err) {
     console.error("koi feed error:", err);
   }
@@ -673,7 +781,7 @@ btnKoiPebble.addEventListener("click", async () => {
       radius: 80.0,
     });
     renderStatus(s);
-    showNotification("💧 Cast smooth pebble, rippling water!");
+    showNotification("▸ 💧 Smooth pebble skipped across the water!");
   } catch (err) {
     console.error("koi pebble error:", err);
   }
@@ -686,7 +794,7 @@ btnNebulaAttractor.addEventListener("click", async () => {
       pos: [500.0, 375.0],
     });
     renderStatus(s);
-    showNotification("🌀 Gravitational attractor vortex created!");
+    showNotification("▸ 🌀 Gravitational singularity vortex spawned!");
   } catch (err) {
     console.error("nebula attractor error:", err);
   }
@@ -698,7 +806,7 @@ btnNebulaRepulsor.addEventListener("click", async () => {
       strength: 400.0,
     });
     renderStatus(s);
-    showNotification("💥 Stellar supernova pulse repelled dust!");
+    showNotification("▸ 💥 Supernova shockwave repelled stellar dust!");
   } catch (err) {
     console.error("nebula repulsor error:", err);
   }
@@ -708,7 +816,7 @@ btnNebulaPalette.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("cosmic-nebula", "cycle_palette");
     renderStatus(s);
-    showNotification("🎨 Cosmic palette cycled!");
+    showNotification("▸ 🎨 Nebular spectrum shifted!");
   } catch (err) {
     console.error("nebula palette error:", err);
   }
@@ -719,7 +827,7 @@ btnOrbitalModule.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("orbital-haven", "add_module");
     renderStatus(s);
-    showNotification("🛰️ New station module deployed into orbit!");
+    showNotification("▸ 🛰️ New station module deployed into orbit!");
   } catch (err) {
     console.error("orbital module error:", err);
   }
@@ -729,7 +837,7 @@ btnOrbitalLaunch.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("orbital-haven", "launch_shuttle");
     renderStatus(s);
-    showNotification("🚀 Transport shuttle launched from docking ring!");
+    showNotification("▸ 🚀 Transport shuttle launched from docking ring!");
   } catch (err) {
     console.error("orbital launch error:", err);
   }
@@ -761,6 +869,18 @@ sliderInterval.addEventListener("change", async () => {
 });
 
 // Share & Capture
+btnQuickSnapshot.addEventListener("click", async () => {
+  try {
+    btnQuickSnapshot.disabled = true;
+    const path = await api.captureSnapshot();
+    showNotification(`▸ 📸 Snapshot saved: ${path}`);
+  } catch (err) {
+    showNotification(`▸ Snapshot failed: ${err}`);
+  } finally {
+    btnQuickSnapshot.disabled = false;
+  }
+});
+
 btnSnapshot.addEventListener("click", async () => {
   try {
     btnSnapshot.disabled = true;
@@ -1063,7 +1183,7 @@ updater.subscribe((state) => {
   }
 
   btnCheckUpdates.disabled = false;
-  btnCheckUpdates.textContent = "Check for Updates";
+  btnCheckUpdates.textContent = "Check Updates";
 
   if (state.installed) {
     updateActionPanel.hidden = false;

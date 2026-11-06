@@ -4,37 +4,65 @@
 //! closed. Clicking the tray icon builds the `popover` `WebviewWindow`, positions it next to
 //! the tray icon via `tauri-plugin-positioner`, and destroys it as soon as it loses focus.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 use crate::state::POPOVER_LABEL;
 
-const POPOVER_WIDTH: f64 = 320.0;
-const POPOVER_HEIGHT: f64 = 520.0;
+const POPOVER_WIDTH: f64 = 384.0;
+const POPOVER_HEIGHT: f64 = 388.0;
+const POPOVER_CORNER_RADIUS: f64 = 20.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PopoverAnchor {
+    Tray,
+    Cursor,
+}
 
 pub fn toggle(app: &AppHandle) {
+    toggle_with_anchor(app, PopoverAnchor::Tray);
+}
+
+pub fn toggle_at_cursor(app: &AppHandle) {
+    toggle_with_anchor(app, PopoverAnchor::Cursor);
+}
+
+fn toggle_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {
         log::info!("popover toggle: closing existing popover window");
         let _ = existing.destroy();
         return;
     }
-    open(app);
+    open_with_anchor(app, anchor);
 }
 
 pub fn open(app: &AppHandle) {
+    open_with_anchor(app, PopoverAnchor::Tray);
+}
+
+pub fn open_at_cursor(app: &AppHandle) {
+    open_with_anchor(app, PopoverAnchor::Cursor);
+}
+
+fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {
         log::info!("popover open: focusing existing popover window");
+        if anchor == PopoverAnchor::Cursor {
+            position_window_at_cursor(app, &existing);
+        }
         let _ = existing.set_focus();
         return;
     }
 
-    log::info!("popover open: building popover webview window");
+    log::info!("popover open ({anchor:?}): building popover webview window");
     let window =
         match WebviewWindowBuilder::new(app, POPOVER_LABEL, WebviewUrl::App("index.html".into()))
             .title("Rookery")
             .inner_size(POPOVER_WIDTH, POPOVER_HEIGHT)
             .resizable(false)
             .decorations(false)
+            .transparent(true)
+            .shadow(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
@@ -49,14 +77,24 @@ pub fn open(app: &AppHandle) {
             }
         };
 
-    #[cfg(target_os = "macos")]
-    let pos = Position::TrayCenter;
-    #[cfg(not(target_os = "macos"))]
-    let pos = Position::TrayBottomCenter;
+    let _ = rookery_platform::style_popover_window(&window, POPOVER_CORNER_RADIUS);
 
-    if window.move_window_constrained(pos).is_err() {
-        let _ = window.move_window(Position::TopRight);
+    match anchor {
+        PopoverAnchor::Cursor => {
+            position_window_at_cursor(app, &window);
+        }
+        PopoverAnchor::Tray => {
+            #[cfg(target_os = "macos")]
+            let pos = Position::TrayCenter;
+            #[cfg(not(target_os = "macos"))]
+            let pos = Position::TrayBottomCenter;
+
+            if window.move_window_constrained(pos).is_err() {
+                let _ = window.move_window(Position::TopRight);
+            }
+        }
     }
+
     let _ = window.set_focus();
     let _ = rookery_platform::activate_app_and_focus_window(&window);
 
@@ -113,4 +151,91 @@ pub fn open(app: &AppHandle) {
         }
         _ => {}
     });
+}
+
+fn position_window_at_cursor(app: &AppHandle, window: &WebviewWindow) {
+    let Some((cx, cy)) = rookery_platform::cursor_position() else {
+        let _ = window.move_window(Position::Center);
+        return;
+    };
+
+    let monitors = app.available_monitors().unwrap_or_default();
+
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, `cursor_position()` returns global logical points while `Monitor::position()`
+        // and `Monitor::size()` are physical pixels.
+        let target_monitor = monitors
+            .iter()
+            .find(|m| {
+                let scale = m.scale_factor();
+                let mx = m.position().x as f64 / scale;
+                let my = m.position().y as f64 / scale;
+                let mw = m.size().width as f64 / scale;
+                let mh = m.size().height as f64 / scale;
+                cx >= mx && cx < mx + mw && cy >= my && cy < my + mh
+            })
+            .or_else(|| monitors.first());
+
+        if let Some(m) = target_monitor {
+            let scale = m.scale_factor();
+            let mx = m.position().x as f64 / scale;
+            let my = m.position().y as f64 / scale;
+            let mw = m.size().width as f64 / scale;
+            let mh = m.size().height as f64 / scale;
+
+            let margin = 12.0;
+            let top_bar_pad = 30.0;
+            let min_x = mx + margin;
+            let max_x = (mx + mw - POPOVER_WIDTH - margin).max(min_x);
+            let min_y = my + top_bar_pad;
+            let max_y = (my + mh - POPOVER_HEIGHT - margin).max(min_y);
+
+            let lx = (cx - POPOVER_WIDTH * 0.5).clamp(min_x, max_x);
+            let ly = (cy - POPOVER_HEIGHT * 0.35).clamp(min_y, max_y);
+
+            let phys_x = (lx * scale).round() as i32;
+            let phys_y = (ly * scale).round() as i32;
+            let _ = window.set_position(PhysicalPosition::new(phys_x, phys_y));
+            return;
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On Windows/Linux, `cursor_position()` and `Monitor` bounds are in physical pixels.
+        let target_monitor = monitors
+            .iter()
+            .find(|m| {
+                let mx = m.position().x as f64;
+                let my = m.position().y as f64;
+                let mw = m.size().width as f64;
+                let mh = m.size().height as f64;
+                cx >= mx && cx < mx + mw && cy >= my && cy < my + mh
+            })
+            .or_else(|| monitors.first());
+
+        if let Some(m) = target_monitor {
+            let scale = m.scale_factor();
+            let mx = m.position().x as f64;
+            let my = m.position().y as f64;
+            let mw = m.size().width as f64;
+            let mh = m.size().height as f64;
+            let win_w = POPOVER_WIDTH * scale;
+            let win_h = POPOVER_HEIGHT * scale;
+
+            let margin = 12.0 * scale;
+            let min_x = mx + margin;
+            let max_x = (mx + mw - win_w - margin).max(min_x);
+            let min_y = my + margin;
+            let max_y = (my + mh - win_h - margin).max(min_y);
+
+            let px = (cx - win_w * 0.5).clamp(min_x, max_x).round() as i32;
+            let py = (cy - win_h * 0.35).clamp(min_y, max_y).round() as i32;
+            let _ = window.set_position(PhysicalPosition::new(px, py));
+            return;
+        }
+    }
+
+    let _ = window.move_window(Position::Center);
 }

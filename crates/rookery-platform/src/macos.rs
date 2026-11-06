@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSApplication, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSApplication, NSColor, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
@@ -308,5 +308,25 @@ pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()>
         app.activate();
     }
     ns_win.makeKeyAndOrderFront(None);
+    Ok(())
+}
+
+pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) -> Result<()> {
+    let ns_win = ns_window_from_handle(window)?;
+    ns_win.setOpaque(false);
+    ns_win.setBackgroundColor(Some(&NSColor::clearColor()));
+    ns_win.setHasShadow(true);
+
+    if let Some(content_view) = ns_win.contentView() {
+        content_view.setWantsLayer(true);
+        unsafe {
+            let layer: *mut objc2::runtime::AnyObject = objc2::msg_send![&*content_view, layer];
+            if !layer.is_null() {
+                let _: () = objc2::msg_send![layer, setCornerRadius: corner_radius];
+                let _: () = objc2::msg_send![layer, setMasksToBounds: true];
+            }
+        }
+    }
+    ns_win.invalidateShadow();
     Ok(())
 }

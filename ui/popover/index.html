@@ -7,385 +7,588 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <main class="popover">
+    <main id="popover-root" class="popover" data-theme="living-rookery">
+      <!-- Thematic Game Header -->
       <header class="header">
         <div class="brand">
-          <span class="bird-glyph" aria-hidden="true">◆</span>
-          <div>
-            <h1>Rookery</h1>
-            <p id="app-tagline" class="subtitle">The Living ASCII Rookery</p>
+          <div class="crest-frame">
+            <span id="brand-glyph" class="bird-glyph" aria-hidden="true">🌲</span>
+          </div>
+          <div class="brand-titles">
+            <div class="title-row">
+              <h1 id="brand-title">The Living Rookery</h1>
+              <span id="power-badge" class="badge">AC</span>
+            </div>
+            <p id="app-tagline" class="subtitle">✦ Woodland Sanctuary · ASCII Realm ✦</p>
           </div>
         </div>
-        <span id="power-badge" class="badge">AC</span>
+        <button
+          id="btn-toggle-settings"
+          class="settings-toggle-btn"
+          type="button"
+          aria-expanded="false"
+          title="Open General Settings &amp; System Menu"
+        >
+          <span id="settings-toggle-icon" aria-hidden="true">⚙</span>
+          <span id="settings-toggle-label">Settings</span>
+        </button>
       </header>
 
-      <!-- App Switcher Tabs -->
-      <section id="app-switcher" class="card app-switcher">
-        <button id="tab-living-rookery" class="app-tab-btn active" type="button" data-app="living-rookery">
-          <span class="tab-glyph">🌲</span>
-          <span>Rookery</span>
-        </button>
-        <button id="tab-koi-pond" class="app-tab-btn" type="button" data-app="koi-pond">
-          <span class="tab-glyph">🎏</span>
-          <span>Koi Pond</span>
-        </button>
-        <button id="tab-cosmic-nebula" class="app-tab-btn" type="button" data-app="cosmic-nebula">
-          <span class="tab-glyph">🌌</span>
-          <span>Nebula</span>
-        </button>
-        <button id="tab-orbital-haven" class="app-tab-btn" type="button" data-app="orbital-haven">
-          <span class="tab-glyph">🛰️</span>
-          <span>Orbital</span>
-        </button>
-      </section>
-
-      <!-- Living Rookery Card -->
-      <section id="card-living-rookery" class="card rookery-card">
-        <div class="section-title">The Living World</div>
-        <div class="stats-grid">
-          <div class="stat-box">
-            <span class="stat-label">Tree Age</span>
-            <span id="stat-age" class="stat-value">0h 00m</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Branches</span>
-            <span id="stat-branches" class="stat-value">0</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Foliage Buds</span>
-            <span id="stat-foliage" class="stat-value">0</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Flock in Sky</span>
-            <span id="stat-birds" class="stat-value">4 birds</span>
-          </div>
-        </div>
-        <div class="rookery-actions">
-          <button id="btn-feed" class="btn small" type="button" title="Place snacks on branches to entice birds">
-            🌾 Feed Birds
+      <!-- ================================================================= -->
+      <!-- VIEW 1: MAIN REALM HUD (Active by default)                        -->
+      <!-- ================================================================= -->
+      <div id="view-realm" class="view-pane">
+        <!-- App / Realm Switcher Cartridges -->
+        <section id="app-switcher" class="app-switcher" aria-label="Select Realm">
+          <button
+            id="tab-living-rookery"
+            class="app-tab-btn active"
+            type="button"
+            data-app="living-rookery"
+          >
+            <span class="tab-glyph" aria-hidden="true">🌲</span>
+            <span>Rookery</span>
           </button>
-          <button id="btn-prune" class="btn small" type="button" title="Gently prune branches to shape the canopy">
-            ✂️ Prune
+          <button
+            id="tab-koi-pond"
+            class="app-tab-btn"
+            type="button"
+            data-app="koi-pond"
+          >
+            <span class="tab-glyph" aria-hidden="true">🎏</span>
+            <span>Koi Pond</span>
           </button>
-          <button id="btn-plant" class="btn small" type="button" title="Drop a seed to grow a new sapling">
-            🌱 Plant Sapling
+          <button
+            id="tab-cosmic-nebula"
+            class="app-tab-btn"
+            type="button"
+            data-app="cosmic-nebula"
+          >
+            <span class="tab-glyph" aria-hidden="true">🌌</span>
+            <span>Nebula</span>
           </button>
-        </div>
-        <div class="pan-row">
-          <span class="pan-label">Forest Horizon Pan:</span>
-          <div class="pan-buttons">
-            <button id="btn-pan-left" class="btn small" type="button" title="Pan forest left">◀ Pan Left</button>
-            <button id="btn-pan-right" class="btn small" type="button" title="Pan forest right">Pan Right ▶</button>
-          </div>
-        </div>
-        <div id="seed-notification" class="notification-text" hidden></div>
-      </section>
-
-      <!-- Tranquil Koi Pond Card -->
-      <section id="card-koi-pond" class="card koi-card" hidden>
-        <div class="section-title">Tranquil Koi Pond</div>
-        <div class="stats-grid">
-          <div class="stat-box">
-            <span class="stat-label">Total Koi</span>
-            <span id="stat-koi-count" class="stat-value">12</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Lily Pads</span>
-            <span id="stat-koi-lilies" class="stat-value">9</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Lotuses Blooming</span>
-            <span id="stat-koi-lotuses" class="stat-value">3</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Water Ripples</span>
-            <span id="stat-koi-ripples" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="rookery-actions">
-          <button id="btn-koi-feed" class="btn small" type="button" title="Drop nutritious floating food pellets">
-            🪱 Feed Koi
+          <button
+            id="tab-orbital-haven"
+            class="app-tab-btn"
+            type="button"
+            data-app="orbital-haven"
+          >
+            <span class="tab-glyph" aria-hidden="true">🛰️</span>
+            <span>Orbital</span>
           </button>
-          <button id="btn-koi-pebble" class="btn small" type="button" title="Cast a smooth pebble to stir gentle ripples">
-            💧 Cast Pebble
-          </button>
-        </div>
-      </section>
+        </section>
 
-      <!-- Cosmic Nebula Card -->
-      <section id="card-cosmic-nebula" class="card nebula-card" hidden>
-        <div class="section-title">Cosmic Nebula</div>
-        <div class="stats-grid">
-          <div class="stat-box">
-            <span class="stat-label">Stellar Particles</span>
-            <span id="stat-nebula-particles" class="stat-value">1500</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Gravity Wells</span>
-            <span id="stat-nebula-wells" class="stat-value">2</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Stellar Palette</span>
-            <span id="stat-nebula-palette" class="stat-value">Pillars of Creation</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Turbulence</span>
-            <span id="stat-nebula-turb" class="stat-value">1.0x</span>
-          </div>
-        </div>
-        <div class="rookery-actions">
-          <button id="btn-nebula-attractor" class="btn small" type="button" title="Add a gravitational vortex attractor">
-            🌀 Add Attractor
-          </button>
-          <button id="btn-nebula-repulsor" class="btn small" type="button" title="Pulse a supernova repulsor well">
-            💥 Repulsor Pulse
-          </button>
-          <button id="btn-nebula-palette" class="btn small" type="button" title="Cycle through Hubble / JWST color palettes">
-            🎨 Cycle Palette
-          </button>
-        </div>
-      </section>
-
-      <!-- Orbital Haven Card -->
-      <section id="card-orbital-haven" class="card orbital-card" hidden>
-        <div class="section-title">Orbital Haven</div>
-        <div class="stats-grid">
-          <div class="stat-box">
-            <span class="stat-label">Station Modules</span>
-            <span id="stat-orbital-modules" class="stat-value">7</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Solar Wings</span>
-            <span id="stat-orbital-solar" class="stat-value">4</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Habitat Rings</span>
-            <span id="stat-orbital-rings" class="stat-value">1</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Shuttles Docked</span>
-            <span id="stat-orbital-shuttles" class="stat-value">2</span>
-          </div>
-        </div>
-        <div class="rookery-actions">
-          <button id="btn-orbital-module" class="btn small" type="button" title="Construct a new module extension">
-            🛰️ Add Module
-          </button>
-          <button id="btn-orbital-launch" class="btn small" type="button" title="Launch a research transport shuttle">
-            🚀 Launch Shuttle
-          </button>
-        </div>
-      </section>
-
-      <!-- Scheduler & Playlist Card -->
-      <section id="card-scheduler" class="card">
-        <div class="section-title">Playlist &amp; Schedule</div>
-        <div class="schedule-row">
-          <label for="select-schedule-mode">Mode:</label>
-          <select id="select-schedule-mode" class="select-input">
-            <option value="manual">Manual Selection</option>
-            <option value="interval">Interval Rotation</option>
-            <option value="day_night">Day / Night Cycle</option>
-          </select>
-        </div>
-        <div id="interval-group" class="control-row" style="margin-top: 4px;" hidden>
-          <span>Cycle Interval</span>
-          <strong id="val-interval">15 mins</strong>
-        </div>
-        <input
-          id="slider-interval"
-          type="range"
-          min="5"
-          max="60"
-          step="5"
-          value="15"
-          hidden
-        />
-      </section>
-
-      <section class="card share-card">
-        <div class="section-title">Share &amp; Capture</div>
-        <div class="share-actions">
-          <button id="btn-snapshot" class="btn small" type="button" title="Capture clean desktop snapshot PNG">
-            📸 Snapshot
-          </button>
-          <button id="btn-record-loop" class="btn small" type="button" title="Record 5-second clean GIF loop">
-            🎞️ Record GIF
-          </button>
-          <button id="btn-record-video" class="btn small" type="button" title="Record 5-second 60 FPS MP4 video">
-            🎥 Record MP4
-          </button>
-          <button id="btn-copy-seed" class="btn small" type="button" title="Copy shareable World Seed URI">
-            🌱 Copy Seed
-          </button>
-          <button id="btn-copy-state" class="btn small" type="button" title="Copy full World State snapshot">
-            📦 Copy State
-          </button>
-        </div>
-        <div class="import-group">
-          <input
-            id="input-import-world"
-            type="text"
-            class="import-input"
-            placeholder="Paste seed or state URI…"
-            spellcheck="false"
-          />
-          <button id="btn-import-world" class="btn small primary" type="button">
-            Import
-          </button>
-        </div>
-        <div id="share-notification" class="notification-text" hidden></div>
-      </section>
-
-      <section class="card actions-row">
-        <button id="btn-interactive" class="btn primary" type="button">
-          <span id="lbl-interactive">Interact on Desktop</span>
-          <kbd id="kbd-hotkey">⌘⌥⇧R</kbd>
-        </button>
-        <button id="btn-pause" class="btn secondary" type="button">
-          Pause
-        </button>
-      </section>
-
-      <section class="card">
-        <div class="section-title">Displays</div>
-        <ul id="displays-list" class="displays-list">
-          <li class="empty">Detecting displays…</li>
-        </ul>
-      </section>
-
-      <!-- Audio Subsystem Card -->
-      <section id="card-audio" class="card">
-        <div class="section-title">Audio &amp; Ambient Soundscapes</div>
-
-        <label class="checkbox-row">
-          <input id="chk-audio-enabled" type="checkbox" />
-          <span>Enable Ambient Soundscapes &amp; SFX</span>
-        </label>
-
-        <div id="audio-controls-group" hidden>
-          <label class="control-row" for="slider-volume">
-            <span>Audio Volume</span>
-            <strong id="val-volume">50%</strong>
-          </label>
-          <input
-            id="slider-volume"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value="50"
-          />
-
-          <label class="checkbox-row" style="margin-top: 6px;">
-            <input id="chk-audio-direct-mode" type="checkbox" />
-            <span>Sound in Direct Mode Only</span>
-          </label>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="section-title">Performance &amp; Controls</div>
-
-        <label class="control-row" for="slider-passive">
-          <span>Passive FPS Cap</span>
-          <strong id="val-passive">24 fps</strong>
-        </label>
-        <input
-          id="slider-passive"
-          type="range"
-          min="15"
-          max="30"
-          step="1"
-          value="24"
-        />
-
-        <label class="control-row" for="slider-lowpower">
-          <span>Low-Power FPS</span>
-          <strong id="val-lowpower">12 fps</strong>
-        </label>
-        <input
-          id="slider-lowpower"
-          type="range"
-          min="5"
-          max="15"
-          step="1"
-          value="12"
-        />
-
-        <label class="checkbox-row">
-          <input id="chk-battery" type="checkbox" />
-          <span>Pause simulation on battery power</span>
-        </label>
-
-        <div class="hotkey-row">
-          <span>Interaction Hotkey</span>
-          <button id="btn-record-hotkey" class="hotkey-btn" type="button">
-            CommandOrControl+Alt+Shift+R
-          </button>
-        </div>
-
-        <div class="hotkey-row">
-          <span>Menu Popover Hotkey</span>
-          <button id="btn-record-popover-hotkey" class="hotkey-btn" type="button" title="Global shortcut to toggle popover without clicking menu icon">
-            CommandOrControl+Alt+Shift+P
-          </button>
-        </div>
-        <p id="hotkey-error" class="error-msg" hidden></p>
-      </section>
-
-      <!-- In-App Auto-Updater Card -->
-      <section id="card-updates" class="card">
-        <div class="section-title">Software Updates</div>
-
-        <div class="update-header-row">
-          <div class="update-version-info">
-            <span class="update-status-text" id="update-status-text">Rookery v0.1.0</span>
-            <span class="update-detail-text" id="update-detail-text">Up to date</span>
-          </div>
-          <button id="btn-check-updates" class="btn small" type="button">
-            Check for Updates
-          </button>
-        </div>
-
-        <div id="update-action-panel" class="update-action-panel" hidden>
-          <div class="update-notes-box">
-            <div class="update-badge" id="update-badge" hidden></div>
-            <p id="update-notes" class="update-notes"></p>
-          </div>
-          <div id="update-progress-container" class="update-progress-container" hidden>
-            <div class="update-progress-bar">
-              <div id="update-progress-fill" class="update-progress-fill"></div>
+        <!-- Dynamic & Built-In Realm Cards Container -->
+        <div id="realm-cards-container" class="realm-cards-container">
+          <!-- Living Rookery Card -->
+          <section id="card-living-rookery" class="card hud-card rookery-card">
+            <div class="hud-banner">
+              <span class="hud-ornament" aria-hidden="true">╔❖</span>
+              <span class="section-title">Sylvan Sanctuary Chronicle</span>
+              <span class="hud-ornament" aria-hidden="true">❖╗</span>
             </div>
-            <span id="update-progress-text" class="update-progress-text"></span>
-          </div>
-          <div class="update-buttons-row">
-            <button id="btn-download-update" class="btn small primary" type="button">
-              Download &amp; Install
-            </button>
-            <button id="btn-restart-update" class="btn small primary" type="button" hidden>
-              Restart Rookery
-            </button>
-          </div>
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-label">⏳ Tree Age</span>
+                <span id="stat-age" class="stat-value">0h 00m</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🌿 Boughs</span>
+                <span id="stat-branches" class="stat-value">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🍃 Canopy Buds</span>
+                <span id="stat-foliage" class="stat-value">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🦅 Sky Flock</span>
+                <span id="stat-birds" class="stat-value">4 birds</span>
+              </div>
+            </div>
+            <div class="rookery-actions">
+              <button
+                id="btn-feed"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Place snacks on branches to entice birds"
+              >
+                🌾 Scatter Feed
+              </button>
+              <button
+                id="btn-prune"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Gently prune branches to shape the canopy"
+              >
+                ✂️ Prune Boughs
+              </button>
+              <button
+                id="btn-plant"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Drop a seed to grow a new sapling"
+              >
+                🌱 Plant Sapling
+              </button>
+              <div class="pan-inline-group">
+                <button
+                  id="btn-pan-left"
+                  class="btn game-cmd-btn small"
+                  type="button"
+                  title="Pan forest horizon west"
+                >
+                  ◀ West
+                </button>
+                <button
+                  id="btn-pan-right"
+                  class="btn game-cmd-btn small"
+                  type="button"
+                  title="Pan forest horizon east"
+                >
+                  East ▶
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tranquil Koi Pond Card -->
+          <section id="card-koi-pond" class="card hud-card koi-card" hidden>
+            <div class="hud-banner">
+              <span class="hud-ornament" aria-hidden="true">༺🪷</span>
+              <span class="section-title">Imperial Pond Scroll</span>
+              <span class="hud-ornament" aria-hidden="true">🪷༻</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-label">🎏 Koi School</span>
+                <span id="stat-koi-count" class="stat-value">12</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🪷 Lily Pads</span>
+                <span id="stat-koi-lilies" class="stat-value">9</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🌸 Lotus Blooms</span>
+                <span id="stat-koi-lotuses" class="stat-value">3</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">💧 Water Ripples</span>
+                <span id="stat-koi-ripples" class="stat-value">0</span>
+              </div>
+            </div>
+            <div class="rookery-actions">
+              <button
+                id="btn-koi-feed"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Drop nutritious floating food pellets"
+              >
+                🪱 Scatter Pellets
+              </button>
+              <button
+                id="btn-koi-pebble"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Cast a smooth pebble to stir gentle ripples"
+              >
+                💧 Skip Pebble
+              </button>
+            </div>
+          </section>
+
+          <!-- Cosmic Nebula Card -->
+          <section id="card-cosmic-nebula" class="card hud-card nebula-card" hidden>
+            <div class="hud-banner">
+              <span class="hud-ornament" aria-hidden="true">⟪✦</span>
+              <span class="section-title">Astral Star-Chart Deck</span>
+              <span class="hud-ornament" aria-hidden="true">✦⟫</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-label">✦ Stellar Dust</span>
+                <span id="stat-nebula-particles" class="stat-value">1500</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🌀 Singularities</span>
+                <span id="stat-nebula-wells" class="stat-value">2</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🎨 Spectrum</span>
+                <span id="stat-nebula-palette" class="stat-value">Pillars of Creation</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">⚡ Flux Index</span>
+                <span id="stat-nebula-turb" class="stat-value">1.0x</span>
+              </div>
+            </div>
+            <div class="rookery-actions">
+              <button
+                id="btn-nebula-attractor"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Add a gravitational vortex attractor"
+              >
+                🌀 Spawn Vortex
+              </button>
+              <button
+                id="btn-nebula-repulsor"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Pulse a supernova repulsor well"
+              >
+                💥 Nova Pulse
+              </button>
+              <button
+                id="btn-nebula-palette"
+                class="btn game-cmd-btn small span-2"
+                type="button"
+                title="Cycle through Hubble / JWST color palettes"
+              >
+                🎨 Shift Nebular Spectrum
+              </button>
+            </div>
+          </section>
+
+          <!-- Orbital Haven Card -->
+          <section id="card-orbital-haven" class="card hud-card orbital-card" hidden>
+            <div class="hud-banner">
+              <span class="hud-ornament" aria-hidden="true">◢⌬</span>
+              <span class="section-title">Orbital Telemetry &amp; Ops</span>
+              <span class="hud-ornament" aria-hidden="true">⌬◣</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-label">⌬ Hull Modules</span>
+                <span id="stat-orbital-modules" class="stat-value">7</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">☀️ Solar Arrays</span>
+                <span id="stat-orbital-solar" class="stat-value">4</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🛸 Hab Rings</span>
+                <span id="stat-orbital-rings" class="stat-value">1</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">🚀 Docked Fleet</span>
+                <span id="stat-orbital-shuttles" class="stat-value">2</span>
+              </div>
+            </div>
+            <div class="rookery-actions">
+              <button
+                id="btn-orbital-module"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Construct a new module extension"
+              >
+                🛰️ Deploy Module
+              </button>
+              <button
+                id="btn-orbital-launch"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Launch a research transport shuttle"
+              >
+                🚀 Launch Shuttle
+              </button>
+            </div>
+          </section>
         </div>
 
-        <label class="checkbox-row" style="margin-top: 8px;">
-          <input id="chk-auto-check-updates" type="checkbox" checked />
-          <span>Automatically check for updates</span>
-        </label>
+        <div id="seed-notification" class="notification-text" hidden></div>
 
-        <label class="checkbox-row">
-          <input id="chk-auto-download-updates" type="checkbox" checked />
-          <span>Download updates in background and prompt to restart</span>
-        </label>
-      </section>
+        <!-- Primary Bottom Command Strip -->
+        <section class="actions-row">
+          <button id="btn-interactive" class="btn primary game-cmd-btn" type="button">
+            <span id="lbl-interactive">⚔ Interact on Desktop</span>
+            <kbd id="kbd-hotkey">⌘⌥⇧R</kbd>
+          </button>
+          <button id="btn-pause" class="btn secondary game-cmd-btn" type="button">
+            Pause
+          </button>
+          <button
+            id="btn-quick-snapshot"
+            class="btn icon-cmd-btn game-cmd-btn"
+            type="button"
+            title="Capture Desktop Snapshot PNG"
+          >
+            📸
+          </button>
+        </section>
+      </div>
 
-      <footer class="footer">
-        <span class="version">v0.1.0 · MIT</span>
-        <button id="btn-quit" class="quit-btn" type="button">
-          Quit Rookery
-        </button>
-      </footer>
+      <!-- ================================================================= -->
+      <!-- VIEW 2: SETTINGS & SYSTEM MENU (Hidden until opened)              -->
+      <!-- ================================================================= -->
+      <div id="view-settings" class="view-pane settings-pane" hidden>
+        <!-- Categorized Sub-Tabs inside Settings -->
+        <nav class="settings-subnav" aria-label="Settings Categories">
+          <button
+            type="button"
+            class="settings-nav-btn active"
+            data-settings-tab="general"
+          >
+            ⚙ General
+          </button>
+          <button
+            type="button"
+            class="settings-nav-btn"
+            data-settings-tab="controls"
+          >
+            ⚡ Controls &amp; FPS
+          </button>
+          <button
+            type="button"
+            class="settings-nav-btn"
+            data-settings-tab="share"
+          >
+            📸 Capture &amp; Data
+          </button>
+        </nav>
+
+        <!-- Settings Tab 1: General (Schedule, Audio, Displays) -->
+        <div id="settings-panel-general" class="settings-panel">
+          <!-- Scheduler & Playlist Card -->
+          <section id="card-scheduler" class="card">
+            <div class="section-title">Playlist &amp; Schedule</div>
+            <div class="schedule-row">
+              <label for="select-schedule-mode">Rotation Mode:</label>
+              <select id="select-schedule-mode" class="select-input">
+                <option value="manual">Manual Selection</option>
+                <option value="interval">Interval Rotation</option>
+                <option value="day_night">Day / Night Cycle</option>
+              </select>
+            </div>
+            <div id="interval-group" class="control-row" hidden>
+              <span>Cycle Interval</span>
+              <strong id="val-interval">15 mins</strong>
+            </div>
+            <input
+              id="slider-interval"
+              type="range"
+              min="5"
+              max="60"
+              step="5"
+              value="15"
+              hidden
+            />
+          </section>
+
+          <!-- Audio Subsystem Card -->
+          <section id="card-audio" class="card">
+            <div class="section-title">Audio &amp; Soundscapes</div>
+
+            <label class="checkbox-row">
+              <input id="chk-audio-enabled" type="checkbox" />
+              <span>Enable Ambient Soundscapes &amp; SFX</span>
+            </label>
+
+            <div id="audio-controls-group" hidden>
+              <label class="control-row" for="slider-volume">
+                <span>Master Volume</span>
+                <strong id="val-volume">50%</strong>
+              </label>
+              <input
+                id="slider-volume"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="50"
+              />
+
+              <label class="checkbox-row">
+                <input id="chk-audio-direct-mode" type="checkbox" />
+                <span>Sound in Direct Mode Only</span>
+              </label>
+            </div>
+          </section>
+
+          <!-- Displays Card -->
+          <section id="card-displays" class="card">
+            <div class="section-title">Active Displays</div>
+            <ul id="displays-list" class="displays-list">
+              <li class="empty">Detecting displays…</li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- Settings Tab 2: Performance & Hotkeys -->
+        <div id="settings-panel-controls" class="settings-panel" hidden>
+          <section class="card">
+            <div class="section-title">Frame Budgets &amp; Power</div>
+
+            <label class="control-row" for="slider-passive">
+              <span>Passive FPS Cap</span>
+              <strong id="val-passive">24 fps</strong>
+            </label>
+            <input
+              id="slider-passive"
+              type="range"
+              min="15"
+              max="30"
+              step="1"
+              value="24"
+            />
+
+            <label class="control-row" for="slider-lowpower">
+              <span>Low-Power FPS</span>
+              <strong id="val-lowpower">12 fps</strong>
+            </label>
+            <input
+              id="slider-lowpower"
+              type="range"
+              min="5"
+              max="15"
+              step="1"
+              value="12"
+            />
+
+            <label class="checkbox-row">
+              <input id="chk-battery" type="checkbox" />
+              <span>Pause simulation on battery power</span>
+            </label>
+          </section>
+
+          <section class="card">
+            <div class="section-title">Global Hotkeys</div>
+            <div class="hotkey-row">
+              <span>Interaction Hotkey</span>
+              <button id="btn-record-hotkey" class="hotkey-btn" type="button">
+                CommandOrControl+Alt+Shift+R
+              </button>
+            </div>
+
+            <div class="hotkey-row">
+              <span>Menu at Cursor Hotkey</span>
+              <button
+                id="btn-record-popover-hotkey"
+                class="hotkey-btn"
+                type="button"
+                title="Global shortcut to summon menu at your mouse cursor"
+              >
+                CommandOrControl+Alt+Shift+P
+              </button>
+            </div>
+            <p id="hotkey-error" class="error-msg" hidden></p>
+          </section>
+        </div>
+
+        <!-- Settings Tab 3: Share, Capture & Updates -->
+        <div id="settings-panel-share" class="settings-panel" hidden>
+          <section class="card share-card">
+            <div class="section-title">Capture &amp; World Seed</div>
+            <div class="share-actions">
+              <button
+                id="btn-snapshot"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Capture clean desktop snapshot PNG"
+              >
+                📸 Snapshot
+              </button>
+              <button
+                id="btn-record-loop"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Record 5-second clean GIF loop"
+              >
+                🎞️ GIF Loop
+              </button>
+              <button
+                id="btn-record-video"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Record 5-second 60 FPS MP4 video"
+              >
+                🎥 60FPS MP4
+              </button>
+              <button
+                id="btn-copy-seed"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Copy shareable World Seed URI"
+              >
+                🌱 Copy Seed
+              </button>
+              <button
+                id="btn-copy-state"
+                class="btn small game-cmd-btn span-2"
+                type="button"
+                title="Copy full World State snapshot"
+              >
+                📦 Copy Full World State
+              </button>
+            </div>
+            <div class="import-group">
+              <input
+                id="input-import-world"
+                type="text"
+                class="import-input"
+                placeholder="Paste seed or state URI…"
+                spellcheck="false"
+              />
+              <button id="btn-import-world" class="btn small primary game-cmd-btn" type="button">
+                Import
+              </button>
+            </div>
+            <div id="share-notification" class="notification-text" hidden></div>
+          </section>
+
+          <!-- In-App Auto-Updater Card -->
+          <section id="card-updates" class="card">
+            <div class="section-title">Software Updates</div>
+
+            <div class="update-header-row">
+              <div class="update-version-info">
+                <span class="update-status-text" id="update-status-text">Rookery v0.1.0</span>
+                <span class="update-detail-text" id="update-detail-text">Up to date</span>
+              </div>
+              <button id="btn-check-updates" class="btn small game-cmd-btn" type="button">
+                Check Updates
+              </button>
+            </div>
+
+            <div id="update-action-panel" class="update-action-panel" hidden>
+              <div class="update-notes-box">
+                <div class="update-badge" id="update-badge" hidden></div>
+                <p id="update-notes" class="update-notes"></p>
+              </div>
+              <div id="update-progress-container" class="update-progress-container" hidden>
+                <div class="update-progress-bar">
+                  <div id="update-progress-fill" class="update-progress-fill"></div>
+                </div>
+                <span id="update-progress-text" class="update-progress-text"></span>
+              </div>
+              <div class="update-buttons-row">
+                <button id="btn-download-update" class="btn small primary" type="button">
+                  Download &amp; Install
+                </button>
+                <button id="btn-restart-update" class="btn small primary" type="button" hidden>
+                  Restart Rookery
+                </button>
+              </div>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chk-auto-check-updates" type="checkbox" checked />
+              <span>Automatically check for updates</span>
+            </label>
+
+            <label class="checkbox-row">
+              <input id="chk-auto-download-updates" type="checkbox" checked />
+              <span>Auto-download updates in background</span>
+            </label>
+          </section>
+        </div>
+
+        <footer class="footer">
+          <span class="version">Rookery v0.1.0 · MIT</span>
+          <button id="btn-quit" class="quit-btn" type="button">
+            ⏻ Quit Rookery
+          </button>
+        </footer>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
