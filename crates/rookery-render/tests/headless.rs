@@ -1,14 +1,13 @@
-//! Headless smoke test: render the demo scene offscreen at several ticks and check that
-//! frames are non-blank and evolve over time. Requires a GPU, so it is `#[ignore]` by
-//! default. Run with: `cargo test -p rookery-render -- --ignored`.
+//! Headless smoke test: render the Living ASCII Rookery scene offscreen at several ticks and
+//! check that frames are non-blank and evolve over time. Requires a GPU, so it is `#[ignore]`
+//! by default. Run with: `cargo test -p rookery-render -- --ignored`.
 //!
-//! Set `ROOKERY_SNAPSHOT_DIR=/some/dir` to also dump raw RGBA8 frames (`.rgba`) + a PPM preview.
+//! Set `ROOKERY_SNAPSHOT_DIR=/some/dir` to also dump a PPM preview.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rookery_core::world::WorldState;
-use rookery_render::demo::DemoScene;
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
 use rookery_render::{Gpu, LivingRookeryScene, Scene};
 
@@ -40,42 +39,6 @@ fn write_ppm(path: &std::path::Path, px: &[u8]) {
         out.extend_from_slice(&p[..3]);
     }
     std::fs::write(path, out).unwrap();
-}
-
-#[test]
-#[ignore = "requires a GPU"]
-fn demo_scene_renders_and_evolves() {
-    let gpu = Gpu::new_blocking().expect("GPU");
-    let mut scene = DemoScene::new(&gpu, OFFSCREEN_FORMAT, 7);
-    scene.resize(&gpu, W, H, 1.0);
-    let off = Offscreen::new(&gpu, W, H);
-    let dt = Duration::from_millis(1000 / 24);
-
-    let f0 = off.run(&gpu, &mut scene, 1, dt).unwrap();
-    let f100 = off.run(&gpu, &mut scene, 99, dt).unwrap();
-    let f1000 = off.run(&gpu, &mut scene, 900, dt).unwrap();
-
-    for (name, f) in [("t0", &f0), ("t100", &f100), ("t1000", &f1000)] {
-        let l = mean_luma(f);
-        assert!(l > 2.0, "{name} looks blank (mean luma {l})");
-        assert!(l < 200.0, "{name} looks blown out (mean luma {l})");
-    }
-    assert!(
-        diff(&f0, &f100) > 0.05,
-        "frame did not change between t0 and t100"
-    );
-    assert!(
-        diff(&f100, &f1000) > 0.05,
-        "frame did not change between t100 and t1000"
-    );
-
-    if let Ok(dir) = std::env::var("ROOKERY_SNAPSHOT_DIR") {
-        let dir = std::path::PathBuf::from(dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        for (name, f) in [("t0", &f0), ("t100", &f100), ("t1000", &f1000)] {
-            write_ppm(&dir.join(format!("demo-{name}.ppm")), f);
-        }
-    }
 }
 
 #[test]

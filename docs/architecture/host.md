@@ -11,7 +11,7 @@ Rookery/
 ├── crates/
 │   ├── rookery-core/       # Pure, deterministic, OS/GPU-free logic (governor, interaction, occlusion math, settings)
 │   ├── rookery-platform/   # Thin OS layer: DesktopLayer, OcclusionProbe, PowerProbe (macOS & Windows)
-│   └── rookery-render/     # Shared wgpu Device + single render thread driving N display surfaces + DemoScene
+│   └── rookery-render/     # Shared wgpu Device + single render thread driving N display surfaces + procedural scenes
 ├── host/                   # Tauri v2 desktop host (tray, on-demand popover webview, hotkeys, monitor reconciler)
 └── ui/popover/             # Vite + vanilla TypeScript tray popover UI (~12 KB uncompressed)
 ```
@@ -68,7 +68,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
-# Run the GPU offscreen smoke test (renders DemoScene at ticks 0, 100, 1000)
+# Run the GPU offscreen smoke test (renders LivingRookeryScene at ticks 0, 100, 500)
 cargo test -p rookery-render -- --ignored
 
 # Launch Rookery in development mode

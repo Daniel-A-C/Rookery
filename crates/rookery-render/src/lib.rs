@@ -6,9 +6,8 @@
 //! - [`Renderer`]: a single render thread driving N display surfaces, each with its own
 //!   [`rookery_core::governor::FrameBudget`]. When every display is paused the thread
 //!   blocks on its command channel and consumes no CPU.
-//! - [`Scene`]: the trait Rookery Apps implement (Milestone 2's ASCII Rookery will be one).
-//! - [`demo::DemoScene`]: a cheap placeholder scene (aurora bands + drifting motes) used to
-//!   exercise the render loop and governor in Milestone 1.
+//! - [`Scene`]: the trait Rookery Apps implement (`LivingRookeryScene`, `KoiPondScene`,
+//!   `CosmicNebulaScene`, `OrbitalHavenScene`, and `CustomShaderScene`).
 
 pub mod ascii_scene;
 pub mod atlas;
@@ -16,7 +15,6 @@ pub mod audio;
 pub mod capture;
 pub mod catalog;
 pub mod custom_shader;
-pub mod demo;
 mod fullscreen;
 mod gpu;
 pub mod koi_scene;

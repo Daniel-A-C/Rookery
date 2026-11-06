@@ -190,11 +190,11 @@ flowchart LR
     M1 --> M2 --> M3 --> M4
 ```
 
-1. **Milestone 1 — Core Desktop Host & UX Foundation**:
+1. **Milestone 1 — Core Desktop Host & UX Foundation** [✅ COMPLETE]:
    - Build the cross-platform Rust host attaching to macOS and Windows desktop layers.
    - Implement the System Tray / Menu Bar popover and global hotkey toggle for Direct Interaction Mode.
    - Implement window occlusion detection and automatic FPS throttling.
-2. **Milestone 2 — Flagship App (*The Living ASCII Rookery*) & Persistence**:
+2. **Milestone 2 — Flagship App (*The Living ASCII Rookery*) & Persistence** [✅ COMPLETE]:
    - Build the overlapping character/glyph renderer and procedural growth algorithm.
    - Implement autonomous bird flocking, perching, and subtle user interactions (seeding/pruning).
    - Build the persistent save state and offline time-delta catch-up engine.

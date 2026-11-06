@@ -1792,4 +1792,15 @@ mod tests {
         // Error on invalid
         assert!(WorldState::from_share_string("gibberish").is_err());
     }
+
+    #[test]
+    fn rng_is_deterministic_and_in_range() {
+        let mut a = WorldRng::new(42);
+        let mut b = WorldRng::new(42);
+        for _ in 0..1000 {
+            let x = a.f32();
+            assert_eq!(x, b.f32());
+            assert!((0.0..1.0).contains(&x));
+        }
+    }
 }

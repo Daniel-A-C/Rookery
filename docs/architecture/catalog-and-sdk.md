@@ -178,7 +178,7 @@ Rookery implements zero-tear hot switching via `Renderer::switch_scene`:
 
 ## 6. Global Menu Popover Hotkey
 
-To accommodate users who keep their macOS menu bar hidden or prefer keyboard workflows (user request from `localNotes.txt`), Rookery supports a global popover toggle hotkey:
+To accommodate users who keep their macOS menu bar hidden or prefer keyboard workflows, Rookery supports a global popover toggle hotkey:
 - **Default**: `CommandOrControl+Alt+Shift+P`
 - **Behavior**: Toggles the Tauri quick-control popover window from anywhere in the OS without requiring cursor travel to the menu bar icon.
 - **Configurable**: Rebindable dynamically in the Settings section of the Popover UI.

@@ -1,6 +1,6 @@
 [package]
 name = "rookery-render"
-description = "wgpu render thread, frame scheduler and demo scene for the Rookery host."
+description = "wgpu render thread, frame scheduler, and procedural scenes for the Rookery host."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

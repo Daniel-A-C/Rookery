@@ -17,7 +17,6 @@ use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
 use rookery_core::world::WorldState;
 use rookery_render::capture::write_png;
-use rookery_render::demo::DemoScene;
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
 use rookery_render::{
     CosmicNebulaScene, Gpu, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene, SceneInput,
@@ -261,7 +260,7 @@ fn parse_args() -> Result<BenchConfig> {
                     "Rookery Headless Performance & Visual Regression Harness\n\n\
                     Usage: rookery-bench [OPTIONS]\n\n\
                     Options:\n  \
-                      --app <living-rookery|demo>   Scene to benchmark (default: living-rookery)\n  \
+                      --app <living-rookery|koi-pond|cosmic-nebula|orbital-haven|all>  Scene to benchmark (default: living-rookery)\n  \
                       --ticks <N>                  Number of simulated ticks (default: 1000)\n  \
                       --seed <N>                   Simulation seed (default: 42)\n  \
                       --width <N>                  Offscreen surface width (default: 640)\n  \
@@ -306,9 +305,8 @@ fn run_bench(config: &BenchConfig) -> Result<TelemetryReport> {
             let station = Arc::new(Mutex::new(OrbitalHavenState::new(config.seed)));
             Box::new(OrbitalHavenScene::new(&gpu, OFFSCREEN_FORMAT, station))
         }
-        "demo" => Box::new(DemoScene::new(&gpu, OFFSCREEN_FORMAT, config.seed)),
         other => anyhow::bail!(
-            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', 'demo', or 'all')"
+            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', or 'all')"
         ),
     };
 
