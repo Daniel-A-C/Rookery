@@ -1339,8 +1339,10 @@ impl WorldState {
         self.stats.seeds_planted += 1;
 
         // Erect a commemorative plant sign marker with timestamp and lineage
+        let sign_id = self.next_id;
+        self.next_id += 1;
         self.signs.push(PlantSign {
-            id: self.next_id + 1,
+            id: sign_id,
             tree_root_id: id,
             pos: [pos[0] + 28.0, pos[1] + 2.0],
             planted_age_secs: self.total_age_secs,

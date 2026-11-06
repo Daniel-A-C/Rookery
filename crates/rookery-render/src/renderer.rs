@@ -65,6 +65,7 @@ enum Command {
         budget: FrameBudget,
     },
     SetInteractive(bool),
+    TriggerAction,
     SwitchScene(SceneFactory),
     Shutdown,
 }
@@ -169,6 +170,11 @@ impl Renderer {
         self.stats.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
+    /// Triggers a synthetic action pulse on all active scenes (e.g. from a popover button).
+    pub fn trigger_action(&self) {
+        let _ = self.tx.send(Command::TriggerAction);
+    }
+
     /// Hot-swaps the active scene factory across all active display surfaces.
     pub fn switch_scene(&self, factory: SceneFactory) {
         let _ = self.tx.send(Command::SwitchScene(factory));
@@ -196,6 +202,7 @@ struct RenderThread {
     stats: Arc<Mutex<BTreeMap<DisplayId, DisplayStats>>>,
     displays: BTreeMap<DisplayId, Display>,
     interactive: bool,
+    pending_action: bool,
     prev_left_down: bool,
     prev_right_down: bool,
     vignette: Option<(wgpu::TextureFormat, Vignette)>,
@@ -218,6 +225,7 @@ impl RenderThread {
             stats,
             displays: BTreeMap::new(),
             interactive: false,
+            pending_action: false,
             prev_left_down: false,
             prev_right_down: false,
             vignette: None,
@@ -298,6 +306,14 @@ impl RenderThread {
             }
             Command::SetInteractive(on) => {
                 self.interactive = on;
+                for d in self.displays.values_mut() {
+                    if !d.budget.is_paused() {
+                        d.next_due = Some(Instant::now());
+                    }
+                }
+            }
+            Command::TriggerAction => {
+                self.pending_action = true;
                 for d in self.displays.values_mut() {
                     if !d.budget.is_paused() {
                         d.next_due = Some(Instant::now());
@@ -418,7 +434,7 @@ impl RenderThread {
         self.prev_left_down = self.interactive && raw_pointer.left_down;
         self.prev_right_down = self.interactive && raw_pointer.right_down;
 
-        let action = if left_click {
+        let action = if std::mem::take(&mut self.pending_action) || left_click {
             PointerAction::LeftClick
         } else if right_click {
             PointerAction::RightClick

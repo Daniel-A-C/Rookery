@@ -42,31 +42,39 @@ export interface RookeryStatus {
 export interface KoiStatus {
   seed: number;
   total_koi: number;
+  total_fish: number;
   total_lilies: number;
   blooming_lotuses: number;
   ripples_active: number;
   pellets_active: number;
+  pellets_eaten: number;
+  ripples_created: number;
 }
 
 export interface NebulaStatus {
   seed: number;
   particle_count: number;
+  total_particles: number;
   gravity_wells: number;
+  active_vortices: number;
   palette_name: string;
+  palette: string;
   turbulence: number;
 }
 
 export interface OrbitalStatus {
   seed: number;
+  station_age_hours: number;
   total_modules: number;
   solar_wings: number;
   habitat_rings: number;
+  habitat_sectors: number;
+  comm_arrays: number;
   docked_shuttles: number;
-  offline_science: number;
-  orbit_angle_deg: number;
+  focus: string;
 }
 
-export type ScheduleMode = "Manual" | "Interval" | "DayNight";
+export type ScheduleMode = "manual" | "interval" | "day_night";
 
 export interface AudioSettings {
   enabled: boolean;

@@ -10,10 +10,8 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::koi::{KoiPondState, KoiVariety};
-use wgpu::util::DeviceExt;
 
-use crate::ascii_scene::GlyphInstance;
-use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
+use crate::atlas::GlyphPass;
 use crate::fullscreen;
 use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
@@ -27,22 +25,6 @@ struct WaterUniforms {
     _pad: f32,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct InstanceUniforms {
-    resolution: [f32; 2],
-    time: f32,
-    wind_sway: f32,
-    _pad: f32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
-struct QuadVertex {
-    pos: [f32; 2],
-    uv: [f32; 2],
-}
-
 pub struct KoiPondScene {
     pub pond: Arc<Mutex<KoiPondState>>,
     pub audio: Option<crate::audio::AudioEngine>,
@@ -51,21 +33,11 @@ pub struct KoiPondScene {
     scale_factor: f32,
     time: f64,
 
-    instances: Vec<GlyphInstance>,
-    quad_buffer: wgpu::Buffer,
-    instance_buffer: wgpu::Buffer,
-
     bg_pipeline: wgpu::RenderPipeline,
     bg_uniforms_buf: wgpu::Buffer,
     bg_bind_group: wgpu::BindGroup,
 
-    glyph_pipeline: wgpu::RenderPipeline,
-    glyph_uniforms_buf: wgpu::Buffer,
-    glyph_bind_group0: wgpu::BindGroup,
-    glyph_bind_group1: wgpu::BindGroup,
-
-    _atlas_texture: wgpu::Texture,
-    _atlas_view: wgpu::TextureView,
+    glyphs: GlyphPass,
 }
 
 impl KoiPondScene {
@@ -98,210 +70,7 @@ impl KoiPondScene {
             None,
         );
 
-        // 2. Atlas texture & sampler
-        let (_atlas_texture, _atlas_view, sampler) = atlas::create_glyph_atlas(gpu);
-
-        let quad_vertices = [
-            QuadVertex {
-                pos: [-0.5, -0.5],
-                uv: [0.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, -0.5],
-                uv: [1.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, 0.5],
-                uv: [1.0, 1.0],
-            },
-            QuadVertex {
-                pos: [-0.5, -0.5],
-                uv: [0.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, 0.5],
-                uv: [1.0, 1.0],
-            },
-            QuadVertex {
-                pos: [-0.5, 0.5],
-                uv: [0.0, 1.0],
-            },
-        ];
-        let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("koi-quad-buffer"),
-            contents: bytemuck::cast_slice(&quad_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("koi-instance-buffer"),
-            size: (MAX_INSTANCES * std::mem::size_of::<GlyphInstance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let glyph_source = include_str!("ascii.wgsl");
-        let glyph_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("koi-glyph-shader"),
-            source: wgpu::ShaderSource::Wgsl(glyph_source.into()),
-        });
-
-        let glyph_layout0 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("koi-glyph-layout0"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let glyph_uniforms_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("koi-glyph-uniforms"),
-            size: std::mem::size_of::<InstanceUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let glyph_bind_group0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("koi-glyph-bg0"),
-            layout: &glyph_layout0,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: glyph_uniforms_buf.as_entire_binding(),
-            }],
-        });
-
-        let glyph_layout1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("koi-glyph-layout1"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let glyph_bind_group1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("koi-glyph-bg1"),
-            layout: &glyph_layout1,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&_atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("koi-glyph-pipeline-layout"),
-            bind_group_layouts: &[Some(&glyph_layout0), Some(&glyph_layout1)],
-            immediate_size: 0,
-        });
-
-        let glyph_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("koi-glyph-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &glyph_module,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<QuadVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 0,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 8,
-                                shader_location: 1,
-                            },
-                        ],
-                    }),
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<GlyphInstance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 2,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 8,
-                                shader_location: 3,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 16,
-                                shader_location: 4,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 20,
-                                shader_location: 5,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x4,
-                                offset: 24,
-                                shader_location: 6,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x4,
-                                offset: 40,
-                                shader_location: 7,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 56,
-                                shader_location: 8,
-                            },
-                        ],
-                    }),
-                ],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &glyph_module,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let glyphs = GlyphPass::new(gpu, format, MAX_INSTANCES);
 
         Self {
             pond,
@@ -310,18 +79,10 @@ impl KoiPondScene {
             height: 600.0,
             scale_factor: 1.0,
             time: 0.0,
-            instances: Vec::with_capacity(1024),
-            quad_buffer,
-            instance_buffer,
             bg_pipeline,
             bg_uniforms_buf,
             bg_bind_group,
-            glyph_pipeline,
-            glyph_uniforms_buf,
-            glyph_bind_group0,
-            glyph_bind_group1,
-            _atlas_texture,
-            _atlas_view,
+            glyphs,
         }
     }
 
@@ -344,24 +105,11 @@ impl KoiPondScene {
         color: [f32; 4],
         sway: f32,
     ) {
-        if self.instances.len() >= MAX_INSTANCES {
-            return;
-        }
-        let glyph_idx = char_to_glyph_index(c);
-        let uv = glyph_uv_bounds(glyph_idx);
-        self.instances.push(GlyphInstance {
-            pos,
-            size,
-            rotation,
-            depth,
-            uv_bounds: uv,
-            color,
-            sway,
-        });
+        self.glyphs.push(c, pos, size, rotation, depth, color, sway);
     }
 
     fn generate_instances(&mut self) {
-        self.instances.clear();
+        self.glyphs.clear();
 
         let pond_arc = self.pond.clone();
         let pond_guard = match pond_arc.lock() {
@@ -609,24 +357,9 @@ impl Scene for KoiPondScene {
             bytemuck::bytes_of(&water_uniforms),
         );
 
-        let glyph_uniforms = InstanceUniforms {
-            resolution: [self.width, self.height],
-            time: self.time as f32,
-            wind_sway: 0.0,
-            _pad: 0.0,
-        };
-        gpu.queue.write_buffer(
-            &self.glyph_uniforms_buf,
-            0,
-            bytemuck::bytes_of(&glyph_uniforms),
-        );
-
         self.generate_instances();
-        gpu.queue.write_buffer(
-            &self.instance_buffer,
-            0,
-            bytemuck::cast_slice(&self.instances),
-        );
+        self.glyphs
+            .upload(gpu, [self.width, self.height], self.time as f32, 0.0);
 
         activity
     }
@@ -661,29 +394,6 @@ impl Scene for KoiPondScene {
         }
 
         // Pass 2: Overlapping Glyphs
-        if !self.instances.is_empty() {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("koi-glyph-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            rpass.set_pipeline(&self.glyph_pipeline);
-            rpass.set_bind_group(0, &self.glyph_bind_group0, &[]);
-            rpass.set_bind_group(1, &self.glyph_bind_group1, &[]);
-            rpass.set_vertex_buffer(0, self.quad_buffer.slice(..));
-            rpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            rpass.draw(0..6, 0..self.instances.len() as u32);
-        }
+        self.glyphs.render(view, encoder);
     }
 }

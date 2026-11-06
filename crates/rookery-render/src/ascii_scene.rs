@@ -9,9 +9,8 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::world::{BirdSpecies, BirdState, SnackType, WorldState};
-use wgpu::util::DeviceExt;
 
-use crate::atlas::{self, char_to_glyph_index, glyph_uv_bounds};
+pub use crate::atlas::{GlyphInstance, GlyphPass};
 use crate::fullscreen;
 use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
@@ -25,34 +24,6 @@ struct BgUniforms {
     time_of_day: f32,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct AsciiUniforms {
-    resolution: [f32; 2],
-    time: f32,
-    wind_sway: f32,
-    _pad: f32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
-struct QuadVertex {
-    pos: [f32; 2],
-    uv: [f32; 2],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug)]
-pub struct GlyphInstance {
-    pub pos: [f32; 2],
-    pub size: [f32; 2],
-    pub rotation: f32,
-    pub depth: f32,
-    pub uv_bounds: [f32; 4],
-    pub color: [f32; 4],
-    pub sway: f32,
-}
-
 pub struct LivingRookeryScene {
     pub world: Arc<Mutex<WorldState>>,
     width: f32,
@@ -60,21 +31,11 @@ pub struct LivingRookeryScene {
     scale_factor: f32,
     time: f64,
 
-    instances: Vec<GlyphInstance>,
-    quad_buffer: wgpu::Buffer,
-    instance_buffer: wgpu::Buffer,
-
     bg_pipeline: wgpu::RenderPipeline,
     bg_uniforms_buf: wgpu::Buffer,
     bg_bind_group: wgpu::BindGroup,
 
-    ascii_pipeline: wgpu::RenderPipeline,
-    ascii_uniforms_buf: wgpu::Buffer,
-    ascii_bind_group0: wgpu::BindGroup,
-    ascii_bind_group1: wgpu::BindGroup,
-
-    _atlas_texture: wgpu::Texture,
-    _atlas_view: wgpu::TextureView,
+    glyphs: GlyphPass,
     pub audio: Option<crate::audio::AudioEngine>,
 
     drag_start_screen: Option<Pointer>,
@@ -114,215 +75,7 @@ impl LivingRookeryScene {
             None,
         );
 
-        // 2. Atlas texture & sampler
-        let (_atlas_texture, _atlas_view, sampler) = atlas::create_glyph_atlas(gpu);
-
-        // 3. Ascii glyph uniform buffer & bind group 0
-        let ascii_source = include_str!("ascii.wgsl");
-        let ascii_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ascii-shader-module"),
-            source: wgpu::ShaderSource::Wgsl(ascii_source.into()),
-        });
-
-        let ascii_layout0 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("ascii-layout0"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let ascii_uniforms_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ascii-uniforms"),
-            size: std::mem::size_of::<AsciiUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let ascii_bind_group0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ascii-bg0"),
-            layout: &ascii_layout0,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: ascii_uniforms_buf.as_entire_binding(),
-            }],
-        });
-
-        // 4. Atlas texture bind group 1
-        let ascii_layout1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("ascii-layout1"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let ascii_bind_group1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ascii-bg1"),
-            layout: &ascii_layout1,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&_atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("ascii-pipeline-layout"),
-            bind_group_layouts: &[Some(&ascii_layout0), Some(&ascii_layout1)],
-            immediate_size: 0,
-        });
-
-        // Vertex buffer for quad: 2 triangles
-        let quad_vertices = [
-            QuadVertex {
-                pos: [-0.5, -0.5],
-                uv: [0.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, -0.5],
-                uv: [1.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, 0.5],
-                uv: [1.0, 1.0],
-            },
-            QuadVertex {
-                pos: [-0.5, -0.5],
-                uv: [0.0, 0.0],
-            },
-            QuadVertex {
-                pos: [0.5, 0.5],
-                uv: [1.0, 1.0],
-            },
-            QuadVertex {
-                pos: [-0.5, 0.5],
-                uv: [0.0, 1.0],
-            },
-        ];
-        let quad_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ascii-quad-buffer"),
-            contents: bytemuck::cast_slice(&quad_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ascii-instance-buffer"),
-            size: (MAX_INSTANCES * std::mem::size_of::<GlyphInstance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let ascii_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ascii-render-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &ascii_module,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[
-                    // Quad vertex buffer
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<QuadVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 0,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 8,
-                                shader_location: 1,
-                            },
-                        ],
-                    }),
-                    // Instance buffer
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<GlyphInstance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 2, // pos
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 8,
-                                shader_location: 3, // size
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 16,
-                                shader_location: 4, // rotation
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 20,
-                                shader_location: 5, // depth
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x4,
-                                offset: 24,
-                                shader_location: 6, // uv_bounds
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x4,
-                                offset: 40,
-                                shader_location: 7, // color
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32,
-                                offset: 56,
-                                shader_location: 8, // sway
-                            },
-                        ],
-                    }),
-                ],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &ascii_module,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let glyphs = GlyphPass::new(gpu, format, MAX_INSTANCES);
 
         Self {
             world,
@@ -330,18 +83,10 @@ impl LivingRookeryScene {
             height: 1080.0,
             scale_factor: 1.0,
             time: 0.0,
-            instances: Vec::with_capacity(2048),
-            quad_buffer,
-            instance_buffer,
             bg_pipeline,
             bg_uniforms_buf,
             bg_bind_group,
-            ascii_pipeline,
-            ascii_uniforms_buf,
-            ascii_bind_group0,
-            ascii_bind_group1,
-            _atlas_texture,
-            _atlas_view,
+            glyphs,
             audio: None,
             drag_start_screen: None,
             last_screen_pointer: None,
@@ -390,24 +135,11 @@ impl LivingRookeryScene {
         color: [f32; 4],
         sway: f32,
     ) {
-        if self.instances.len() >= MAX_INSTANCES {
-            return;
-        }
-        let glyph_idx = char_to_glyph_index(c);
-        let uv = glyph_uv_bounds(glyph_idx);
-        self.instances.push(GlyphInstance {
-            pos,
-            size,
-            rotation,
-            depth,
-            uv_bounds: uv,
-            color,
-            sway,
-        });
+        self.glyphs.push(c, pos, size, rotation, depth, color, sway);
     }
 
     fn generate_scene_instances(&mut self) {
-        self.instances.clear();
+        self.glyphs.clear();
 
         let world_arc = self.world.clone();
         let world_guard = match world_arc.lock() {
@@ -1374,27 +1106,10 @@ impl Scene for LivingRookeryScene {
         gpu.queue
             .write_buffer(&self.bg_uniforms_buf, 0, bytemuck::bytes_of(&bg_uniforms));
 
-        let ascii_uniforms = AsciiUniforms {
-            resolution: [self.width, self.height],
-            time: self.time as f32,
-            wind_sway: 1.0,
-            _pad: 0.0,
-        };
-        gpu.queue.write_buffer(
-            &self.ascii_uniforms_buf,
-            0,
-            bytemuck::bytes_of(&ascii_uniforms),
-        );
-
         // Generate and upload glyph instances
         self.generate_scene_instances();
-        if !self.instances.is_empty() {
-            gpu.queue.write_buffer(
-                &self.instance_buffer,
-                0,
-                bytemuck::cast_slice(&self.instances),
-            );
-        }
+        self.glyphs
+            .upload(gpu, [self.width, self.height], self.time as f32, 1.0);
 
         activity
     }
@@ -1429,29 +1144,6 @@ impl Scene for LivingRookeryScene {
         }
 
         // Render pass 2: Overlapping ASCII glyph instances with alpha blending
-        if !self.instances.is_empty() {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ascii-glyph-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.ascii_pipeline);
-            pass.set_bind_group(0, &self.ascii_bind_group0, &[]);
-            pass.set_bind_group(1, &self.ascii_bind_group1, &[]);
-            pass.set_vertex_buffer(0, self.quad_buffer.slice(..));
-            pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            pass.draw(0..6, 0..self.instances.len() as u32);
-        }
+        self.glyphs.render(view, encoder);
     }
 }

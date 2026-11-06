@@ -39,7 +39,7 @@ pub fn open(app: &AppHandle) {
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
             .focused(true)
-            .devtools(true)
+            .devtools(cfg!(debug_assertions))
             .build()
         {
             Ok(w) => w,

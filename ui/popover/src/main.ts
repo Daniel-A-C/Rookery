@@ -502,7 +502,7 @@ function renderStatus(s: HostStatus): void {
 
   // Schedule Mode
   selectScheduleMode.value = s.schedule_mode;
-  const isInterval = s.schedule_mode === "Interval";
+  const isInterval = s.schedule_mode === "interval";
   intervalGroup.hidden = !isInterval;
   sliderInterval.hidden = !isInterval;
 
@@ -591,7 +591,7 @@ function renderSettings(st: Settings): void {
   selectScheduleMode.value = st.schedule_mode;
   sliderInterval.value = String(st.schedule_interval_mins);
   valInterval.textContent = `${st.schedule_interval_mins} mins`;
-  const isInterval = st.schedule_mode === "Interval";
+  const isInterval = st.schedule_mode === "interval";
   intervalGroup.hidden = !isInterval;
   sliderInterval.hidden = !isInterval;
 

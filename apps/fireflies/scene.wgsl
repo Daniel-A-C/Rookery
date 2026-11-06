@@ -32,6 +32,14 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         col += vec3<f32>(0.1, 0.3, 0.25) * glow;
     }
 
+    // Expanding light wave when action / pulse is triggered
+    let excite = max(u.action, u.left_held * 0.6);
+    if (excite > 0.01) {
+        let wave_r = (1.0 - u.action) * 0.85;
+        let ring = exp(-abs(length(p) - wave_r) * 18.0) * u.action;
+        col += vec3<f32>(0.25, 0.55, 0.30) * ring * 0.35;
+    }
+
     // Swarm of procedural fireflies
     for (var i = 0; i < 28; i++) {
         let fi = f32(i);
@@ -44,7 +52,8 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
         let d = length(p - fly_pos);
         let pulse = sin(u.time * 2.5 + fi * 3.7) * 0.5 + 0.5;
-        let intensity = (0.0018 / (d * d + 0.0003)) * (pulse * 0.7 + 0.3);
+        let boost = 1.0 + excite * 1.6;
+        let intensity = (0.0018 / (d * d + 0.0003)) * (pulse * 0.7 + 0.3) * boost;
 
         let firefly_col = mix(vec3<f32>(0.4, 0.9, 0.2), vec3<f32>(0.9, 0.8, 0.2), pulse);
         col += firefly_col * intensity;

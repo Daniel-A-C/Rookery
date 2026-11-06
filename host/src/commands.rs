@@ -256,6 +256,7 @@ pub fn execute_app_action(
     state: State<'_, HostState>,
     app_id: String,
     action: String,
+    payload: Option<serde_json::Value>,
 ) -> Result<HostStatus, String> {
     match app_id.as_str() {
         "living-rookery" => {
@@ -348,7 +349,12 @@ pub fn execute_app_action(
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
             if all.iter().any(|m| m.metadata.id == other) {
-                crate::webview_sandbox::dispatch_action(&app, &action);
+                if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                    crate::webview_sandbox::dispatch_control(&app, &action, val);
+                } else {
+                    crate::webview_sandbox::dispatch_action(&app, &action);
+                }
+                state.with_renderer(|r| r.trigger_action());
                 log::info!("executed action '{action}' on external app '{other}'");
             } else {
                 return Err(format!("Unknown app id '{other}'"));

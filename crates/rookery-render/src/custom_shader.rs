@@ -28,6 +28,7 @@ pub struct CustomShaderScene {
     height: f32,
     scale_factor: f32,
     time: f32,
+    pulse: f32,
 }
 
 impl CustomShaderScene {
@@ -101,6 +102,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {{
             height: 1080.0,
             scale_factor: 1.0,
             time: 0.0,
+            pulse: 0.0,
         })
     }
 }
@@ -116,11 +118,11 @@ impl Scene for CustomShaderScene {
         let dt_secs = dt.as_secs_f32().min(0.2);
         self.time += dt_secs;
 
-        let action_val = match input.action {
-            PointerAction::LeftClick => 1.0,
-            PointerAction::RightClick => 2.0,
-            PointerAction::None => 0.0,
-        };
+        if input.action != PointerAction::None {
+            self.pulse = 1.0;
+        } else {
+            self.pulse = (self.pulse - dt_secs * 1.2).max(0.0);
+        }
 
         let (px, py) = input
             .pointer
@@ -132,14 +134,14 @@ impl Scene for CustomShaderScene {
             time: self.time,
             interactive: if input.interactive { 1.0 } else { 0.0 },
             pointer: [px, py],
-            action: action_val,
+            action: self.pulse,
             left_held: if input.left_held { 1.0 } else { 0.0 },
         };
 
         gpu.queue
             .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
 
-        if input.interactive || input.left_held || input.action != PointerAction::None {
+        if input.interactive || input.left_held || self.pulse > 0.0 {
             Activity::Animating
         } else {
             Activity::Idle

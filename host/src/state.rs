@@ -85,27 +85,39 @@ pub struct RookeryStatus {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct KoiStatus {
+    pub seed: u64,
+    pub total_koi: u32,
     pub total_fish: u32,
     pub total_lilies: u32,
+    pub blooming_lotuses: u32,
+    pub ripples_active: u32,
+    pub pellets_active: u32,
     pub pellets_eaten: u32,
     pub ripples_created: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct NebulaStatus {
+    pub seed: u64,
+    pub particle_count: u32,
     pub total_particles: u32,
+    pub gravity_wells: u32,
     pub active_vortices: u32,
+    pub palette_name: String,
     pub palette: String,
     pub turbulence: f32,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct OrbitalStatus {
+    pub seed: u64,
     pub station_age_hours: f64,
     pub total_modules: u32,
     pub solar_wings: u32,
+    pub habitat_rings: u32,
     pub habitat_sectors: u32,
     pub comm_arrays: u32,
+    pub docked_shuttles: u32,
     pub focus: String,
 }
 
@@ -208,17 +220,29 @@ impl HostState {
         });
 
         let koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {
+            seed: k.seed,
+            total_koi: k.stats.total_fish,
             total_fish: k.stats.total_fish,
             total_lilies: k.stats.total_lilies,
+            blooming_lotuses: k.lilies.iter().filter(|l| l.has_flower).count() as u32,
+            ripples_active: k.ripples.len() as u32,
+            pellets_active: k.pellets.len() as u32,
             pellets_eaten: k.stats.pellets_eaten,
             ripples_created: k.stats.ripples_created,
         });
 
-        let nebula = self.catalog_state.nebula.lock().ok().map(|n| NebulaStatus {
-            total_particles: n.stats.total_particles,
-            active_vortices: n.stats.active_vortices,
-            palette: n.palette.name().to_string(),
-            turbulence: n.turbulence,
+        let nebula = self.catalog_state.nebula.lock().ok().map(|n| {
+            let palette_name = n.palette.name().to_string();
+            NebulaStatus {
+                seed: n.seed,
+                particle_count: n.stats.total_particles,
+                total_particles: n.stats.total_particles,
+                gravity_wells: n.stats.active_vortices,
+                active_vortices: n.stats.active_vortices,
+                palette_name: palette_name.clone(),
+                palette: palette_name,
+                turbulence: n.turbulence,
+            }
         });
 
         let orbital = self
@@ -227,11 +251,14 @@ impl HostState {
             .lock()
             .ok()
             .map(|o| OrbitalStatus {
+                seed: o.seed,
                 station_age_hours: o.stats.station_age_hours,
                 total_modules: o.stats.total_modules,
                 solar_wings: o.stats.solar_wings,
+                habitat_rings: o.stats.habitat_sectors,
                 habitat_sectors: o.stats.habitat_sectors,
                 comm_arrays: o.stats.comm_arrays,
+                docked_shuttles: o.shuttles.len() as u32,
                 focus: o.focus.name().to_string(),
             });
 
