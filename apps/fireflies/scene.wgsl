@@ -5,6 +5,7 @@ struct Uniforms {
     pointer: vec2<f32>,
     action: f32,
     left_held: f32,
+    params: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -19,6 +20,8 @@ fn hash21(p: vec2<f32>) -> f32 {
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let aspect = u.resolution.x / max(u.resolution.y, 1.0);
     let p = vec2<f32>((uv.x - 0.5) * aspect, uv.y - 0.5);
+    let speed_mult = max(u.params.x, 0.1);
+    let glow_mult = max(u.params.y, 0.1);
 
     // Deep dusk gradient background
     var col = mix(vec3<f32>(0.01, 0.02, 0.05), vec3<f32>(0.05, 0.03, 0.08), uv.y);
@@ -43,7 +46,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     // Swarm of procedural fireflies
     for (var i = 0; i < 28; i++) {
         let fi = f32(i);
-        let speed = 0.3 + hash21(vec2<f32>(fi, 1.0)) * 0.4;
+        let speed = (0.3 + hash21(vec2<f32>(fi, 1.0)) * 0.4) * speed_mult;
         let t = u.time * speed + fi * 2.39;
 
         let fx = sin(t * 0.7 + fi) * 0.6 * aspect + cos(t * 0.3) * 0.1;
@@ -52,7 +55,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
         let d = length(p - fly_pos);
         let pulse = sin(u.time * 2.5 + fi * 3.7) * 0.5 + 0.5;
-        let boost = 1.0 + excite * 1.6;
+        let boost = (1.0 + excite * 1.6) * glow_mult;
         let intensity = (0.0018 / (d * d + 0.0003)) * (pulse * 0.7 + 0.3) * boost;
 
         let firefly_col = mix(vec3<f32>(0.4, 0.9, 0.2), vec3<f32>(0.9, 0.8, 0.2), pulse);

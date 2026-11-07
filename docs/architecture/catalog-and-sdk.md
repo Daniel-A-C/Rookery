@@ -90,54 +90,79 @@ Rookery ships with four flagship apps spanning core ambient archetypes:
 
 ## 3. The `rookery.toml` App Manifest Specification
 
-All Rookery apps are defined by a standard, declarative `rookery.toml` manifest file located in their root folder:
+All Rookery apps are defined by a standard, declarative `rookery.toml` manifest file located in their root folder (`apps/<app-id>/rookery.toml` or `~/.config/rookery/apps/<app-id>/rookery.toml`):
 
 ```toml
 [app]
-id = "koi-pond"
-name = "Tranquil Koi Pond"
-tagline = "Articulated koi fish, blooming water lilies, and gentle ripples"
-version = "0.1.0"
-author = "Rookery Team"
-archetype = "Ecosystem"
-icon_glyph = "koi"
-tags = ["aquatic", "koi", "zen", "nature"]
+id = "aurora-waves"
+name = "Aurora Waves"
+description = "Interactive HTML5 canvas aurora borealis with glowing starlight and meteors."
+version = "0.2.0"
+author = "Rookery Community"
+tags = ["web", "canvas", "aurora", "sky"]
+
+[theme]
+tagline = "Celestial Curtain"
+banner_title = "Aurora Waves"
+icon = "sparkle"
+ornament = "✦ ─── ✧ ─── ✦"
+bg = "#070c16"
+card = "#0e1726"
+border_outer = "#38bdf8"
+accent = "#38bdf8"
+accent_secondary = "#a855f7"
 
 [budgets]
-max_cpu_ms = 2.0
-max_gpu_ms = 4.0
-max_rss_mb = 120.0
-target_passive_fps = 24
-target_interactive_fps = 60
+target_fps_passive = 30
+target_fps_interactive = 60
+max_cpu_percent = 3.0
+max_memory_mb = 120
 
 [[controls]]
-id = "feed"
-label = "Feed Koi"
-control_type = "Action"
-description = "Drop nutritious pellets into the pond"
+type = "stat"
+id = "palette"
+label = "Palette"
+value = "Borealis"
+icon = "palette"
 
 [[controls]]
-id = "pebble"
-label = "Cast Pebble"
-control_type = "Action"
-description = "Stir the water surface with ripples"
+type = "stat"
+id = "meteors"
+label = "Meteors"
+value = "0"
+icon = "shooting-star"
 
 [[controls]]
-id = "koi_count"
-label = "Koi Population"
-control_type = "Slider"
-description = "Number of schooling koi"
-min = 4.0
-max = 32.0
-step = 1.0
-default = 12.0
+type = "button"
+id = "pulse"
+label = "Solar Pulse"
+icon = "sun"
+
+[[controls]]
+type = "slider"
+id = "wave_speed"
+label = "Wave Drift"
+min = 0.2
+max = 3.0
+default = 1.0
 ```
 
-### Supported Control Types
-1. **Slider**: Continuous numeric parameters (e.g., speed, density, particle count, turbulence).
-2. **Toggle**: Boolean options (e.g., enable audio, show grid, invert gravity).
-3. **Select**: Enumerated options (e.g., color palettes, seasons, species).
-4. **Action**: Instant triggers with optional position payloads (e.g., feed, prune, launch shuttle, supernova).
+### Supported Control Types (`[[controls]]`)
+1. **`stat`**: Read-only telemetry badge rendered in the Popover HUD (`id`, `label`, `value`, optional `icon`). Can be updated live at runtime by Native scenes or Web Canvas apps via `window.Rookery.setStats({ ... })`.
+2. **`button`**: Instant action trigger with an optional Phosphor/custom icon (`id`, `label`, optional `icon`). Dispatched via `execute_app_action(app_id, action_id, None)`.
+3. **`slider`**: Continuous numeric parameter (`id`, `label`, `min`, `max`, `default`). Updates `CatalogState` and automatically forwards values to `u.params` in WGSL shaders or `rookery-control` events in Web Canvas apps.
+4. **`select`**: Enumerated option selector (`id`, `label`, `options`, `default`).
+
+### Supported App Runtimes
+1. **Web Canvas (`index.html`)**: Served via the sandboxed `rookery-app://localhost/<app-id>/index.html` protocol. Every Web Canvas app automatically receives the `window.Rookery` SDK bridge:
+   - `window.Rookery.onAction((actionId) => ...)`
+   - `window.Rookery.onControl((controlId, value) => ...)`
+   - `window.Rookery.onInteractive((active) => ...)`
+   - `window.Rookery.onWake((elapsedSeconds) => ...)`
+   - `window.Rookery.setStats({ key: value })` — streams live telemetry to the Popover HUD.
+   - `await window.Rookery.saveState(data)` / `await window.Rookery.loadState()` — persists up to 512 KB of JSON state per app in `<config_dir>/apps_state/<app-id>.json`.
+2. **Custom WGSL Shader (`scene.wgsl`)**: Compiled at runtime by `CustomShaderScene`. Receives `Uniforms` at `@group(0) @binding(0)` including `params: vec4<f32>` populated live from the first 4 `slider` / `select` controls in `rookery.toml`.
+3. **Native Rust (`Scene` trait)**: Compiled directly into `rookery-render` for maximum simulation throughput.
 
 ---
 

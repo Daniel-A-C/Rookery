@@ -1,5 +1,6 @@
 //! Generic runtime runner for external WGSL community shader apps.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
@@ -16,8 +17,9 @@ pub struct CustomShaderUniforms {
     pub time: f32,
     pub interactive: f32,
     pub pointer: [f32; 2],
-    pub action: f32,    // 0.0 = none, 1.0 = left click, 2.0 = right click
-    pub left_held: f32, // 1.0 if held, 0.0 otherwise
+    pub action: f32,      // 0.0 = none, 1.0 = left click / button trigger
+    pub left_held: f32,   // 1.0 if held, 0.0 otherwise
+    pub params: [f32; 4], // Up to 4 declarative slider/select control values from rookery.toml
 }
 
 pub struct CustomShaderScene {
@@ -29,10 +31,25 @@ pub struct CustomShaderScene {
     scale_factor: f32,
     time: f32,
     pulse: f32,
+    params: Arc<Mutex<[f32; 4]>>,
 }
 
 impl CustomShaderScene {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, wgsl_source: &str) -> anyhow::Result<Self> {
+        Self::new_with_params(
+            gpu,
+            format,
+            wgsl_source,
+            Arc::new(Mutex::new([1.0, 1.0, 0.0, 0.0])),
+        )
+    }
+
+    pub fn new_with_params(
+        gpu: &Gpu,
+        format: wgpu::TextureFormat,
+        wgsl_source: &str,
+        params: Arc<Mutex<[f32; 4]>>,
+    ) -> anyhow::Result<Self> {
         let full_source = if wgsl_source.contains("fn vs_main") {
             wgsl_source.to_string()
         } else {
@@ -68,6 +85,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {{
             Some(wgpu::BlendState::ALPHA_BLENDING),
         );
 
+        let initial_params = params.lock().map(|p| *p).unwrap_or([1.0, 1.0, 0.0, 0.0]);
         let initial_uniforms = CustomShaderUniforms {
             resolution: [1920.0, 1080.0],
             time: 0.0,
@@ -75,6 +93,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {{
             pointer: [0.0, 0.0],
             action: 0.0,
             left_held: 0.0,
+            params: initial_params,
         };
 
         let uniform_buf = gpu
@@ -103,6 +122,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {{
             scale_factor: 1.0,
             time: 0.0,
             pulse: 0.0,
+            params,
         })
     }
 }
@@ -129,6 +149,12 @@ impl Scene for CustomShaderScene {
             .map(|p| (p.x, p.y))
             .unwrap_or((-1000.0, -1000.0));
 
+        let cur_params = self
+            .params
+            .lock()
+            .map(|p| *p)
+            .unwrap_or([1.0, 1.0, 0.0, 0.0]);
+
         let uniforms = CustomShaderUniforms {
             resolution: [self.width, self.height],
             time: self.time,
@@ -136,6 +162,7 @@ impl Scene for CustomShaderScene {
             pointer: [px, py],
             action: self.pulse,
             left_held: if input.left_held { 1.0 } else { 0.0 },
+            params: cur_params,
         };
 
         gpu.queue

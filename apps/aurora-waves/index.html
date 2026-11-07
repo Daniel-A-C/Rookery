@@ -91,6 +91,17 @@
 
     let currentPaletteIdx = 0;
     let activePalette = PALETTES[0];
+    let waveSpeedMult = 1.0;
+    let meteorsSeen = 0;
+
+    function syncTelemetry() {
+      if (window.Rookery && typeof window.Rookery.setStats === 'function') {
+        window.Rookery.setStats({
+          palette: activePalette.name,
+          meteors: String(meteorsSeen),
+        });
+      }
+    }
 
     // Starfield Simulation
     let stars = [];
@@ -131,6 +142,8 @@
     // Shooting Stars (meteors)
     let meteors = [];
     function spawnMeteor() {
+      meteorsSeen += 1;
+      syncTelemetry();
       const startX = Math.random() * width * 0.7 + width * 0.15;
       const startY = Math.random() * height * 0.25;
       const angle = (Math.PI / 4) + (Math.random() - 0.5) * 0.3;
@@ -196,8 +209,20 @@
         currentPaletteIdx = (currentPaletteIdx + 1) % PALETTES.length;
         activePalette = PALETTES[currentPaletteIdx];
         spawnSparks(width * 0.5, height * 0.3, 40, 3);
+        syncTelemetry();
       } else if (action === 'shooting_star') {
         spawnMeteor();
+      }
+    });
+
+    // Handle Rookery Popover Slider & Select Controls
+    window.addEventListener('rookery-control', (e) => {
+      const { id, value } = e.detail || {};
+      if (id === 'wave_speed') {
+        const parsed = parseFloat(value);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          waveSpeedMult = parsed;
+        }
       }
     });
 
@@ -219,7 +244,7 @@
 
     // Multi-Layer Aurora Ribbons Wave Equation
     function getWaveY(x, layerIdx, time) {
-      const t = time * 0.0006;
+      const t = time * 0.0006 * waveSpeedMult;
       let y = Math.sin(x * 0.0022 + t * 1.2 + layerIdx * 1.5) * 60;
       y += Math.sin(x * 0.0045 - t * 0.8 + layerIdx * 2.2) * 35;
       y += Math.cos(x * 0.0011 + t * 0.4) * 50;

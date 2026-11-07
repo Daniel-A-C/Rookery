@@ -99,6 +99,8 @@ pub struct Settings {
     pub popover_opacity: f32,
     pub popover_blur: u32,
     pub active_app: String,
+    #[serde(default)]
+    pub favorite_apps: Vec<String>,
     pub schedule_mode: ScheduleMode,
     pub schedule_interval_mins: u32,
     pub day_night_mapping: DayNightMapping,
@@ -121,6 +123,7 @@ impl Default for Settings {
             popover_opacity: DEFAULT_POPOVER_OPACITY,
             popover_blur: DEFAULT_POPOVER_BLUR,
             active_app: "living-rookery".to_owned(),
+            favorite_apps: Vec::new(),
             schedule_mode: ScheduleMode::Manual,
             schedule_interval_mins: 30,
             day_night_mapping: DayNightMapping::default(),

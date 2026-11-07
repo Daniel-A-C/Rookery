@@ -16,19 +16,30 @@ const el = <T extends HTMLElement>(id: string): T => {
   return node as T;
 };
 
-// Root & Header Elements
+// Root & Header Elements (Option C Realm Selector)
 const popoverRoot = el<HTMLElement>("popover-root");
+const btnRealmSelector = el<HTMLButtonElement>("btn-realm-selector");
 const brandGlyph = el<HTMLElement>("brand-glyph");
 const brandTitle = el<HTMLHeadingElement>("brand-title");
+const realmSelectorCaret = el<HTMLElement>("realm-selector-caret");
 const powerBadge = el<HTMLSpanElement>("power-badge");
-const appTagline = el<HTMLParagraphElement>("app-tagline");
+const appTagline = el<HTMLElement>("app-tagline");
+const realmCountPill = el<HTMLSpanElement>("realm-count-pill");
 
-// View Toggle (Realm HUD vs Settings Menu)
+// View Toggle (Realm HUD vs Realm Library vs Settings Menu)
 const btnToggleSettings = el<HTMLButtonElement>("btn-toggle-settings");
 const settingsToggleIcon = el<HTMLElement>("settings-toggle-icon");
 const settingsToggleLabel = el<HTMLSpanElement>("settings-toggle-label");
 const viewRealm = el<HTMLDivElement>("view-realm");
+const viewLibrary = el<HTMLDivElement>("view-library");
 const viewSettings = el<HTMLDivElement>("view-settings");
+
+// Library View Elements
+const inputLibrarySearch = el<HTMLInputElement>("input-library-search");
+const btnReloadCatalog = el<HTMLButtonElement>("btn-reload-catalog");
+const libraryFilterBar = el<HTMLElement>("library-filter-bar");
+const libraryGrid = el<HTMLUListElement>("library-grid");
+const filterPills = libraryFilterBar.querySelectorAll<HTMLButtonElement>(".filter-pill");
 
 // Settings Sub-Tabs
 const settingsPanels: Record<string, HTMLElement> = {
@@ -50,77 +61,130 @@ for (const navBtn of settingsNavBtns) {
   });
 }
 
-let isSettingsOpen = false;
-function setSettingsOpen(open: boolean): void {
-  isSettingsOpen = open;
-  viewRealm.hidden = open;
-  viewSettings.hidden = !open;
-  btnToggleSettings.classList.toggle("active", open);
-  btnToggleSettings.setAttribute("aria-expanded", String(open));
-  if (open) {
+type ActiveView = "realm" | "library" | "settings";
+let activeView: ActiveView = "realm";
+let activeLibraryFilter = "all";
+let librarySearchQuery = "";
+let favoriteApps: string[] = [];
+
+function setActiveView(view: ActiveView): void {
+  activeView = view;
+  const isLibrary = view === "library";
+  const isSettings = view === "settings";
+
+  viewRealm.hidden = view !== "realm";
+  viewLibrary.hidden = !isLibrary;
+  viewSettings.hidden = !isSettings;
+
+  btnRealmSelector.classList.toggle("active", isLibrary);
+  btnRealmSelector.setAttribute("aria-expanded", String(isLibrary));
+  setIcon(realmSelectorCaret, isLibrary ? "caret-up" : "caret-down");
+
+  btnToggleSettings.classList.toggle("active", isSettings);
+  btnToggleSettings.setAttribute("aria-expanded", String(isSettings));
+  if (isSettings) {
     setIcon(settingsToggleIcon, "caret-left");
     settingsToggleLabel.textContent = "Realm";
   } else {
     setIcon(settingsToggleIcon, "settings");
     settingsToggleLabel.textContent = "Settings";
   }
+
+  if (isLibrary) {
+    renderLibraryGrid();
+    inputLibrarySearch.focus();
+  }
 }
 
-btnToggleSettings.addEventListener("click", () => {
-  setSettingsOpen(!isSettingsOpen);
+btnRealmSelector.addEventListener("click", () => {
+  setActiveView(activeView === "library" ? "realm" : "library");
 });
 
-// App Switcher Container & Realm Cards Container
-const appSwitcher = el<HTMLElement>("app-switcher");
-const realmCardsContainer = el<HTMLElement>("realm-cards-container");
+btnToggleSettings.addEventListener("click", () => {
+  setActiveView(activeView === "settings" ? "realm" : "settings");
+});
 
-// App Tabs & Cards Maps
-const tabs: Record<string, HTMLButtonElement> = {};
+// Realm Cards Container
+const realmCardsContainer = el<HTMLElement>("realm-cards-container");
 const cards: Record<string, HTMLElement> = {};
 
 interface AppThemeMeta {
   title: string;
   tagline: string;
+  bannerTitle?: string;
   /** Icon name (see ui/icons/icons.config.json); legacy emoji still render as text. */
   glyph: IconName | string;
   /** Icon flanking the realm card banner (mirrored on the right). */
   ornament: IconName | string;
+  bg?: string;
+  card?: string;
+  borderOuter?: string;
+  accent?: string;
+  accentSecondary?: string;
+  crestGradient?: [string, string];
 }
+
+const BUILTIN_CSS_THEMES = new Set([
+  "living-rookery",
+  "koi-pond",
+  "cosmic-nebula",
+  "orbital-haven",
+  "aurora-waves",
+  "fireflies",
+]);
+
+const CUSTOM_THEME_VARS = [
+  "--bg",
+  "--card",
+  "--border-outer",
+  "--accent",
+  "--accent-secondary",
+  "--crest-bg",
+  "--ok",
+  "--scrollbar-thumb",
+  "--scrollbar-track",
+];
 
 const appThemes: Record<string, AppThemeMeta> = {
   "living-rookery": {
     title: "The Living Rookery",
     tagline: "Woodland Sanctuary · ASCII Realm",
+    bannerTitle: "Sylvan Sanctuary Chronicle",
     glyph: "tree-evergreen",
     ornament: "leaf",
   },
   "koi-pond": {
     title: "Tranquil Koi Pond",
     tagline: "Imperial Lotus Sanctuary",
+    bannerTitle: "Imperial Pond Scroll",
     glyph: "koi",
     ornament: "flower-lotus",
   },
   "cosmic-nebula": {
     title: "Cosmic Nebula",
     tagline: "Astral Singularity Forge",
+    bannerTitle: "Astral Star-Chart Deck",
     glyph: "nebula",
     ornament: "star-four",
   },
   "orbital-haven": {
     title: "Orbital Haven",
     tagline: "Aegis-VII Orbital Command",
+    bannerTitle: "Orbital Telemetry & Ops",
     glyph: "satellite",
     ornament: "hexagon",
   },
   "aurora-waves": {
     title: "Aurora Waves",
     tagline: "Borealis Sky Observatory",
+    bannerTitle: "Polar Magnetosphere Telemetry",
     glyph: "shooting-star",
     ornament: "star-four",
   },
   fireflies: {
     title: "Twilight Fireflies",
     tagline: "Enchanted Gloaming Glade",
+    bannerTitle: "Bioluminescent Meadow Deck",
     glyph: "sparkle",
     ornament: "sparkle",
   },
@@ -129,10 +193,42 @@ const appThemes: Record<string, AppThemeMeta> = {
 function applyThemeForApp(appId: string): void {
   popoverRoot.setAttribute("data-theme", appId);
   const meta = appThemes[appId];
+
+  // Clear any previous custom inline theme variables first
+  for (const prop of CUSTOM_THEME_VARS) {
+    popoverRoot.style.removeProperty(prop);
+  }
+
   if (meta) {
     setIcon(brandGlyph, meta.glyph);
     brandTitle.textContent = meta.title;
     appTagline.textContent = meta.tagline;
+
+    // For custom apps not in BUILTIN_CSS_THEMES, apply declarative [theme] colors from rookery.toml
+    if (!BUILTIN_CSS_THEMES.has(appId)) {
+      if (meta.bg) {
+        popoverRoot.style.setProperty("--bg", meta.bg);
+        popoverRoot.style.setProperty("--scrollbar-track", meta.bg);
+      }
+      if (meta.card) popoverRoot.style.setProperty("--card", meta.card);
+      if (meta.borderOuter) {
+        popoverRoot.style.setProperty("--border-outer", meta.borderOuter);
+        popoverRoot.style.setProperty("--scrollbar-thumb", meta.borderOuter);
+      }
+      if (meta.accent) {
+        popoverRoot.style.setProperty("--accent", meta.accent);
+        popoverRoot.style.setProperty("--ok", meta.accent);
+      }
+      if (meta.accentSecondary) {
+        popoverRoot.style.setProperty("--accent-secondary", meta.accentSecondary);
+      }
+      if (meta.crestGradient && meta.crestGradient.length === 2) {
+        popoverRoot.style.setProperty(
+          "--crest-bg",
+          `linear-gradient(135deg, ${meta.crestGradient[0]}, ${meta.crestGradient[1]})`,
+        );
+      }
+    }
   } else {
     setIcon(brandGlyph, "diamond");
     brandTitle.textContent = appId.replace(/-/g, " ");
@@ -140,30 +236,18 @@ function applyThemeForApp(appId: string): void {
   }
 }
 
-function bindTabEvents(appId: string, btn: HTMLButtonElement): void {
-  btn.onclick = async () => {
-    for (const [id, tabBtn] of Object.entries(tabs)) {
-      tabBtn.classList.toggle("active", id === appId);
-    }
-    for (const [id, cardEl] of Object.entries(cards)) {
-      cardEl.hidden = id !== appId;
-    }
-    applyThemeForApp(appId);
+async function selectRealm(appId: string): Promise<void> {
+  for (const [id, cardEl] of Object.entries(cards)) {
+    cardEl.hidden = id !== appId;
+  }
+  applyThemeForApp(appId);
+  setActiveView("realm");
 
-    try {
-      const s = await api.switchApp(appId);
-      renderStatus(s);
-    } catch (err) {
-      console.error("switchApp error:", err);
-    }
-  };
-}
-
-for (const btn of appSwitcher.querySelectorAll<HTMLButtonElement>(".app-tab-btn")) {
-  const appId = btn.getAttribute("data-app");
-  if (appId) {
-    tabs[appId] = btn;
-    bindTabEvents(appId, btn);
+  try {
+    const s = await api.switchApp(appId);
+    renderStatus(s);
+  } catch (err) {
+    console.error("switchApp error:", err);
   }
 }
 
@@ -311,6 +395,7 @@ let recordingPopoverHotkey = false;
 let appCatalog: AppManifest[] = [];
 
 function getAppGlyph(m: AppManifest): string {
+  if (m.theme?.icon) return m.theme.icon;
   if (appThemes[m.metadata.id]) return appThemes[m.metadata.id].glyph;
   for (const c of m.controls || []) {
     if (c.icon) return c.icon;
@@ -325,54 +410,214 @@ function getAppGlyph(m: AppManifest): string {
   return archetypes[m.metadata.archetype] || "diamond";
 }
 
-function getAppShortName(m: AppManifest): string {
-  const shortNames: Record<string, string> = {
-    "living-rookery": "Rookery",
-    "koi-pond": "Koi Pond",
-    "cosmic-nebula": "Nebula",
-    "orbital-haven": "Orbital",
-    "aurora-waves": "Aurora",
-    fireflies: "Fireflies",
+function getArchetypeShortLabel(archetype: string): string {
+  const labels: Record<string, string> = {
+    cozy_ecosystem: "Ecosystem",
+    generative_physics: "Physics & Shader",
+    slow_burn_idle: "Idle World",
+    ambient_utility: "Utility",
+    web_canvas: "Web Canvas",
   };
-  if (shortNames[m.metadata.id]) return shortNames[m.metadata.id];
-  const name = m.metadata.name;
-  return name.length > 9 ? name.split(" ")[0] : name;
+  return labels[archetype] || archetype.replace(/_/g, " ");
 }
 
+function renderLibraryGrid(): void {
+  const activeId = currentStatus?.active_app || "living-rookery";
+  const q = librarySearchQuery.trim().toLowerCase();
+
+  const filtered = appCatalog.filter((m) => {
+    if (activeLibraryFilter === "favorites") {
+      if (!favoriteApps.includes(m.metadata.id)) return false;
+    } else if (activeLibraryFilter !== "all") {
+      if (m.metadata.archetype !== activeLibraryFilter) return false;
+    }
+
+    if (!q) return true;
+    const haystack = [
+      m.metadata.id,
+      m.metadata.name,
+      m.metadata.description,
+      m.metadata.author,
+      m.metadata.archetype,
+      m.theme?.tagline || "",
+      ...(m.metadata.tags || []),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+
+  // Sort favorites first when viewing "all"
+  const sorted = [...filtered].sort((a, b) => {
+    const aFav = favoriteApps.includes(a.metadata.id) ? 0 : 1;
+    const bFav = favoriteApps.includes(b.metadata.id) ? 0 : 1;
+    return aFav - bFav;
+  });
+
+  libraryGrid.replaceChildren();
+
+  if (sorted.length === 0) {
+    const emptyLi = document.createElement("li");
+    emptyLi.className = "empty";
+    emptyLi.style.padding = "14px 8px";
+    emptyLi.style.textAlign = "center";
+    emptyLi.textContent =
+      activeLibraryFilter === "favorites" && favoriteApps.length === 0
+        ? "No favorite realms starred yet. Click ★ on any realm to pin it here."
+        : "No realms match your search filter.";
+    libraryGrid.appendChild(emptyLi);
+    return;
+  }
+
+  for (const m of sorted) {
+    const id = m.metadata.id;
+    const isActive = id === activeId;
+    const isFav = favoriteApps.includes(id);
+    const meta = appThemes[id];
+
+    const li = document.createElement("li");
+    li.className = `library-item${isActive ? " active" : ""}`;
+
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = "library-select-btn";
+    selectBtn.addEventListener("click", () => {
+      selectRealm(id);
+    });
+
+    const crest = document.createElement("span");
+    crest.className = "library-crest";
+    if (meta?.accent) {
+      crest.style.color = meta.accent;
+    }
+    crest.appendChild(icon(getAppGlyph(m)));
+
+    const info = document.createElement("span");
+    info.className = "library-info";
+
+    const titleRow = document.createElement("span");
+    titleRow.className = "library-title-row";
+    const titleEl = document.createElement("strong");
+    titleEl.className = "library-title";
+    titleEl.textContent = m.metadata.name;
+    titleRow.appendChild(titleEl);
+
+    if (isActive) {
+      const activePill = document.createElement("span");
+      activePill.className = "library-active-pill";
+      activePill.textContent = "Active";
+      titleRow.appendChild(activePill);
+    }
+
+    const descEl = document.createElement("span");
+    descEl.className = "library-desc";
+    descEl.textContent = m.theme?.tagline || m.metadata.description;
+
+    const metaRow = document.createElement("span");
+    metaRow.className = "library-meta-row";
+    const archBadge = document.createElement("span");
+    archBadge.className = "mini-badge";
+    archBadge.textContent = getArchetypeShortLabel(m.metadata.archetype || "");
+    const fpsBadge = document.createElement("span");
+    fpsBadge.className = "mini-badge";
+    fpsBadge.textContent = `${m.budgets?.target_fps ?? 30} FPS`;
+    const verBadge = document.createElement("span");
+    verBadge.className = "mini-badge";
+    verBadge.textContent = `v${m.metadata.version || "1.0"}`;
+    metaRow.append(archBadge, fpsBadge, verBadge);
+
+    info.append(titleRow, descEl, metaRow);
+    selectBtn.append(crest, info);
+
+    const favBtn = document.createElement("button");
+    favBtn.type = "button";
+    favBtn.className = `library-fav-btn${isFav ? " favorited" : ""}`;
+    favBtn.setAttribute("aria-pressed", String(isFav));
+    favBtn.setAttribute(
+      "aria-label",
+      isFav ? `Remove ${m.metadata.name} from favorites` : `Add ${m.metadata.name} to favorites`,
+    );
+    favBtn.title = isFav ? "Unfavorite realm" : "Favorite realm (prioritized in rotation & library)";
+    favBtn.appendChild(icon("star"));
+    favBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (favoriteApps.includes(id)) {
+        favoriteApps = favoriteApps.filter((f) => f !== id);
+      } else {
+        favoriteApps = [...favoriteApps, id];
+      }
+      renderLibraryGrid();
+      try {
+        const st = await api.updateSettings({ favorite_apps: favoriteApps });
+        renderSettings(st);
+      } catch (err) {
+        console.error("update favorite_apps error:", err);
+      }
+    });
+
+    li.append(selectBtn, favBtn);
+    libraryGrid.appendChild(li);
+  }
+}
+
+// Library Search, Filter & Reload Listeners
+inputLibrarySearch.addEventListener("input", () => {
+  librarySearchQuery = inputLibrarySearch.value;
+  renderLibraryGrid();
+});
+
+for (const pill of filterPills) {
+  pill.addEventListener("click", () => {
+    activeLibraryFilter = pill.getAttribute("data-filter") || "all";
+    for (const p of filterPills) {
+      const isSelected = p === pill;
+      p.classList.toggle("active", isSelected);
+      p.setAttribute("aria-pressed", String(isSelected));
+    }
+    renderLibraryGrid();
+  });
+}
+
+btnReloadCatalog.addEventListener("click", async () => {
+  try {
+    btnReloadCatalog.disabled = true;
+    const catalog = await api.reloadCatalog();
+    appCatalog = catalog;
+    try {
+      localStorage.setItem("rookery_catalog", JSON.stringify(catalog));
+    } catch {}
+    applyCatalog();
+  } catch (err) {
+    console.error("reloadCatalog error:", err);
+  } finally {
+    btnReloadCatalog.disabled = false;
+  }
+});
+
 function applyCatalog(): void {
+  realmCountPill.textContent = `${appCatalog.length} ${appCatalog.length === 1 ? "Realm" : "Realms"}`;
+
   for (const m of appCatalog) {
-    if (!appThemes[m.metadata.id]) {
-      appThemes[m.metadata.id] = {
-        title: m.metadata.name,
-        tagline: m.metadata.description || "Custom Rookery Realm",
-        glyph: getAppGlyph(m),
-        ornament: "sparkle",
-      };
-    }
+    const existing = appThemes[m.metadata.id];
+    appThemes[m.metadata.id] = {
+      title: m.metadata.name || existing?.title || m.metadata.id,
+      tagline:
+        m.theme?.tagline ||
+        existing?.tagline ||
+        m.metadata.description ||
+        "Custom Rookery Realm",
+      bannerTitle: m.theme?.banner_title || existing?.bannerTitle || m.metadata.name,
+      glyph: m.theme?.icon || existing?.glyph || getAppGlyph(m),
+      ornament: m.theme?.ornament || existing?.ornament || "sparkle",
+      bg: m.theme?.bg || existing?.bg,
+      card: m.theme?.card || existing?.card,
+      borderOuter: m.theme?.border_outer || existing?.borderOuter,
+      accent: m.theme?.accent || existing?.accent,
+      accentSecondary: m.theme?.accent_secondary || existing?.accentSecondary,
+      crestGradient: m.theme?.crest_gradient || existing?.crestGradient,
+    };
 
-    // 1. Ensure tab exists in switcher
-    if (!tabs[m.metadata.id]) {
-      const tabBtn = document.createElement("button");
-      tabBtn.id = `tab-${m.metadata.id}`;
-      tabBtn.className = "app-tab-btn";
-      tabBtn.type = "button";
-      tabBtn.setAttribute("data-app", m.metadata.id);
-      tabBtn.title = m.metadata.description;
-
-      const glyphSpan = icon(getAppGlyph(m), "tab-glyph");
-
-      const labelSpan = document.createElement("span");
-      labelSpan.textContent = getAppShortName(m);
-
-      tabBtn.appendChild(glyphSpan);
-      tabBtn.appendChild(labelSpan);
-
-      bindTabEvents(m.metadata.id, tabBtn);
-      appSwitcher.appendChild(tabBtn);
-      tabs[m.metadata.id] = tabBtn;
-    }
-
-    // 2. Ensure card exists inside realmCardsContainer
+    // Ensure card exists inside realmCardsContainer
     if (!cards[m.metadata.id]) {
       const themeMeta = appThemes[m.metadata.id];
       const card = document.createElement("section");
@@ -387,7 +632,7 @@ function applyCatalog(): void {
       ornamentLeft.appendChild(icon(themeMeta.ornament));
       const bannerTitle = document.createElement("span");
       bannerTitle.className = "section-title";
-      bannerTitle.textContent = m.metadata.name;
+      bannerTitle.textContent = themeMeta.bannerTitle || m.metadata.name;
       const ornamentRight = document.createElement("span");
       ornamentRight.className = "hud-ornament right";
       ornamentRight.appendChild(icon(themeMeta.ornament));
@@ -412,10 +657,19 @@ function applyCatalog(): void {
         for (const sc of statControls) {
           const box = document.createElement("div");
           box.className = "stat-box";
-          box.innerHTML = `
-            <span class="stat-label">${sc.label}</span>
-            <span id="stat-${m.metadata.id}-${sc.id}" class="stat-value">${sc.default_val ?? "-"}</span>
-          `;
+          const labelSpan = document.createElement("span");
+          labelSpan.className = "stat-label";
+          if (sc.icon) {
+            labelSpan.appendChild(icon(sc.icon));
+          }
+          labelSpan.appendChild(document.createTextNode(sc.label));
+
+          const valSpan = document.createElement("span");
+          valSpan.id = `stat-${m.metadata.id}-${sc.id}`;
+          valSpan.className = "stat-value";
+          valSpan.textContent = String(sc.default_val ?? "-");
+
+          box.append(labelSpan, valSpan);
           statsGrid.appendChild(box);
         }
         card.appendChild(statsGrid);
@@ -424,8 +678,10 @@ function applyCatalog(): void {
       // Slider controls
       const sliderControls = (m.controls || []).filter((c) => c.kind === "slider");
       for (const sl of sliderControls) {
-        const row = document.createElement("div");
+        const sliderId = `slider-${m.metadata.id}-${sl.id}`;
+        const row = document.createElement("label");
         row.className = "control-row";
+        row.htmlFor = sliderId;
         const label = document.createElement("span");
         label.textContent = sl.label;
         const valBadge = document.createElement("strong");
@@ -436,7 +692,7 @@ function applyCatalog(): void {
         card.appendChild(row);
 
         const input = document.createElement("input");
-        input.id = `slider-${m.metadata.id}-${sl.id}`;
+        input.id = sliderId;
         input.type = "range";
         input.min = String(sl.min ?? 0);
         input.max = String(sl.max ?? 100);
@@ -447,7 +703,10 @@ function applyCatalog(): void {
         });
         input.addEventListener("change", async () => {
           try {
-            await api.executeAppAction(m.metadata.id, sl.id, { value: Number(input.value) });
+            const s = await api.executeAppAction(m.metadata.id, sl.id, {
+              value: Number(input.value),
+            });
+            renderStatus(s);
           } catch (e) {
             console.error("slider action error:", e);
           }
@@ -475,7 +734,10 @@ function applyCatalog(): void {
         }
         selectEl.addEventListener("change", async () => {
           try {
-            await api.executeAppAction(m.metadata.id, sel.id, { value: selectEl.value });
+            const s = await api.executeAppAction(m.metadata.id, sel.id, {
+              value: selectEl.value,
+            });
+            renderStatus(s);
           } catch (e) {
             console.error("select action error:", e);
           }
@@ -518,12 +780,11 @@ function applyCatalog(): void {
     }
   }
 
+  renderLibraryGrid();
+
   if (currentStatus) {
     const active = currentStatus.active_app || "living-rookery";
     applyThemeForApp(active);
-    for (const [id, tabBtn] of Object.entries(tabs)) {
-      tabBtn.classList.toggle("active", id === active);
-    }
     for (const [id, cardEl] of Object.entries(cards)) {
       cardEl.hidden = id !== active;
     }
@@ -601,16 +862,16 @@ function renderStatus(s: HostStatus): void {
   };
   powerBadge.textContent = powerLabels[s.power] ?? s.power.toUpperCase();
 
-  // Active App Theme, Tabs & Cards
+  // Active App Theme & Cards
   const activeApp = s.active_app || "living-rookery";
   applyThemeForApp(activeApp);
 
-  for (const [id, tabBtn] of Object.entries(tabs)) {
-    tabBtn.classList.toggle("active", id === activeApp);
-  }
-
   for (const [id, cardEl] of Object.entries(cards)) {
     cardEl.hidden = id !== activeApp;
+  }
+
+  if (activeView === "library") {
+    renderLibraryGrid();
   }
 
   // Living Rookery Stats
@@ -643,6 +904,42 @@ function renderStatus(s: HostStatus): void {
     statOrbitalSolar.textContent = String(s.orbital.solar_wings);
     statOrbitalRings.textContent = String(s.orbital.habitat_rings);
     statOrbitalShuttles.textContent = String(s.orbital.docked_shuttles);
+  }
+
+  // Dynamic SDK App Stats & Controls
+  if (s.app_stats) {
+    for (const [appId, statsMap] of Object.entries(s.app_stats)) {
+      for (const [statId, val] of Object.entries(statsMap)) {
+        const statNode = document.getElementById(`stat-${appId}-${statId}`);
+        if (statNode) {
+          statNode.textContent = val;
+        }
+      }
+    }
+  }
+
+  if (s.app_controls) {
+    for (const [appId, ctrlMap] of Object.entries(s.app_controls)) {
+      const manifest = appCatalog.find((m) => m.metadata.id === appId);
+      for (const [ctrlId, val] of Object.entries(ctrlMap)) {
+        const sliderNode = document.getElementById(
+          `slider-${appId}-${ctrlId}`,
+        ) as HTMLInputElement | null;
+        if (sliderNode && document.activeElement !== sliderNode) {
+          sliderNode.value = val;
+          const badgeNode = document.getElementById(`val-${appId}-${ctrlId}`);
+          const unit =
+            manifest?.controls.find((c) => c.id === ctrlId && c.kind === "slider")?.unit ?? "";
+          if (badgeNode) badgeNode.textContent = `${val}${unit}`;
+        }
+        const selectNode = document.getElementById(
+          `select-${appId}-${ctrlId}`,
+        ) as HTMLSelectElement | null;
+        if (selectNode && document.activeElement !== selectNode) {
+          selectNode.value = val;
+        }
+      }
+    }
   }
 
   // Schedule Mode
@@ -708,6 +1005,13 @@ function renderSettings(st: Settings): void {
   try {
     localStorage.setItem("rookery_settings", JSON.stringify(st));
   } catch {}
+
+  if (Array.isArray(st.favorite_apps)) {
+    favoriteApps = st.favorite_apps;
+    if (activeView === "library") {
+      renderLibraryGrid();
+    }
+  }
 
   applyMenuAppearance(st.popover_opacity ?? 0.92, st.popover_blur ?? 20);
 
@@ -1148,7 +1452,19 @@ btnRecordPopoverHotkey.addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", async (ev) => {
-  if (!recordingInteractionHotkey && !recordingPopoverHotkey) return;
+  if (!recordingInteractionHotkey && !recordingPopoverHotkey) {
+    if (ev.key === "Escape" && activeView !== "realm") {
+      ev.preventDefault();
+      const prev = activeView;
+      setActiveView("realm");
+      if (prev === "library") {
+        btnRealmSelector.focus();
+      } else {
+        btnToggleSettings.focus();
+      }
+    }
+    return;
+  }
   if (["Control", "Alt", "Shift", "Meta"].includes(ev.key)) return;
 
   ev.preventDefault();

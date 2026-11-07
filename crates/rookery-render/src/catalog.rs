@@ -3,11 +3,14 @@
 //! Provides declarative manifests, runtime app creation, external manifest loading,
 //! and shared simulation state ownership across the flagship catalog.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rookery_core::koi::KoiPondState;
-use rookery_core::manifest::{AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata};
+use rookery_core::manifest::{
+    AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, AppTheme,
+};
 use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
 use rookery_core::world::WorldState;
@@ -27,6 +30,12 @@ pub struct CatalogState {
     pub nebula: Arc<Mutex<CosmicNebulaState>>,
     pub orbital: Arc<Mutex<OrbitalHavenState>>,
     pub audio: Option<AudioEngine>,
+    /// Per-app control values (`app_id -> control_id -> string_value`).
+    pub custom_controls: Arc<Mutex<BTreeMap<String, BTreeMap<String, String>>>>,
+    /// Per-app shader uniform parameter slots (`app_id -> [f32; 4]`).
+    pub custom_params: Arc<Mutex<BTreeMap<String, Arc<Mutex<[f32; 4]>>>>>,
+    /// Per-app live telemetry stats (`app_id -> stat_id -> formatted_value`).
+    pub custom_stats: Arc<Mutex<BTreeMap<String, BTreeMap<String, String>>>>,
 }
 
 impl CatalogState {
@@ -37,6 +46,9 @@ impl CatalogState {
             nebula: Arc::new(Mutex::new(CosmicNebulaState::new(seed))),
             orbital: Arc::new(Mutex::new(OrbitalHavenState::new(seed))),
             audio: None,
+            custom_controls: Arc::new(Mutex::new(BTreeMap::new())),
+            custom_params: Arc::new(Mutex::new(BTreeMap::new())),
+            custom_stats: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -60,6 +72,156 @@ impl CatalogState {
             o.on_wake(elapsed_secs);
         }
     }
+
+    /// Compute the 4-float uniform array for an app based on its manifest controls and current values.
+    fn compute_params(
+        manifest: Option<&AppManifest>,
+        values: &BTreeMap<String, String>,
+    ) -> [f32; 4] {
+        let mut out = [1.0, 1.0, 0.0, 0.0];
+        let Some(m) = manifest else {
+            return out;
+        };
+        let mut slot = 0usize;
+        for ctrl in &m.controls {
+            if slot >= 4 {
+                break;
+            }
+            match ctrl {
+                AppControl::Slider {
+                    id, default_val, ..
+                } => {
+                    let v = values
+                        .get(id)
+                        .and_then(|s| s.parse::<f32>().ok())
+                        .unwrap_or(*default_val);
+                    out[slot] = v;
+                    slot += 1;
+                }
+                AppControl::Select {
+                    id,
+                    options,
+                    default_val,
+                    ..
+                } => {
+                    let current = values.get(id).unwrap_or(default_val);
+                    let idx = options.iter().position(|o| o == current).unwrap_or(0);
+                    out[slot] = idx as f32;
+                    slot += 1;
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Retrieve or initialize the shared `[f32; 4]` uniform parameters handle for `app_id`.
+    pub fn params_for_app(
+        &self,
+        app_id: &str,
+        manifest: Option<&AppManifest>,
+    ) -> Arc<Mutex<[f32; 4]>> {
+        let values = self
+            .custom_controls
+            .lock()
+            .ok()
+            .and_then(|map| map.get(app_id).cloned())
+            .unwrap_or_default();
+        let computed = Self::compute_params(manifest, &values);
+
+        if let Ok(mut params_map) = self.custom_params.lock() {
+            let entry = params_map
+                .entry(app_id.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(computed)));
+            if let Ok(mut guard) = entry.lock() {
+                *guard = computed;
+            }
+            entry.clone()
+        } else {
+            Arc::new(Mutex::new(computed))
+        }
+    }
+
+    /// Record a control update for `app_id`, refreshing shader parameters and matching stat displays.
+    pub fn set_control_value(
+        &self,
+        app_id: &str,
+        control_id: &str,
+        value: String,
+        manifest: Option<&AppManifest>,
+    ) {
+        let values = if let Ok(mut map) = self.custom_controls.lock() {
+            let app_map = map.entry(app_id.to_string()).or_default();
+            app_map.insert(control_id.to_string(), value.clone());
+            app_map.clone()
+        } else {
+            return;
+        };
+
+        let computed = Self::compute_params(manifest, &values);
+        if let Ok(mut params_map) = self.custom_params.lock() {
+            let entry = params_map
+                .entry(app_id.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(computed)));
+            if let Ok(mut guard) = entry.lock() {
+                *guard = computed;
+            }
+        }
+
+        // If the manifest also has a stat or slider display correlated with this control, update custom_stats
+        if let Some(m) = manifest {
+            for ctrl in &m.controls {
+                if let AppControl::Slider { id, unit, .. } = ctrl
+                    && id == control_id
+                {
+                    let formatted = match unit {
+                        Some(u) => format!("{value}{u}"),
+                        None => value.clone(),
+                    };
+                    self.set_stat(app_id, control_id, formatted);
+                } else if let AppControl::Select { id, .. } = ctrl
+                    && id == control_id
+                {
+                    self.set_stat(app_id, control_id, value.clone());
+                }
+            }
+        }
+    }
+
+    /// Update a single live telemetry stat for `app_id`.
+    pub fn set_stat(&self, app_id: &str, stat_id: &str, val: impl Into<String>) {
+        if let Ok(mut map) = self.custom_stats.lock() {
+            map.entry(app_id.to_string())
+                .or_default()
+                .insert(stat_id.to_string(), val.into());
+        }
+    }
+
+    /// Merge multiple live telemetry stats for `app_id`.
+    pub fn set_stats(&self, app_id: &str, stats: BTreeMap<String, String>) {
+        if let Ok(mut map) = self.custom_stats.lock() {
+            let entry = map.entry(app_id.to_string()).or_default();
+            for (k, v) in stats {
+                entry.insert(k, v);
+            }
+        }
+    }
+
+    /// Snapshot all custom control values across apps.
+    pub fn all_controls(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.custom_controls
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or_default()
+    }
+
+    /// Snapshot all custom telemetry stats across apps.
+    pub fn all_stats(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.custom_stats
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Registry and manifest catalog for Rookery Apps.
@@ -77,8 +239,45 @@ impl AppCatalog {
                     author: "Rookery Team".into(),
                     version: "1.0.0".into(),
                     archetype: AppArchetype::CozyEcosystem,
+                    tags: vec!["ascii".into(), "tree".into(), "birds".into(), "forest".into(), "nature".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Woodland Sanctuary · ASCII Realm".into()),
+                    banner_title: Some("Sylvan Sanctuary Chronicle".into()),
+                    icon: Some("tree-evergreen".into()),
+                    ornament: Some("leaf".into()),
+                    bg: Some("#0c1912".into()),
+                    card: Some("rgba(19, 38, 27, 0.92)".into()),
+                    border_outer: Some("#366847".into()),
+                    accent: Some("#34d399".into()),
+                    accent_secondary: Some("#eab308".into()),
+                    crest_gradient: Some(["#15803d".into(), "#ca8a04".into()]),
                 },
                 controls: vec![
+                    AppControl::Stat {
+                        id: "age".into(),
+                        label: "Tree Age".into(),
+                        default_val: "0h 00m".into(),
+                        icon: Some("hourglass".into()),
+                    },
+                    AppControl::Stat {
+                        id: "branches".into(),
+                        label: "Boughs".into(),
+                        default_val: "0".into(),
+                        icon: Some("branch".into()),
+                    },
+                    AppControl::Stat {
+                        id: "foliage".into(),
+                        label: "Canopy Buds".into(),
+                        default_val: "0".into(),
+                        icon: Some("leaf".into()),
+                    },
+                    AppControl::Stat {
+                        id: "birds".into(),
+                        label: "Sky Flock".into(),
+                        default_val: "4 birds".into(),
+                        icon: Some("bird".into()),
+                    },
                     AppControl::Button {
                         id: "feed".into(),
                         label: "Feed Birds".into(),
@@ -124,8 +323,45 @@ impl AppCatalog {
                     author: "Rookery Team".into(),
                     version: "1.0.0".into(),
                     archetype: AppArchetype::CozyEcosystem,
+                    tags: vec!["aquatic".into(), "koi".into(), "zen".into(), "lotus".into(), "water".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Imperial Lotus Sanctuary".into()),
+                    banner_title: Some("Imperial Pond Scroll".into()),
+                    icon: Some("koi".into()),
+                    ornament: Some("flower-lotus".into()),
+                    bg: Some("#071b24".into()),
+                    card: Some("rgba(12, 39, 51, 0.92)".into()),
+                    border_outer: Some("#1e6076".into()),
+                    accent: Some("#fb7185".into()),
+                    accent_secondary: Some("#2dd4bf".into()),
+                    crest_gradient: Some(["#e11d48".into(), "#f97316".into()]),
                 },
                 controls: vec![
+                    AppControl::Stat {
+                        id: "koi_count".into(),
+                        label: "Koi School".into(),
+                        default_val: "12".into(),
+                        icon: Some("koi".into()),
+                    },
+                    AppControl::Stat {
+                        id: "lilies".into(),
+                        label: "Lily Pads".into(),
+                        default_val: "9".into(),
+                        icon: Some("lily-pad".into()),
+                    },
+                    AppControl::Stat {
+                        id: "lotuses".into(),
+                        label: "Lotus Blooms".into(),
+                        default_val: "3".into(),
+                        icon: Some("flower-lotus".into()),
+                    },
+                    AppControl::Stat {
+                        id: "ripples".into(),
+                        label: "Water Ripples".into(),
+                        default_val: "0".into(),
+                        icon: Some("ripple".into()),
+                    },
                     AppControl::Button {
                         id: "feed_koi".into(),
                         label: "Feed Koi".into(),
@@ -153,8 +389,45 @@ impl AppCatalog {
                     author: "Rookery Team".into(),
                     version: "1.0.0".into(),
                     archetype: AppArchetype::GenerativePhysics,
+                    tags: vec!["space".into(), "nebula".into(), "stars".into(), "gravity".into(), "shader".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Astral Singularity Forge".into()),
+                    banner_title: Some("Astral Star-Chart Deck".into()),
+                    icon: Some("nebula".into()),
+                    ornament: Some("star-four".into()),
+                    bg: Some("#0d071e".into()),
+                    card: Some("rgba(24, 13, 52, 0.92)".into()),
+                    border_outer: Some("#6d28d9".into()),
+                    accent: Some("#c084fc".into()),
+                    accent_secondary: Some("#38bdf8".into()),
+                    crest_gradient: Some(["#7c3aed".into(), "#ec4899".into()]),
                 },
                 controls: vec![
+                    AppControl::Stat {
+                        id: "particles".into(),
+                        label: "Stellar Dust".into(),
+                        default_val: "1500".into(),
+                        icon: Some("sparkle".into()),
+                    },
+                    AppControl::Stat {
+                        id: "wells".into(),
+                        label: "Singularities".into(),
+                        default_val: "2".into(),
+                        icon: Some("spiral".into()),
+                    },
+                    AppControl::Stat {
+                        id: "palette".into(),
+                        label: "Spectrum".into(),
+                        default_val: "Pillars of Creation".into(),
+                        icon: Some("palette".into()),
+                    },
+                    AppControl::Stat {
+                        id: "turbulence".into(),
+                        label: "Flux Index".into(),
+                        default_val: "1.0x".into(),
+                        icon: Some("lightning".into()),
+                    },
                     AppControl::Button {
                         id: "add_attractor".into(),
                         label: "Gravity Well".into(),
@@ -188,8 +461,45 @@ impl AppCatalog {
                     author: "Rookery Team".into(),
                     version: "1.0.0".into(),
                     archetype: AppArchetype::SlowBurnIdle,
+                    tags: vec!["scifi".into(), "station".into(), "orbit".into(), "idle".into(), "space".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Aegis-VII Orbital Command".into()),
+                    banner_title: Some("Orbital Telemetry & Ops".into()),
+                    icon: Some("satellite".into()),
+                    ornament: Some("hexagon".into()),
+                    bg: Some("#08121c".into()),
+                    card: Some("rgba(14, 30, 46, 0.94)".into()),
+                    border_outer: Some("#0284c7".into()),
+                    accent: Some("#38bdf8".into()),
+                    accent_secondary: Some("#f59e0b".into()),
+                    crest_gradient: Some(["#0284c7".into(), "#f59e0b".into()]),
                 },
                 controls: vec![
+                    AppControl::Stat {
+                        id: "modules".into(),
+                        label: "Hull Modules".into(),
+                        default_val: "7".into(),
+                        icon: Some("hexagon".into()),
+                    },
+                    AppControl::Stat {
+                        id: "solar".into(),
+                        label: "Solar Arrays".into(),
+                        default_val: "4".into(),
+                        icon: Some("solar-panel".into()),
+                    },
+                    AppControl::Stat {
+                        id: "rings".into(),
+                        label: "Hab Rings".into(),
+                        default_val: "1".into(),
+                        icon: Some("hab-ring".into()),
+                    },
+                    AppControl::Stat {
+                        id: "shuttles".into(),
+                        label: "Docked Fleet".into(),
+                        default_val: "2".into(),
+                        icon: Some("rocket".into()),
+                    },
                     AppControl::Button {
                         id: "focus_solar".into(),
                         label: "Build Solar".into(),
@@ -222,8 +532,10 @@ impl AppCatalog {
     pub fn discover_external_apps(dir: &Path) -> Vec<AppManifest> {
         let mut manifests = Vec::new();
         if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let toml_path = entry.path().join("rookery.toml");
+            let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+            paths.sort();
+            for path in paths {
+                let toml_path = path.join("rookery.toml");
                 if toml_path.is_file()
                     && let Ok(m) = AppManifest::load_from_toml_file(&toml_path)
                 {
@@ -238,9 +550,20 @@ impl AppCatalog {
     pub fn all_manifests(external_dir: Option<&Path>) -> Vec<AppManifest> {
         let mut all = Self::built_in_manifests();
         if let Some(dir) = external_dir {
-            all.extend(Self::discover_external_apps(dir));
+            for ext in Self::discover_external_apps(dir) {
+                if !all.iter().any(|m| m.metadata.id == ext.metadata.id) {
+                    all.push(ext);
+                }
+            }
         }
         all
+    }
+
+    /// Find a single manifest by `app_id`.
+    pub fn find_manifest(app_id: &str, external_dir: Option<&Path>) -> Option<AppManifest> {
+        Self::all_manifests(external_dir)
+            .into_iter()
+            .find(|m| m.metadata.id == app_id)
     }
 
     /// Construct a [`SceneFactory`] for the given app id, supporting built-in and external WGSL shader apps.
@@ -251,6 +574,7 @@ impl AppCatalog {
     ) -> SceneFactory {
         let id_string = app_id.to_string();
         let external_path = external_dir.map(|p| p.join(&id_string));
+        let manifest = Self::find_manifest(app_id, external_dir);
 
         Box::new(move |gpu, format| match id_string.as_str() {
             "koi-pond" => Box::new(
@@ -273,10 +597,13 @@ impl AppCatalog {
                     let shader_path = dir.join("scene.wgsl");
                     if shader_path.is_file()
                         && let Ok(source) = std::fs::read_to_string(&shader_path)
-                        && let Ok(custom) =
-                            crate::custom_shader::CustomShaderScene::new(gpu, format, &source)
                     {
-                        return Box::new(custom);
+                        let params = state.params_for_app(&id_string, manifest.as_ref());
+                        if let Ok(custom) = crate::custom_shader::CustomShaderScene::new_with_params(
+                            gpu, format, &source, params,
+                        ) {
+                            return Box::new(custom);
+                        }
                     }
                     let html_path = dir.join("index.html");
                     if html_path.is_file() {
@@ -294,6 +621,17 @@ impl AppCatalog {
     /// Construct a [`SceneFactory`] for the given app id.
     pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
         Self::create_scene_factory_with_dir(app_id, state, None)
+    }
+
+    /// Return the sRGB border/theme color matching the popover menu for `app_id`, reading
+    /// from its `rookery.toml` `[theme]` section if available.
+    pub fn theme_color_with_dir(app_id: &str, external_dir: Option<&Path>) -> [f32; 3] {
+        if let Some(m) = Self::find_manifest(app_id, external_dir)
+            && let Some(rgb) = m.theme.border_rgb_f32()
+        {
+            return rgb;
+        }
+        Self::theme_color(app_id)
     }
 
     /// Return the sRGB border/theme color matching the popover menu for `app_id`.
@@ -335,6 +673,7 @@ mod tests {
             .find(|m| m.metadata.id == "aurora-waves")
             .unwrap();
         assert_eq!(aurora.metadata.archetype, AppArchetype::WebCanvas);
-        assert_eq!(aurora.controls.len(), 3);
+        assert!(aurora.controls.len() >= 3);
+        assert!(aurora.theme.border_rgb_f32().is_some());
     }
 }

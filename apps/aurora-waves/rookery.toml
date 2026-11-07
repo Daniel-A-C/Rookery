@@ -5,6 +5,43 @@ description = "Silky procedural northern lights flowing across a deep starfield 
 author = "Rookery Sandbox"
 version = "1.0.0"
 archetype = "web_canvas"
+tags = ["aurora", "borealis", "sky", "stars", "canvas"]
+
+[theme]
+tagline = "Borealis Sky Observatory"
+banner_title = "Polar Magnetosphere Telemetry"
+icon = "shooting-star"
+ornament = "star-four"
+bg = "#061621"
+card = "rgba(11, 34, 50, 0.92)"
+border_outer = "#0d9488"
+accent = "#2dd4bf"
+accent_secondary = "#a78bfa"
+crest_gradient = ["#14b8a6", "#8b5cf6"]
+
+[[controls]]
+kind = "stat"
+id = "palette"
+label = "Spectrum"
+default_val = "Emerald Borealis"
+icon = "palette"
+
+[[controls]]
+kind = "stat"
+id = "meteors"
+label = "Meteors Seen"
+default_val = "0"
+icon = "shooting-star"
+
+[[controls]]
+kind = "slider"
+id = "wave_speed"
+label = "Solar Wind Speed"
+min = 0.2
+max = 3.0
+step = 0.2
+default_val = 1.0
+unit = "x"
 
 [[controls]]
 kind = "button"

@@ -25,7 +25,8 @@ pub mod world;
 pub use geometry::{DisplayId, Rect};
 pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
 pub use manifest::{
-    AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, DayNightMapping, ScheduleMode,
+    AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, AppTheme, DayNightMapping,
+    ScheduleMode,
 };
 pub use nebula::{
     CosmicNebulaState, CosmicNebulaStats, GravityWell, NebulaPalette, StellarParticle,

@@ -5,6 +5,53 @@ description = "Gentle glowing procedural fireflies dancing in an evening breeze 
 author = "Rookery Community"
 version = "1.0.0"
 archetype = "generative_physics"
+tags = ["fireflies", "shader", "wgsl", "twilight", "nature"]
+
+[theme]
+tagline = "Enchanted Gloaming Glade"
+banner_title = "Bioluminescent Meadow Deck"
+icon = "sparkle"
+ornament = "sparkle"
+bg = "#12170d"
+card = "rgba(27, 35, 19, 0.93)"
+border_outer = "#65a30d"
+accent = "#a3e635"
+accent_secondary = "#facc15"
+crest_gradient = ["#65a30d", "#eab308"]
+
+[[controls]]
+kind = "stat"
+id = "swarm_speed"
+label = "Drift Tempo"
+default_val = "1.0x"
+icon = "sparkle"
+
+[[controls]]
+kind = "stat"
+id = "glow_boost"
+label = "Luminescence"
+default_val = "1.0x"
+icon = "sun"
+
+[[controls]]
+kind = "slider"
+id = "swarm_speed"
+label = "Swarm Drift Speed"
+min = 0.2
+max = 3.0
+step = 0.2
+default_val = 1.0
+unit = "x"
+
+[[controls]]
+kind = "slider"
+id = "glow_boost"
+label = "Lantern Glow"
+min = 0.4
+max = 2.5
+step = 0.1
+default_val = 1.0
+unit = "x"
 
 [[controls]]
 kind = "button"

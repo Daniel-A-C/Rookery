@@ -69,6 +69,14 @@ pub fn app_webview_url(app_id: &str) -> Result<tauri::Url, tauri::Url> {
 
 /// Custom URI scheme protocol handler for `rookery-app://`.
 pub fn handle_custom_protocol(request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+    handle_custom_protocol_with_app(None, request)
+}
+
+/// Custom URI scheme protocol handler with optional `AppHandle` for live SDK telemetry & state persistence.
+pub fn handle_custom_protocol_with_app(
+    app: Option<&AppHandle>,
+    request: &Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
     let path = request.uri().path().trim_start_matches('/');
     let mut parts = path.splitn(2, '/');
     let app_id = parts.next().unwrap_or("");
@@ -78,6 +86,11 @@ pub fn handle_custom_protocol(request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     } else {
         rel_path
     };
+
+    // Handle sandboxed SDK bridge endpoints (`/__sdk/stats` and `/__sdk/state`)
+    if let Some(sdk_endpoint) = file_subpath.strip_prefix("__sdk/") {
+        return handle_sdk_endpoint(app, app_id, sdk_endpoint, request);
+    }
 
     let apps_dir = get_apps_dir();
     let app_dir = apps_dir.join(app_id);
@@ -100,6 +113,137 @@ pub fn handle_custom_protocol(request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     }
 
     not_found_response()
+}
+
+fn handle_sdk_endpoint(
+    app: Option<&AppHandle>,
+    app_id: &str,
+    endpoint: &str,
+    request: &Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
+    // Validate app_id is safe identifier
+    if app_id.is_empty()
+        || !app_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return not_found_response();
+    }
+
+    match endpoint {
+        "stats" => {
+            if let Some(app_handle) = app
+                && let Ok(parsed) = serde_json::from_slice::<
+                    std::collections::BTreeMap<String, serde_json::Value>,
+                >(request.body())
+            {
+                let mut string_stats = std::collections::BTreeMap::new();
+                for (k, v) in parsed {
+                    let s = match v {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+                    string_stats.insert(k, s);
+                }
+                let state = app_handle.state::<HostState>();
+                state.catalog_state.set_stats(app_id, string_stats);
+                state.emit_status_if_popover_open(app_handle);
+            }
+            json_ok_response(b"{\"ok\":true}".to_vec())
+        }
+        "state" => {
+            let state_path = app_state_file_path(app, app_id);
+            if request.method() == "POST" {
+                let body = request.body();
+                if body.len() <= 512 * 1024
+                    && serde_json::from_slice::<serde_json::Value>(body).is_ok()
+                {
+                    if let Some(parent) = state_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::write(&state_path, body);
+                }
+                json_ok_response(b"{\"ok\":true}".to_vec())
+            } else {
+                let bytes = std::fs::read(&state_path).unwrap_or_else(|_| b"{}".to_vec());
+                json_ok_response(bytes)
+            }
+        }
+        _ => not_found_response(),
+    }
+}
+
+fn app_state_file_path(app: Option<&AppHandle>, app_id: &str) -> PathBuf {
+    if let Some(app_handle) = app {
+        let state = app_handle.state::<HostState>();
+        if let Some(parent) = state.settings_path.parent() {
+            return parent.join("apps_state").join(format!("{app_id}.json"));
+        }
+    }
+    get_apps_dir()
+        .join(".state")
+        .join(format!("{app_id}.json"))
+}
+
+fn json_ok_response(body: Vec<u8>) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(body)
+        .unwrap_or_else(|_| not_found_response())
+}
+
+/// Generate the `window.Rookery` client SDK initialization script injected into Web Canvas apps.
+pub fn sdk_init_script(app_id: &str) -> String {
+    let escaped = app_id.replace('\\', "\\\\").replace('\'', "\\'");
+    format!(
+        r#"(function() {{
+  const appId = '{escaped}';
+  const sdkBase = window.location.origin + '/' + appId + '/__sdk';
+  window.Rookery = {{
+    appId,
+    onAction(cb) {{
+      window.addEventListener('rookery-action', (e) => cb(e.detail?.action, e.detail));
+    }},
+    onControl(cb) {{
+      window.addEventListener('rookery-control', (e) => cb(e.detail?.id, e.detail?.value));
+    }},
+    onInteractive(cb) {{
+      window.addEventListener('rookery-interactive', (e) => cb(!!e.detail?.interactive));
+    }},
+    onWake(cb) {{
+      window.addEventListener('rookery-wake', (e) => cb(Number(e.detail?.elapsedSeconds || 0)));
+    }},
+    async setStats(stats) {{
+      try {{
+        await fetch(sdkBase + '/stats', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(stats || {{}})
+        }});
+      }} catch {{}}
+    }},
+    async saveState(state) {{
+      try {{
+        await fetch(sdkBase + '/state', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(state ?? {{}})
+        }});
+      }} catch {{}}
+    }},
+    async loadState() {{
+      try {{
+        const res = await fetch(sdkBase + '/state');
+        if (res.ok) return await res.json();
+      }} catch {{}}
+      return null;
+    }}
+  }};
+}})();"#
+    )
 }
 
 fn not_found_response() -> Response<Vec<u8>> {
@@ -174,9 +318,11 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
     for d in inner.displays.values() {
         let _ = d.window.hide();
 
+        let init_script = sdk_init_script(active_app);
         let label = webview_wallpaper_label(&d.info.id.0);
         if let Some(existing) = app.get_webview_window(&label) {
             let _ = existing.navigate(url.clone());
+            let _ = existing.eval(&init_script);
             let _ = existing.show();
             continue;
         }
@@ -187,6 +333,7 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
         let window =
             match WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url.clone()))
                 .title(format!("Rookery Web Canvas - {}", d.info.name))
+                .initialization_script(&init_script)
                 .decorations(false)
                 .resizable(false)
                 .skip_taskbar(true)
@@ -367,5 +514,23 @@ mod tests {
             .unwrap();
         let missing_res = handle_custom_protocol(&missing_req);
         assert_eq!(missing_res.status(), StatusCode::NOT_FOUND);
+
+        // SDK state round-trip
+        let post_state = Request::builder()
+            .method("POST")
+            .uri("rookery-app://localhost/demo-app/__sdk/state")
+            .body(b"{\"score\":42}".to_vec())
+            .unwrap();
+        let post_res = handle_custom_protocol(&post_state);
+        assert_eq!(post_res.status(), StatusCode::OK);
+
+        let get_state = Request::builder()
+            .method("GET")
+            .uri("rookery-app://localhost/demo-app/__sdk/state")
+            .body(Vec::new())
+            .unwrap();
+        let get_res = handle_custom_protocol(&get_state);
+        assert_eq!(get_res.status(), StatusCode::OK);
+        assert_eq!(get_res.body(), b"{\"score\":42}");
     }
 }

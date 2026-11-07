@@ -104,6 +104,9 @@ pub fn update_settings(
         if let Some(blur) = patch.popover_blur {
             inner.settings.popover_blur = blur.min(rookery_core::settings::MAX_POPOVER_BLUR);
         }
+        if let Some(favs) = patch.favorite_apps {
+            inner.settings.favorite_apps = favs;
+        }
         if let Some(mode) = patch.schedule_mode {
             inner.settings.schedule_mode = mode;
         }
@@ -273,6 +276,24 @@ pub fn get_catalog(state: State<'_, HostState>) -> Vec<AppManifest> {
 }
 
 #[tauri::command]
+pub fn reload_catalog(
+    app: AppHandle,
+    state: State<'_, HostState>,
+) -> Result<Vec<AppManifest>, String> {
+    let manifests = AppCatalog::all_manifests(state.apps_dir.as_deref());
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_else(|_| "living-rookery".into());
+    if manifests.iter().any(|m| m.metadata.id == active_app) {
+        let _ = state.switch_app(&app, &active_app);
+    }
+    state.emit_status_if_popover_open(&app);
+    Ok(manifests)
+}
+
+#[tauri::command]
 pub fn switch_app(
     app: AppHandle,
     state: State<'_, HostState>,
@@ -393,13 +414,23 @@ pub fn execute_app_action(
         }
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
-            if all.iter().any(|m| m.metadata.id == other) {
+            if let Some(manifest) = all.into_iter().find(|m| m.metadata.id == other) {
                 if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                    let val_str = match val {
+                        serde_json::Value::String(s) => s.clone(),
+                        v => v.to_string(),
+                    };
+                    state.catalog_state.set_control_value(
+                        other,
+                        &action,
+                        val_str,
+                        Some(&manifest),
+                    );
                     crate::webview_sandbox::dispatch_control(&app, &action, val);
                 } else {
                     crate::webview_sandbox::dispatch_action(&app, &action);
+                    state.with_renderer(|r| r.trigger_action());
                 }
-                state.with_renderer(|r| r.trigger_action());
                 log::info!("executed action '{action}' on external app '{other}'");
             } else {
                 return Err(format!("Unknown app id '{other}'"));

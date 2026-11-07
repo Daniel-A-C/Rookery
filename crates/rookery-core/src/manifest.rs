@@ -45,6 +45,56 @@ pub struct AppMetadata {
     pub author: String,
     pub version: String,
     pub archetype: AppArchetype,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Declarative visual theme and branding metadata for the popover HUD and desktop border.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppTheme {
+    /// Short subtitle shown under the app title in the popover header.
+    pub tagline: Option<String>,
+    /// Optional title for the HUD card banner (defaults to `metadata.name`).
+    pub banner_title: Option<String>,
+    /// Primary icon name from `ui/icons/icons.config.json` (e.g. `"tree-evergreen"`, `"koi"`).
+    pub icon: Option<String>,
+    /// Flanking ornament icon name for the HUD card banner (e.g. `"leaf"`, `"star-four"`).
+    pub ornament: Option<String>,
+    /// Primary background color hex (e.g. `"#0c1912"`).
+    pub bg: Option<String>,
+    /// HUD card surface color (e.g. `"rgba(19, 38, 27, 0.92)"` or `"#13261b"`).
+    pub card: Option<String>,
+    /// Outer border hex color (e.g. `"#366847"`), also used for the desktop interactive vignette.
+    pub border_outer: Option<String>,
+    /// Primary accent hex color (e.g. `"#34d399"`).
+    pub accent: Option<String>,
+    /// Secondary accent hex color (e.g. `"#eab308"`).
+    pub accent_secondary: Option<String>,
+    /// Two-stop hex gradient for the header crest badge (e.g. `["#15803d", "#ca8a04"]`).
+    pub crest_gradient: Option<[String; 2]>,
+}
+
+impl AppTheme {
+    /// Parse a `#RRGGBB` or `RRGGBB` hex string into normalized `[f32; 3]` sRGB components.
+    pub fn parse_hex_rgb(hex: &str) -> Option<[f32; 3]> {
+        let s = hex.trim().trim_start_matches('#');
+        if s.len() != 6 {
+            return None;
+        }
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0])
+    }
+
+    /// Return the normalized `[f32; 3]` desktop border color from `border_outer` or `accent`.
+    pub fn border_rgb_f32(&self) -> Option<[f32; 3]> {
+        self.border_outer
+            .as_deref()
+            .and_then(Self::parse_hex_rgb)
+            .or_else(|| self.accent.as_deref().and_then(Self::parse_hex_rgb))
+    }
 }
 
 /// Declarative control widgets that the host dynamically displays in the popover UI.
@@ -72,6 +122,8 @@ pub enum AppControl {
         id: String,
         label: String,
         default_val: String,
+        #[serde(default)]
+        icon: Option<String>,
     },
     Select {
         id: String,
@@ -104,6 +156,8 @@ impl Default for AppBudgets {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppManifest {
     pub metadata: AppMetadata,
+    #[serde(default)]
+    pub theme: AppTheme,
     #[serde(default)]
     pub controls: Vec<AppControl>,
     #[serde(default)]
@@ -206,6 +260,19 @@ mod tests {
                 author: "Rookery Team".into(),
                 version: "1.0.0".into(),
                 archetype: AppArchetype::CozyEcosystem,
+                tags: vec!["nature".into(), "test".into()],
+            },
+            theme: AppTheme {
+                tagline: Some("Test Tagline".into()),
+                banner_title: Some("Test Banner".into()),
+                icon: Some("leaf".into()),
+                ornament: Some("sparkle".into()),
+                bg: Some("#0c1912".into()),
+                card: Some("rgba(19, 38, 27, 0.92)".into()),
+                border_outer: Some("#366847".into()),
+                accent: Some("#34d399".into()),
+                accent_secondary: Some("#eab308".into()),
+                crest_gradient: Some(["#15803d".into(), "#ca8a04".into()]),
             },
             controls: vec![
                 AppControl::Button {
@@ -227,6 +294,7 @@ mod tests {
                     id: "stat-count".into(),
                     label: "Count".into(),
                     default_val: "0".into(),
+                    icon: Some("sparkle".into()),
                 },
                 AppControl::Select {
                     id: "select-mode".into(),
@@ -241,5 +309,7 @@ mod tests {
         let toml_str = manifest.to_toml_string().expect("serialize to toml");
         let parsed: AppManifest = toml::from_str(&toml_str).expect("deserialize from toml");
         assert_eq!(manifest, parsed);
+        let rgb = parsed.theme.border_rgb_f32().expect("valid hex rgb");
+        assert!((rgb[0] - 0.2117).abs() < 0.01);
     }
 }

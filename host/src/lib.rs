@@ -48,8 +48,11 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .register_uri_scheme_protocol("rookery-app", |_ctx, request| {
-            crate::webview_sandbox::handle_custom_protocol(&request)
+        .register_uri_scheme_protocol("rookery-app", |ctx, request| {
+            crate::webview_sandbox::handle_custom_protocol_with_app(
+                Some(ctx.app_handle()),
+                &request,
+            )
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
@@ -60,6 +63,7 @@ pub fn run() {
             commands::set_popover_blur,
             commands::start_drag,
             commands::get_catalog,
+            commands::reload_catalog,
             commands::switch_app,
             commands::pan_forest,
             commands::execute_app_action,
@@ -113,14 +117,10 @@ pub fn run() {
                 log::warn!("failed to write initial settings heartbeat: {e}");
             }
 
-            let local_apps = std::path::Path::new("apps");
-            let apps_dir = if local_apps.is_dir() {
-                Some(local_apps.to_path_buf())
-            } else {
-                settings_path.parent().map(|p| p.join("apps"))
-            };
+            let apps_dir = Some(resolve_apps_dir(&config_dir));
             if let Some(ref d) = apps_dir {
                 let _ = std::fs::create_dir_all(d);
+                log::info!("external apps directory resolved to {}", d.display());
                 crate::webview_sandbox::init_apps_dir(d.clone());
             }
 
@@ -145,7 +145,10 @@ pub fn run() {
                     }
                 }),
             )?;
-            renderer.set_theme_color(AppCatalog::theme_color(&initial_app));
+            renderer.set_theme_color(AppCatalog::theme_color_with_dir(
+                &initial_app,
+                apps_dir.as_deref(),
+            ));
 
             let initial_hotkey = settings.hotkey.clone();
             let initial_popover_hotkey = settings.popover_hotkey.clone();
@@ -197,6 +200,22 @@ pub fn run() {
             }
         }
     });
+}
+
+fn resolve_apps_dir(config_dir: &std::path::Path) -> std::path::PathBuf {
+    let mut candidates = vec![
+        std::path::PathBuf::from("apps"),
+        std::path::PathBuf::from("../apps"),
+    ];
+    if let Some(workspace_root) = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent() {
+        candidates.push(workspace_root.join("apps"));
+    }
+    for candidate in candidates {
+        if candidate.is_dir() {
+            return std::fs::canonicalize(&candidate).unwrap_or(candidate);
+        }
+    }
+    config_dir.join("apps")
 }
 
 fn spawn_governor_thread(app: AppHandle) {
@@ -263,7 +282,7 @@ fn spawn_governor_thread(app: AppHandle) {
                 }
 
                 // Milestone 4: Playlist and Day-Night Scheduler
-                let (sched_mode, active_app, interval_mins, day_night) = {
+                let (sched_mode, active_app, interval_mins, day_night, favs) = {
                     let Ok(inner) = state.inner.lock() else {
                         continue;
                     };
@@ -272,6 +291,7 @@ fn spawn_governor_thread(app: AppHandle) {
                         inner.settings.active_app.clone(),
                         inner.settings.schedule_interval_mins,
                         inner.settings.day_night_mapping.clone(),
+                        inner.settings.favorite_apps.clone(),
                     )
                 };
 
@@ -287,15 +307,22 @@ fn spawn_governor_thread(app: AppHandle) {
                     ScheduleMode::Interval => {
                         let interval_secs = (interval_mins.max(1) * 60) as u64;
                         if ticks.is_multiple_of(interval_secs) {
-                            let apps = [
-                                "living-rookery",
-                                "koi-pond",
-                                "cosmic-nebula",
-                                "orbital-haven",
-                            ];
-                            let cur_pos = apps.iter().position(|&a| a == active_app).unwrap_or(0);
-                            let next_app = apps[(cur_pos + 1) % apps.len()];
-                            let _ = state.switch_app(&app, next_app);
+                            let all_manifests =
+                                AppCatalog::all_manifests(state.apps_dir.as_deref());
+                            let mut pool: Vec<String> = all_manifests
+                                .iter()
+                                .filter(|m| favs.is_empty() || favs.contains(&m.metadata.id))
+                                .map(|m| m.metadata.id.clone())
+                                .collect();
+                            if pool.is_empty() {
+                                pool = all_manifests.into_iter().map(|m| m.metadata.id).collect();
+                            }
+                            if !pool.is_empty() {
+                                let cur_pos =
+                                    pool.iter().position(|a| a == &active_app).unwrap_or(0);
+                                let next_app = &pool[(cur_pos + 1) % pool.len()];
+                                let _ = state.switch_app(&app, next_app);
+                            }
                         }
                     }
                 }

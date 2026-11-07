@@ -99,6 +99,8 @@ export interface HostStatus {
   koi?: KoiStatus;
   nebula?: NebulaStatus;
   orbital?: OrbitalStatus;
+  app_stats?: Record<string, Record<string, string>>;
+  app_controls?: Record<string, Record<string, string>>;
 }
 
 export interface AppControl {
@@ -115,6 +117,19 @@ export interface AppControl {
   options?: string[];
 }
 
+export interface AppTheme {
+  tagline?: string;
+  banner_title?: string;
+  icon?: string;
+  ornament?: string;
+  bg?: string;
+  card?: string;
+  border_outer?: string;
+  accent?: string;
+  accent_secondary?: string;
+  crest_gradient?: [string, string];
+}
+
 export interface AppManifest {
   metadata: {
     id: string;
@@ -123,7 +138,9 @@ export interface AppManifest {
     author: string;
     version: string;
     archetype: string;
+    tags?: string[];
   };
+  theme?: AppTheme;
   controls: AppControl[];
   budgets: {
     target_fps: number;
@@ -149,6 +166,7 @@ export interface Settings {
   audio: AudioSettings;
   update?: UpdateSettings;
   active_app: string;
+  favorite_apps?: string[];
   schedule_mode: ScheduleMode;
   schedule_interval_mins: number;
 }
@@ -163,6 +181,7 @@ export interface SettingsPatch {
   low_power_fps?: number;
   pause_on_battery?: boolean;
   active_app?: string;
+  favorite_apps?: string[];
   schedule_mode?: ScheduleMode;
   schedule_interval_mins?: number;
   audio_enabled?: boolean;
@@ -175,6 +194,7 @@ export interface SettingsPatch {
 export const api = {
   getStatus: (): Promise<HostStatus> => invoke("get_status"),
   getCatalog: (): Promise<AppManifest[]> => invoke("get_catalog"),
+  reloadCatalog: (): Promise<AppManifest[]> => invoke("reload_catalog"),
   switchApp: (appId: string): Promise<HostStatus> =>
     invoke("switch_app", { appId }),
   panForest: (deltaX: number): Promise<HostStatus> =>

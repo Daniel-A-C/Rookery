@@ -8,20 +8,32 @@
   </head>
   <body>
     <main id="popover-root" class="popover" data-theme="living-rookery">
-      <!-- Thematic Game Header -->
+      <!-- Thematic Game Header & Realm Selector (Option C) -->
       <header class="header" data-tauri-drag-region="deep">
-        <div class="brand">
-          <div class="crest-frame">
+        <button
+          id="btn-realm-selector"
+          class="brand-selector-btn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="view-library"
+          data-tauri-drag-region="false"
+          title="Switch Realm or Browse Realm Library"
+        >
+          <span class="crest-frame">
             <span class="bird-glyph"><rk-icon id="brand-glyph" name="tree-evergreen"></rk-icon></span>
-          </div>
-          <div class="brand-titles">
-            <div class="title-row">
+          </span>
+          <span class="brand-titles">
+            <span class="title-row">
               <h1 id="brand-title">The Living Rookery</h1>
+              <rk-icon id="realm-selector-caret" class="selector-caret" name="caret-down"></rk-icon>
               <span id="power-badge" class="badge">AC</span>
-            </div>
-            <p id="app-tagline" class="subtitle">Woodland Sanctuary · ASCII Realm</p>
-          </div>
-        </div>
+            </span>
+            <span class="subtitle-row">
+              <span id="app-tagline" class="subtitle">Woodland Sanctuary · ASCII Realm</span>
+              <span id="realm-count-pill" class="realm-count-pill">6 Realms</span>
+            </span>
+          </span>
+        </button>
         <button
           id="btn-toggle-settings"
           class="settings-toggle-btn"
@@ -39,46 +51,6 @@
       <!-- VIEW 1: MAIN REALM HUD (Active by default)                        -->
       <!-- ================================================================= -->
       <div id="view-realm" class="view-pane">
-        <!-- App / Realm Switcher Cartridges -->
-        <section id="app-switcher" class="app-switcher" aria-label="Select Realm">
-          <button
-            id="tab-living-rookery"
-            class="app-tab-btn active"
-            type="button"
-            data-app="living-rookery"
-          >
-            <rk-icon class="tab-glyph" name="tree-evergreen"></rk-icon>
-            <span>Rookery</span>
-          </button>
-          <button
-            id="tab-koi-pond"
-            class="app-tab-btn"
-            type="button"
-            data-app="koi-pond"
-          >
-            <rk-icon class="tab-glyph" name="koi"></rk-icon>
-            <span>Koi Pond</span>
-          </button>
-          <button
-            id="tab-cosmic-nebula"
-            class="app-tab-btn"
-            type="button"
-            data-app="cosmic-nebula"
-          >
-            <rk-icon class="tab-glyph" name="nebula"></rk-icon>
-            <span>Nebula</span>
-          </button>
-          <button
-            id="tab-orbital-haven"
-            class="app-tab-btn"
-            type="button"
-            data-app="orbital-haven"
-          >
-            <rk-icon class="tab-glyph" name="satellite"></rk-icon>
-            <span>Orbital</span>
-          </button>
-        </section>
-
         <!-- Dynamic & Built-In Realm Cards Container -->
         <div id="realm-cards-container" class="realm-cards-container">
           <!-- Living Rookery Card -->
@@ -320,7 +292,59 @@
       </div>
 
       <!-- ================================================================= -->
-      <!-- VIEW 2: SETTINGS & SYSTEM MENU (Hidden until opened)              -->
+      <!-- VIEW 2: REALM LIBRARY / APP SELECTOR (Opened via Header Selector) -->
+      <!-- ================================================================= -->
+      <div id="view-library" class="view-pane library-pane" hidden>
+        <div class="library-toolbar">
+          <div class="search-input-wrap">
+            <label for="input-library-search" class="visually-hidden">Search realms</label>
+            <rk-icon class="search-icon" name="magnifying-glass"></rk-icon>
+            <input
+              id="input-library-search"
+              type="search"
+              class="library-search-input"
+              placeholder="Search realms, tags, archetypes…"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+          <button
+            id="btn-reload-catalog"
+            class="btn icon-cmd-btn game-cmd-btn"
+            type="button"
+            title="Reload apps from disk"
+            aria-label="Reload apps from disk"
+          >
+            <rk-icon name="arrow-clockwise"></rk-icon>
+          </button>
+        </div>
+
+        <nav id="library-filter-bar" class="library-filter-bar" aria-label="Realm Categories">
+          <button type="button" class="filter-pill active" data-filter="all" aria-pressed="true">
+            <span>All</span>
+          </button>
+          <button type="button" class="filter-pill" data-filter="favorites" aria-pressed="false">
+            <rk-icon name="star"></rk-icon><span>Favorites</span>
+          </button>
+          <button type="button" class="filter-pill" data-filter="cozy_ecosystem" aria-pressed="false">
+            <rk-icon name="leaf"></rk-icon><span>Ecosystem</span>
+          </button>
+          <button type="button" class="filter-pill" data-filter="generative_physics" aria-pressed="false">
+            <rk-icon name="atom"></rk-icon><span>Physics</span>
+          </button>
+          <button type="button" class="filter-pill" data-filter="slow_burn_idle" aria-pressed="false">
+            <rk-icon name="hourglass"></rk-icon><span>Idle</span>
+          </button>
+          <button type="button" class="filter-pill" data-filter="web_canvas" aria-pressed="false">
+            <rk-icon name="code"></rk-icon><span>Canvas</span>
+          </button>
+        </nav>
+
+        <ul id="library-grid" class="library-grid" role="list"></ul>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 3: SETTINGS & SYSTEM MENU (Hidden until opened)              -->
       <!-- ================================================================= -->
       <div id="view-settings" class="view-pane settings-pane" hidden>
         <!-- Categorized Sub-Tabs inside Settings -->
@@ -442,7 +466,7 @@
           <!-- Displays Card -->
           <section id="card-displays" class="card">
             <div class="section-title">Active Displays</div>
-            <ul id="displays-list" class="displays-list">
+            <ul id="displays-list" class="displays-list" role="list">
               <li class="empty">Detecting displays…</li>
             </ul>
           </section>
@@ -556,6 +580,7 @@
               </button>
             </div>
             <div class="import-group">
+              <label for="input-import-world" class="visually-hidden">Seed or state URI</label>
               <input
                 id="input-import-world"
                 type="text"

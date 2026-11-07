@@ -134,6 +134,8 @@ pub struct HostStatus {
     pub koi: Option<KoiStatus>,
     pub nebula: Option<NebulaStatus>,
     pub orbital: Option<OrbitalStatus>,
+    pub app_stats: BTreeMap<String, BTreeMap<String, String>>,
+    pub app_controls: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -143,6 +145,7 @@ pub struct SettingsPatch {
     pub popover_opacity: Option<f32>,
     pub popover_blur: Option<u32>,
     pub active_app: Option<String>,
+    pub favorite_apps: Option<Vec<String>>,
     pub schedule_mode: Option<ScheduleMode>,
     pub schedule_interval_mins: Option<u32>,
     pub day_night_mapping: Option<DayNightMapping>,
@@ -297,6 +300,8 @@ impl HostState {
             koi,
             nebula,
             orbital,
+            app_stats: self.catalog_state.all_stats(),
+            app_controls: self.catalog_state.all_controls(),
         }
     }
 
@@ -321,7 +326,7 @@ impl HostState {
             self.apps_dir.as_deref(),
         );
         self.audio.switch_app(app_id);
-        let theme_color = AppCatalog::theme_color(app_id);
+        let theme_color = AppCatalog::theme_color_with_dir(app_id, self.apps_dir.as_deref());
         self.with_renderer(|r| {
             r.set_theme_color(theme_color);
             r.switch_scene(factory);
