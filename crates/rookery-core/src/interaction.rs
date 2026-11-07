@@ -35,7 +35,7 @@ pub enum Effect {
     Promote,
     /// Return wallpaper windows below desktop icons, click-through.
     Demote,
-    /// Toggle the "interactive" visual indicator (vignette + corner badge).
+    /// Toggle the "interactive" visual indicator (edge outline).
     ShowIndicator(bool),
     /// Start listening for `Esc` (only while interactive, so we never steal it globally).
     ListenForEscape(bool),

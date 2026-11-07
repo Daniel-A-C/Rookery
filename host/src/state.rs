@@ -321,7 +321,11 @@ impl HostState {
             self.apps_dir.as_deref(),
         );
         self.audio.switch_app(app_id);
-        self.with_renderer(|r| r.switch_scene(factory));
+        let theme_color = AppCatalog::theme_color(app_id);
+        self.with_renderer(|r| {
+            r.set_theme_color(theme_color);
+            r.switch_scene(factory);
+        });
 
         let app_clone = app.clone();
         let app_id_str = app_id.to_string();

@@ -1,9 +1,10 @@
-// Direct Interaction Mode indicator: soft edge vignette + pulsing corner badge.
+// Direct Interaction Mode indicator: subtle theme-colored screen outline.
 
 struct Uniforms {
     resolution: vec2<f32>,
     time: f32,
     scale: f32,
+    color: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -24,19 +25,18 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    // Edge vignette (warm tint, so it's clearly "different" from the passive look).
-    let edge = min(min(in.uv.x, 1.0 - in.uv.x), min(in.uv.y, 1.0 - in.uv.y));
-    let vignette = 1.0 - smoothstep(0.0, 0.06, edge);
-    let tint = pow(vec3<f32>(1.0, 0.78, 0.45), vec3<f32>(2.2));
+    // Distance from the nearest display edge in logical points.
+    let edge_px = min(
+        min(in.pos.x, u.resolution.x - in.pos.x),
+        min(in.pos.y, u.resolution.y - in.pos.y),
+    ) / max(u.scale, 1.0);
 
-    // Corner badge: pulsing dot in the top-right corner.
-    let badge_center = vec2<f32>(u.resolution.x - 28.0 * u.scale, 28.0 * u.scale);
-    let d = length(in.pos.xy - badge_center) / u.scale;
-    let pulse = 0.75 + 0.25 * sin(u.time * 3.0);
-    let dot = (1.0 - smoothstep(6.0, 8.0, d)) * pulse;
-    let ring = (1.0 - smoothstep(0.0, 1.5, abs(d - 12.0))) * 0.5 * pulse;
+    // Slim 2px border matching the popover menu outline, with a tight 8px inner fade.
+    let border = 1.0 - smoothstep(1.5, 2.5, edge_px);
+    let glow = 1.0 - smoothstep(0.0, 8.0, edge_px);
+    let tint = pow(u.color.rgb, vec3<f32>(2.2));
 
-    let alpha = clamp(vignette * 0.35 + dot + ring, 0.0, 1.0);
+    let alpha = clamp(border * 0.8 + glow * 0.2, 0.0, 1.0);
     return vec4<f32>(tint * alpha, alpha);
 }
 

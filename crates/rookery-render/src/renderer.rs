@@ -65,6 +65,7 @@ enum Command {
         budget: FrameBudget,
     },
     SetInteractive(bool),
+    SetThemeColor([f32; 3]),
     TriggerAction,
     SwitchScene(SceneFactory),
     Shutdown,
@@ -165,6 +166,10 @@ impl Renderer {
         let _ = self.tx.send(Command::SetInteractive(interactive));
     }
 
+    pub fn set_theme_color(&self, color: [f32; 3]) {
+        let _ = self.tx.send(Command::SetThemeColor(color));
+    }
+
     /// Snapshot of per-display stats.
     pub fn stats(&self) -> BTreeMap<DisplayId, DisplayStats> {
         self.stats.lock().map(|s| s.clone()).unwrap_or_default()
@@ -202,6 +207,7 @@ struct RenderThread {
     stats: Arc<Mutex<BTreeMap<DisplayId, DisplayStats>>>,
     displays: BTreeMap<DisplayId, Display>,
     interactive: bool,
+    theme_color: [f32; 3],
     pending_action: bool,
     prev_left_down: bool,
     prev_right_down: bool,
@@ -225,6 +231,7 @@ impl RenderThread {
             stats,
             displays: BTreeMap::new(),
             interactive: false,
+            theme_color: crate::AppCatalog::theme_color("living-rookery"),
             pending_action: false,
             prev_left_down: false,
             prev_right_down: false,
@@ -309,6 +316,16 @@ impl RenderThread {
                 for d in self.displays.values_mut() {
                     if !d.budget.is_paused() {
                         d.next_due = Some(Instant::now());
+                    }
+                }
+            }
+            Command::SetThemeColor(color) => {
+                self.theme_color = color;
+                if self.interactive {
+                    for d in self.displays.values_mut() {
+                        if !d.budget.is_paused() {
+                            d.next_due = Some(Instant::now());
+                        }
                     }
                 }
             }
@@ -510,6 +527,7 @@ impl RenderThread {
                         (d.config.width, d.config.height),
                         d.size.scale_factor,
                         elapsed,
+                        self.theme_color,
                     );
                 }
                 self.gpu.queue.submit(Some(encoder.finish()));

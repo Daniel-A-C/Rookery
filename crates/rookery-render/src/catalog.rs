@@ -295,6 +295,24 @@ impl AppCatalog {
     pub fn create_scene_factory(app_id: &str, state: CatalogState) -> SceneFactory {
         Self::create_scene_factory_with_dir(app_id, state, None)
     }
+
+    /// Return the sRGB border/theme color matching the popover menu for `app_id`.
+    pub fn theme_color(app_id: &str) -> [f32; 3] {
+        match app_id {
+            // #1e6076 (Tranquil Koi Pond --border-outer)
+            "koi-pond" => [0.118, 0.376, 0.463],
+            // #6d28d9 (Cosmic Nebula --border-outer)
+            "cosmic-nebula" => [0.427, 0.157, 0.851],
+            // #0284c7 (Orbital Haven --border-outer)
+            "orbital-haven" => [0.008, 0.518, 0.780],
+            // #0d9488 (Aurora Waves --border-outer)
+            "aurora-waves" => [0.051, 0.580, 0.533],
+            // #65a30d (Twilight Fireflies --border-outer)
+            "fireflies" => [0.396, 0.639, 0.051],
+            // #366847 (The Living ASCII Rookery --border-outer)
+            _ => [0.212, 0.408, 0.278],
+        }
+    }
 }
 
 #[cfg(test)]

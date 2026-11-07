@@ -145,6 +145,7 @@ pub fn run() {
                     }
                 }),
             )?;
+            renderer.set_theme_color(AppCatalog::theme_color(&initial_app));
 
             let initial_hotkey = settings.hotkey.clone();
             let initial_popover_hotkey = settings.popover_hotkey.clone();

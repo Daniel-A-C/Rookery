@@ -10,6 +10,7 @@ struct Uniforms {
     resolution: [f32; 2],
     time: f32,
     scale: f32,
+    color: [f32; 4],
 }
 
 pub struct Vignette {
@@ -60,6 +61,7 @@ impl Vignette {
         size: (u32, u32),
         scale: f64,
         time: f32,
+        color: [f32; 3],
     ) {
         gpu.queue.write_buffer(
             &self.uniforms,
@@ -68,6 +70,7 @@ impl Vignette {
                 resolution: [size.0 as f32, size.1 as f32],
                 time,
                 scale: scale as f32,
+                color: [color[0], color[1], color[2], 1.0],
             }),
         );
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
