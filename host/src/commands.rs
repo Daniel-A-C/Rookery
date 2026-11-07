@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::Local;
 use rookery_core::interaction::InteractionEvent;
 use rookery_core::manifest::AppManifest;
-use rookery_core::orbital::ConstructionFocus;
+use rookery_core::orbital::{ConstructionFocus, OrbitalHavenState, STATION_CENTER};
 use rookery_core::settings::Settings;
 use rookery_core::world::WorldState;
 use rookery_render::capture::{encode_mp4_stream, write_gif, write_png};
@@ -238,6 +238,16 @@ pub fn feed_birds(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) ->
 
 #[tauri::command]
 pub fn get_world_seed(state: State<'_, HostState>) -> String {
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_default();
+    if active_app == "orbital-haven"
+        && let Ok(o) = state.catalog_state.orbital.lock()
+    {
+        return o.seed_uri();
+    }
     if let Ok(w) = state.world.lock() {
         w.seed_uri()
     } else {
@@ -247,6 +257,16 @@ pub fn get_world_seed(state: State<'_, HostState>) -> String {
 
 #[tauri::command]
 pub fn get_world_state_string(state: State<'_, HostState>) -> Result<String, String> {
+    let active_app = state
+        .inner
+        .lock()
+        .map(|i| i.settings.active_app.clone())
+        .unwrap_or_default();
+    if active_app == "orbital-haven"
+        && let Ok(o) = state.catalog_state.orbital.lock()
+    {
+        return o.state_uri();
+    }
     if let Ok(w) = state.world.lock() {
         w.state_uri().map_err(|e| e.to_string())
     } else {
@@ -260,7 +280,20 @@ pub fn import_world_string(
     state: State<'_, HostState>,
     input: String,
 ) -> Result<HostStatus, String> {
-    let new_world = WorldState::from_share_string(&input)?;
+    let trimmed = input.trim();
+    if trimmed.starts_with("rookery://orbital/") || trimmed.starts_with("orbital-seed-") {
+        let new_orb = OrbitalHavenState::from_share_string(trimmed)?;
+        if let Ok(mut o) = state.catalog_state.orbital.lock() {
+            *o = new_orb;
+            let _ = o.save_atomic(&state.orbital_path);
+        }
+        let _ = state.switch_app(&app, "orbital-haven");
+        let status = state.status();
+        state.emit_status_if_popover_open(&app);
+        return Ok(status);
+    }
+
+    let new_world = WorldState::from_share_string(trimmed)?;
     if let Ok(mut w) = state.world.lock() {
         *w = new_world;
         let _ = w.save_atomic(&state.world_path);
@@ -398,7 +431,23 @@ pub fn execute_app_action(
                 .lock()
                 .map_err(|_| "lock poisoned")?;
             match action.as_str() {
-                "focus_solar" | "add_module" => {
+                "overdrive_drones" | "add_module" => {
+                    o.overdrive_drones();
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "launch_shuttle" => {
+                    o.launch_shuttle();
+                    state.audio.play_sfx(SoundEffect::ShuttleLaunch);
+                }
+                "cycle_focus" => {
+                    o.cycle_focus();
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "focus_auto" => {
+                    o.set_focus(ConstructionFocus::AutoBalance);
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "focus_solar" => {
                     o.set_focus(ConstructionFocus::SolarPower);
                     state.audio.play_sfx(SoundEffect::ModuleConstruct);
                 }
@@ -406,12 +455,29 @@ pub fn execute_app_action(
                     o.set_focus(ConstructionFocus::HabitatRing);
                     state.audio.play_sfx(SoundEffect::ModuleConstruct);
                 }
-                "launch_shuttle" => {
-                    o.launch_shuttle();
-                    state.audio.play_sfx(SoundEffect::ShuttleLaunch);
+                "focus_shipyard" => {
+                    o.set_focus(ConstructionFocus::ShipyardBiodome);
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "focus_comms" => {
+                    o.set_focus(ConstructionFocus::CommsGrid);
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "cycle_planet" => {
+                    o.cycle_planet_biome();
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "scan_pulse" => {
+                    o.trigger_scan_pulse(STATION_CENTER);
+                    state.audio.play_sfx(SoundEffect::OrbitalScan);
+                }
+                "toggle_hud" => {
+                    o.toggle_hud();
+                    state.audio.play_sfx(SoundEffect::OrbitalScan);
                 }
                 other => return Err(format!("Unknown orbital action '{other}'")),
             }
+            let _ = o.save_atomic(&state.orbital_path);
         }
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());

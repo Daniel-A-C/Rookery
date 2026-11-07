@@ -71,6 +71,14 @@ export interface OrbitalStatus {
   habitat_sectors: number;
   comm_arrays: number;
   docked_shuttles: number;
+  active_robots?: number;
+  power_mw?: number;
+  crew_population?: number;
+  epoch_name?: string;
+  epoch_short?: string;
+  planet_biome?: string;
+  hud_enabled?: boolean;
+  construction_pct?: number;
   focus: string;
 }
 

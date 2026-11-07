@@ -292,6 +292,9 @@ const statOrbitalRings = el<HTMLSpanElement>("stat-orbital-rings");
 const statOrbitalShuttles = el<HTMLSpanElement>("stat-orbital-shuttles");
 const btnOrbitalModule = el<HTMLButtonElement>("btn-orbital-module");
 const btnOrbitalLaunch = el<HTMLButtonElement>("btn-orbital-launch");
+const btnOrbitalFocus = el<HTMLButtonElement>("btn-orbital-focus");
+const btnOrbitalPlanet = el<HTMLButtonElement>("btn-orbital-planet");
+const btnOrbitalScan = el<HTMLButtonElement>("btn-orbital-scan");
 
 // Schedule Controls
 const selectScheduleMode = el<HTMLSelectElement>("select-schedule-mode");
@@ -908,10 +911,15 @@ function renderStatus(s: HostStatus): void {
 
   // Orbital Haven Stats
   if (s.orbital) {
-    statOrbitalModules.textContent = String(s.orbital.total_modules);
-    statOrbitalSolar.textContent = String(s.orbital.solar_wings);
-    statOrbitalRings.textContent = String(s.orbital.habitat_rings);
-    statOrbitalShuttles.textContent = String(s.orbital.docked_shuttles);
+    const epochShort = s.orbital.epoch_short || "Citadel";
+    statOrbitalModules.textContent = `${s.orbital.total_modules}/66 · ${epochShort}`;
+    const pwr = s.orbital.power_mw ?? s.orbital.solar_wings * 38;
+    const crew = s.orbital.crew_population ?? s.orbital.habitat_sectors * 18;
+    statOrbitalSolar.textContent = `+${pwr} MW · ${crew} Crew`;
+    const pct = s.orbital.construction_pct ?? 0;
+    statOrbitalRings.textContent = `${s.orbital.focus} (${pct}%)`;
+    const bots = s.orbital.active_robots ?? 8;
+    statOrbitalShuttles.textContent = `${s.orbital.docked_shuttles} Ships · ${bots} Bots`;
   }
 
   // Dynamic SDK App Stats & Controls
@@ -1176,9 +1184,12 @@ btnNebulaPalette.addEventListener("click", async () => {
 // Orbital Haven Action Handlers
 btnOrbitalModule.addEventListener("click", async () => {
   try {
-    const s = await api.executeAppAction("orbital-haven", "add_module");
+    const s = await api.executeAppAction("orbital-haven", "overdrive_drones");
     renderStatus(s);
-    showNotification("satellite", "New station module deployed into orbit!");
+    showNotification(
+      "lightning",
+      "Welder drones overdriven — module assembly accelerated!",
+    );
   } catch (err) {
     console.error("orbital module error:", err);
   }
@@ -1188,9 +1199,44 @@ btnOrbitalLaunch.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("orbital-haven", "launch_shuttle");
     renderStatus(s);
-    showNotification("rocket-launch", "Transport shuttle launched from docking ring!");
+    showNotification(
+      "rocket-launch",
+      "Orbital vessel dispatched from Aegis docking bay!",
+    );
   } catch (err) {
     console.error("orbital launch error:", err);
+  }
+});
+
+btnOrbitalFocus.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("orbital-haven", "cycle_focus");
+    renderStatus(s);
+    const focusName = s.orbital?.focus || "Updated";
+    showNotification("hab-ring", `Construction directive: ${focusName}`);
+  } catch (err) {
+    console.error("orbital focus error:", err);
+  }
+});
+
+btnOrbitalPlanet.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("orbital-haven", "cycle_planet");
+    renderStatus(s);
+    const biome = s.orbital?.planet_biome || "Shifted";
+    showNotification("compass", `Orbital horizon shifted to ${biome}!`);
+  } catch (err) {
+    console.error("orbital planet error:", err);
+  }
+});
+
+btnOrbitalScan.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("orbital-haven", "scan_pulse");
+    renderStatus(s);
+    showNotification("satellite", "Subspace sensor scan wave emitted!");
+  } catch (err) {
+    console.error("orbital scan error:", err);
   }
 });
 

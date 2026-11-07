@@ -17,6 +17,7 @@ use chrono::{Timelike, Utc};
 use rookery_core::governor::PowerState;
 use rookery_core::interaction::Interaction;
 use rookery_core::manifest::ScheduleMode;
+use rookery_core::orbital::{ORBITAL_STATE_FILE_NAME, OrbitalHavenState};
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
 use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
@@ -33,7 +34,17 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             for arg in &args {
-                if arg.starts_with("rookery://") {
+                if arg.starts_with("rookery://orbital/") {
+                    let st = app.state::<HostState>();
+                    if let Ok(new_orb) = OrbitalHavenState::from_share_string(arg) {
+                        if let Ok(mut o) = st.catalog_state.orbital.lock() {
+                            *o = new_orb;
+                            let _ = o.save_atomic(&st.orbital_path);
+                        }
+                        let _ = st.switch_app(app, "orbital-haven");
+                        st.emit_status_if_popover_open(app);
+                    }
+                } else if arg.starts_with("rookery://") {
                     let st = app.state::<HostState>();
                     if let Ok(new_world) = WorldState::from_share_string(arg) {
                         if let Ok(mut w) = st.world.lock() {
@@ -97,10 +108,13 @@ pub fn run() {
 
             let world_path = config_dir.join(WORLD_STATE_FILE_NAME);
             let world = WorldState::load_or_init(&world_path, 42);
+            let orbital_path = config_dir.join(ORBITAL_STATE_FILE_NAME);
+            let orbital = OrbitalHavenState::load_or_init(&orbital_path, world.seed);
 
             let audio = AudioEngine::new(settings.audio, &settings.active_app);
             let catalog_state = CatalogState::new(world.seed).with_audio(audio.clone());
             *catalog_state.rookery.lock().unwrap() = world;
+            *catalog_state.orbital.lock().unwrap() = orbital;
             let world_arc = catalog_state.rookery.clone();
 
             // Milestone 2 & 4 Offline Time-Delta Engine: catch up progression across all apps
@@ -155,6 +169,7 @@ pub fn run() {
             let host_state = HostState {
                 settings_path,
                 world_path,
+                orbital_path,
                 apps_dir,
                 world: world_arc,
                 catalog_state,
@@ -273,12 +288,18 @@ fn spawn_governor_thread(app: AppHandle) {
                     }
                 }
 
-                // 1-minute periodic world autosave
-                if ticks.is_multiple_of(60)
-                    && let Ok(mut w) = state.world.lock()
-                    && let Err(e) = w.save_atomic(&state.world_path)
-                {
-                    log::debug!("world autosave failed: {e}");
+                // 1-minute periodic world & orbital autosave
+                if ticks.is_multiple_of(60) {
+                    if let Ok(mut w) = state.world.lock()
+                        && let Err(e) = w.save_atomic(&state.world_path)
+                    {
+                        log::debug!("world autosave failed: {e}");
+                    }
+                    if let Ok(o) = state.catalog_state.orbital.lock()
+                        && let Err(e) = o.save_atomic(&state.orbital_path)
+                    {
+                        log::debug!("orbital autosave failed: {e}");
+                    }
                 }
 
                 // Milestone 4: Playlist and Day-Night Scheduler

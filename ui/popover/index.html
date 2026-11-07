@@ -226,25 +226,25 @@
           <section id="card-orbital-haven" class="card hud-card orbital-card" hidden>
             <div class="hud-banner">
               <span class="hud-ornament left"><rk-icon name="hexagon"></rk-icon></span>
-              <span class="section-title">Orbital Telemetry &amp; Ops</span>
+              <span class="section-title">Aegis-VII Command &amp; Telemetry</span>
               <span class="hud-ornament right"><rk-icon name="hexagon"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="hexagon"></rk-icon>Hull Modules</span>
-                <span id="stat-orbital-modules" class="stat-value">7</span>
+                <span class="stat-label"><rk-icon name="hexagon"></rk-icon>Megastructure</span>
+                <span id="stat-orbital-modules" class="stat-value">13/66 · Core Hub</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="solar-panel"></rk-icon>Solar Arrays</span>
-                <span id="stat-orbital-solar" class="stat-value">4</span>
+                <span class="stat-label"><rk-icon name="solar-panel"></rk-icon>Grid &amp; Crew</span>
+                <span id="stat-orbital-solar" class="stat-value">+195 MW · 92</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="hab-ring"></rk-icon>Hab Rings</span>
-                <span id="stat-orbital-rings" class="stat-value">1</span>
+                <span class="stat-label"><rk-icon name="hab-ring"></rk-icon>Directive</span>
+                <span id="stat-orbital-rings" class="stat-value">Auto-Balance (35%)</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="rocket"></rk-icon>Docked Fleet</span>
-                <span id="stat-orbital-shuttles" class="stat-value">2</span>
+                <span class="stat-label"><rk-icon name="rocket"></rk-icon>Fleet &amp; Bots</span>
+                <span id="stat-orbital-shuttles" class="stat-value">3 Ships · 8 Bots</span>
               </div>
             </div>
             <div class="rookery-actions">
@@ -252,17 +252,41 @@
                 id="btn-orbital-module"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Construct a new module extension"
+                title="Overdrive autonomous welder drones and accelerate active module construction"
               >
-                <rk-icon name="satellite"></rk-icon><span>Deploy Module</span>
+                <rk-icon name="lightning"></rk-icon><span>Overdrive Drones</span>
               </button>
               <button
                 id="btn-orbital-launch"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Launch a research transport shuttle"
+                title="Dispatch a freighter, miner, liner, corvette, or interceptor"
               >
-                <rk-icon name="rocket-launch"></rk-icon><span>Launch Shuttle</span>
+                <rk-icon name="rocket-launch"></rk-icon><span>Launch Vessel</span>
+              </button>
+              <button
+                id="btn-orbital-focus"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Cycle construction priority (Auto, Solar, Rings, Biodomes, Comms)"
+              >
+                <rk-icon name="hab-ring"></rk-icon><span>Cycle Directive</span>
+              </button>
+              <button
+                id="btn-orbital-planet"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Switch planetary horizon (Terran, Europa, Ares, Ecumenopolis)"
+              >
+                <rk-icon name="compass"></rk-icon><span>Cycle Planet</span>
+              </button>
+              <button
+                id="btn-orbital-scan"
+                class="btn game-cmd-btn small span-2"
+                type="button"
+                title="Emit a radial subspace sensor scan wave across the orbital sector"
+              >
+                <rk-icon name="satellite"></rk-icon><span>Emit Subspace Sensor Scan</span>
               </button>
             </div>
           </section>

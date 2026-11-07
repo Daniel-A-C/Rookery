@@ -40,6 +40,8 @@ pub enum SoundEffect {
     ShuttleLaunch,
     /// Constructing / locking an orbital station module
     ModuleConstruct,
+    /// Subspace sensor scan & telemetry ping in Orbital Haven
+    OrbitalScan,
 }
 
 enum AudioCommand {
@@ -384,18 +386,21 @@ pub fn synth_ambient_loop(app_id: &str) -> Vec<f32> {
             }
         }
         "orbital-haven" => {
-            // Space station environmental tone: low 60 Hz hum + ventilation wash
+            // Space station environmental tone: warm 55 Hz reactor hum + harmonic chord + life-support wash
             let mut lcg: u32 = 9876543;
             let mut s = 0.0f32;
             for (i, sample) in buffer.iter_mut().enumerate() {
                 let t = i as f32 / SAMPLE_RATE as f32;
                 lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
                 let noise = ((lcg >> 16) as f32 / 32768.0) - 1.0;
-                s += 0.02 * (noise - s);
+                s += 0.018 * (noise - s);
 
-                let hum = 0.35 * (2.0 * PI * 60.0 * t).sin();
-                let hum2 = 0.15 * (2.0 * PI * 120.0 * t).sin();
-                *sample = (s * 0.5 + hum + hum2) * 0.22;
+                let hum = 0.32 * (2.0 * PI * 55.0 * t).sin();
+                let fifth = 0.16 * (2.0 * PI * 82.5 * t + 0.3).sin();
+                let octave = 0.12 * (2.0 * PI * 110.0 * t).sin();
+                let telemetry =
+                    0.03 * (2.0 * PI * 440.0 * t).sin() * (2.0 * PI * 0.33 * t).sin().max(0.0);
+                *sample = (s * 0.45 + hum + fifth + octave + telemetry) * 0.22;
             }
         }
         _ => {
@@ -594,6 +599,24 @@ pub fn synth_sfx(sfx: SoundEffect) -> Vec<f32> {
             }
             out
         }
+        SoundEffect::OrbitalScan => {
+            // Crystalline subspace radar sonar ping + harmonic tail (0.38s)
+            let len = (0.38 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let ping1 = (2.0 * PI * 880.0 * t).sin() * (-14.0 * t).exp();
+                let ping2 = if t > 0.07 {
+                    let dt = t - 0.07;
+                    (2.0 * PI * 1318.5 * dt).sin() * (-12.0 * dt).exp()
+                } else {
+                    0.0
+                };
+                let sub = (2.0 * PI * 220.0 * t).sin() * (-10.0 * t).exp();
+                *sample = (ping1 * 0.45 + ping2 * 0.40 + sub * 0.25) * 0.38;
+            }
+            out
+        }
     }
 }
 
@@ -613,6 +636,7 @@ mod tests {
             SoundEffect::PaletteCycle,
             SoundEffect::ShuttleLaunch,
             SoundEffect::ModuleConstruct,
+            SoundEffect::OrbitalScan,
         ];
 
         for sfx in all_sfx {

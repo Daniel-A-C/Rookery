@@ -44,6 +44,7 @@ pub struct HostInner {
 pub struct HostState {
     pub settings_path: PathBuf,
     pub world_path: PathBuf,
+    pub orbital_path: PathBuf,
     pub apps_dir: Option<PathBuf>,
     pub world: Arc<Mutex<WorldState>>,
     pub catalog_state: CatalogState,
@@ -118,6 +119,14 @@ pub struct OrbitalStatus {
     pub habitat_sectors: u32,
     pub comm_arrays: u32,
     pub docked_shuttles: u32,
+    pub active_robots: u32,
+    pub power_mw: u32,
+    pub crew_population: u32,
+    pub epoch_name: String,
+    pub epoch_short: String,
+    pub planet_biome: String,
+    pub hud_enabled: bool,
+    pub construction_pct: u32,
     pub focus: String,
 }
 
@@ -264,6 +273,14 @@ impl HostState {
                 habitat_sectors: o.stats.habitat_sectors,
                 comm_arrays: o.stats.comm_arrays,
                 docked_shuttles: o.shuttles.len() as u32,
+                active_robots: o.robots.len() as u32,
+                power_mw: o.stats.power_mw,
+                crew_population: o.stats.crew_population,
+                epoch_name: o.epoch.name().to_string(),
+                epoch_short: o.epoch.short_name().to_string(),
+                planet_biome: o.planet_biome.name().to_string(),
+                hud_enabled: o.hud_enabled,
+                construction_pct: (o.construction_progress * 100.0).round() as u32,
                 focus: o.focus.name().to_string(),
             });
 
@@ -433,6 +450,11 @@ impl HostState {
             && let Err(e) = w.save_atomic(&self.world_path)
         {
             log::warn!("failed to save world state on shutdown: {e}");
+        }
+        if let Ok(o) = self.catalog_state.orbital.lock()
+            && let Err(e) = o.save_atomic(&self.orbital_path)
+        {
+            log::warn!("failed to save orbital state on shutdown: {e}");
         }
         if let Ok(mut r) = self.renderer.lock()
             && let Some(mut renderer) = r.take()

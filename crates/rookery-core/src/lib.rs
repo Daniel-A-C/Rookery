@@ -31,7 +31,11 @@ pub use manifest::{
 pub use nebula::{
     CosmicNebulaState, CosmicNebulaStats, GravityWell, NebulaPalette, StellarParticle,
 };
-pub use orbital::{ConstructionFocus, OrbitalHavenState, OrbitalHavenStats, Shuttle, ShuttleState};
+pub use orbital::{
+    ConstructionFocus, ModuleKind, ORBITAL_STATE_FILE_NAME, OrbitalAsteroid, OrbitalHavenState,
+    OrbitalHavenStats, PlanetBiome, RobotAgent, RobotKind, RobotTask, ScanPulse, ShipClass,
+    Shuttle, ShuttleState, SparkParticle, StationEpoch, StationModule,
+};
 pub use settings::{AudioSettings, Settings};
 pub use world::{
     Bird, BirdBath, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, Lantern, Nest, Perch,
