@@ -95,6 +95,15 @@ pub fn update_settings(
         if let Some(hk) = patch.popover_hotkey {
             inner.settings.popover_hotkey = hk.trim().to_owned();
         }
+        if let Some(opacity) = patch.popover_opacity {
+            inner.settings.popover_opacity = opacity.clamp(
+                rookery_core::settings::MIN_POPOVER_OPACITY,
+                rookery_core::settings::MAX_POPOVER_OPACITY,
+            );
+        }
+        if let Some(blur) = patch.popover_blur {
+            inner.settings.popover_blur = blur.min(rookery_core::settings::MAX_POPOVER_BLUR);
+        }
         if let Some(mode) = patch.schedule_mode {
             inner.settings.schedule_mode = mode;
         }
@@ -141,6 +150,10 @@ pub fn update_settings(
         inner.settings.clone()
     };
 
+    if let Some(blur) = patch.popover_blur {
+        apply_popover_blur_on_main_thread(&app, blur);
+    }
+
     if let Some(ref app_id) = patch.active_app {
         state.switch_app(&app, app_id)?;
     }
@@ -148,6 +161,38 @@ pub fn update_settings(
     state.recompute_budgets();
     state.emit_status_if_popover_open(&app);
     Ok(updated)
+}
+
+fn apply_popover_blur_on_main_thread(app: &AppHandle, blur: u32) {
+    let clamped = blur.min(rookery_core::settings::MAX_POPOVER_BLUR);
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(win) = app_clone.get_webview_window(crate::state::POPOVER_LABEL) {
+            let _ = rookery_platform::set_popover_blur(&win, clamped);
+        }
+    });
+}
+
+#[tauri::command]
+pub fn set_popover_blur(app: AppHandle, blur: u32) {
+    apply_popover_blur_on_main_thread(&app, blur);
+}
+
+#[tauri::command]
+pub fn start_drag(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(crate::state::POPOVER_LABEL) {
+        #[cfg(target_os = "macos")]
+        {
+            let win_clone = win.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = rookery_platform::start_window_drag(&win_clone);
+            });
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = win.start_dragging();
+        }
+    }
 }
 
 #[tauri::command]

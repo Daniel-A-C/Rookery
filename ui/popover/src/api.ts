@@ -143,6 +143,8 @@ export interface Settings {
   version: number;
   hotkey: string;
   popover_hotkey: string;
+  popover_opacity?: number;
+  popover_blur?: number;
   frame: FrameSettings;
   audio: AudioSettings;
   update?: UpdateSettings;
@@ -154,6 +156,8 @@ export interface Settings {
 export interface SettingsPatch {
   hotkey?: string;
   popover_hotkey?: string;
+  popover_opacity?: number;
+  popover_blur?: number;
   passive_fps?: number;
   interactive_fps?: number;
   low_power_fps?: number;
@@ -188,6 +192,9 @@ export const api = {
   getSettings: (): Promise<Settings> => invoke("get_settings"),
   updateSettings: (patch: SettingsPatch): Promise<Settings> =>
     invoke("update_settings", { patch }),
+  setPopoverBlur: (blur: number): Promise<void> =>
+    invoke("set_popover_blur", { blur }),
+  startDrag: (): Promise<void> => invoke("start_drag"),
   plantSeed: (pos: [number, number]): Promise<HostStatus> =>
     invoke("plant_seed", { pos }),
   pruneBranch: (

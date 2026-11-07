@@ -81,6 +81,11 @@ fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
         };
 
     let _ = rookery_platform::style_popover_window(&window, POPOVER_CORNER_RADIUS);
+    if let Some(state) = app.try_state::<crate::state::HostState>()
+        && let Ok(inner) = state.inner.lock()
+    {
+        let _ = rookery_platform::set_popover_blur(&window, inner.settings.popover_blur);
+    }
 
     match anchor {
         PopoverAnchor::Cursor => {
@@ -128,6 +133,10 @@ fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
                         log::debug!(
                             "popover regained focus after transient loss, keeping window open"
                         );
+                        return;
+                    }
+                    if rookery_platform::mouse_buttons().left {
+                        log::debug!("left mouse button held down, keeping popover window open");
                         return;
                     }
                     let win_main = win_clone.clone();

@@ -57,6 +57,8 @@ pub fn run() {
             commands::set_interactive,
             commands::get_settings,
             commands::update_settings,
+            commands::set_popover_blur,
+            commands::start_drag,
             commands::get_catalog,
             commands::switch_app,
             commands::pan_forest,

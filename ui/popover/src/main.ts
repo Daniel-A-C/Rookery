@@ -215,6 +215,42 @@ const intervalGroup = el<HTMLDivElement>("interval-group");
 const sliderInterval = el<HTMLInputElement>("slider-interval");
 const valInterval = el<HTMLElement>("val-interval");
 
+// Menu Appearance Controls
+const sliderMenuOpacity = el<HTMLInputElement>("slider-menu-opacity");
+const valMenuOpacity = el<HTMLElement>("val-menu-opacity");
+const sliderMenuBlur = el<HTMLInputElement>("slider-menu-blur");
+const valMenuBlur = el<HTMLElement>("val-menu-blur");
+
+function applyMenuAppearance(opacity: number, blurPx: number): void {
+  const clampedOpacity = Math.min(1.0, Math.max(0.15, opacity));
+  const clampedBlur = Math.min(64, Math.max(0, Math.round(blurPx)));
+  popoverRoot.style.setProperty("--menu-opacity", String(clampedOpacity));
+  popoverRoot.style.setProperty("--menu-blur", `${clampedBlur}px`);
+  const pct = Math.round(clampedOpacity * 100);
+  sliderMenuOpacity.value = String(pct);
+  sliderMenuOpacity.setAttribute("aria-valuetext", `${pct}%`);
+  valMenuOpacity.textContent = `${pct}%`;
+  sliderMenuBlur.value = String(clampedBlur);
+  sliderMenuBlur.setAttribute("aria-valuetext", `${clampedBlur}px`);
+  valMenuBlur.textContent = `${clampedBlur}px`;
+}
+
+// Drag the popover window from the header or any non-interactive surface
+popoverRoot.addEventListener("mousedown", (ev) => {
+  if (ev.button !== 0 || ev.detail > 1) return;
+  const target = ev.target as HTMLElement | null;
+  if (!target) return;
+  if (
+    target.closest(
+      "button, input, select, label, a, textarea, [contenteditable], .displays-list, .update-notes",
+    )
+  ) {
+    return;
+  }
+  ev.preventDefault();
+  api.startDrag().catch(() => {});
+});
+
 // Share & Capture
 const btnQuickSnapshot = el<HTMLButtonElement>("btn-quick-snapshot");
 const btnSnapshot = el<HTMLButtonElement>("btn-snapshot");
@@ -673,6 +709,8 @@ function renderSettings(st: Settings): void {
     localStorage.setItem("rookery_settings", JSON.stringify(st));
   } catch {}
 
+  applyMenuAppearance(st.popover_opacity ?? 0.92, st.popover_blur ?? 20);
+
   if (st.audio) {
     chkAudioEnabled.checked = st.audio.enabled;
     audioControlsGroup.hidden = !st.audio.enabled;
@@ -1011,6 +1049,44 @@ chkBattery.addEventListener("change", async () => {
     renderSettings(st);
   } catch (err) {
     console.error("updateSettings error:", err);
+  }
+});
+
+// Menu Appearance Listeners
+sliderMenuOpacity.addEventListener("input", () => {
+  const pct = Number(sliderMenuOpacity.value);
+  popoverRoot.style.setProperty("--menu-opacity", String(pct / 100));
+  sliderMenuOpacity.setAttribute("aria-valuetext", `${pct}%`);
+  valMenuOpacity.textContent = `${pct}%`;
+});
+
+sliderMenuOpacity.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      popover_opacity: Number(sliderMenuOpacity.value) / 100,
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings opacity error:", err);
+  }
+});
+
+sliderMenuBlur.addEventListener("input", () => {
+  const blur = Number(sliderMenuBlur.value);
+  popoverRoot.style.setProperty("--menu-blur", `${blur}px`);
+  sliderMenuBlur.setAttribute("aria-valuetext", `${blur}px`);
+  valMenuBlur.textContent = `${blur}px`;
+  api.setPopoverBlur(blur).catch(() => {});
+});
+
+sliderMenuBlur.addEventListener("change", async () => {
+  try {
+    const st = await api.updateSettings({
+      popover_blur: Number(sliderMenuBlur.value),
+    });
+    renderSettings(st);
+  } catch (err) {
+    console.error("updateSettings blur error:", err);
   }
 });
 

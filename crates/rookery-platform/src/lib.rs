@@ -215,6 +215,32 @@ pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) ->
     }
 }
 
+/// Apply native background blur behind the popover window.
+pub fn set_popover_blur(window: &dyn HasWindowHandle, blur_radius: u32) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_popover_blur(window, blur_radius)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, blur_radius);
+        Ok(())
+    }
+}
+
+/// Initiate native OS window dragging for the popover window.
+pub fn start_window_drag(window: &dyn HasWindowHandle) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::start_window_drag(window)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

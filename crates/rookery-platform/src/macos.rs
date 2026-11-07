@@ -8,7 +8,8 @@ use anyhow::{Context, Result, bail};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSApplication, NSColor, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWindow,
+    NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
@@ -311,11 +312,21 @@ pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()>
     Ok(())
 }
 
+unsafe extern "C" {
+    fn CGSMainConnectionID() -> u32;
+    fn CGSSetWindowBackgroundBlurRadius(
+        connection: u32,
+        window_number: usize,
+        radius: i32,
+    ) -> i32;
+}
+
 pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) -> Result<()> {
     let ns_win = ns_window_from_handle(window)?;
     ns_win.setOpaque(false);
     ns_win.setBackgroundColor(Some(&NSColor::clearColor()));
     ns_win.setHasShadow(true);
+    ns_win.setMovable(true);
 
     if let Some(content_view) = ns_win.contentView() {
         content_view.setWantsLayer(true);
@@ -328,5 +339,46 @@ pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) ->
         }
     }
     ns_win.invalidateShadow();
+    Ok(())
+}
+
+pub fn set_popover_blur(window: &dyn HasWindowHandle, blur_radius: u32) -> Result<()> {
+    let ns_win = ns_window_from_handle(window)?;
+    let win_num = ns_win.windowNumber();
+    if win_num > 0 {
+        unsafe {
+            let cid = CGSMainConnectionID();
+            let _ = CGSSetWindowBackgroundBlurRadius(
+                cid,
+                win_num as u32 as usize,
+                blur_radius.min(64) as i32,
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn start_window_drag(window: &dyn HasWindowHandle) -> Result<()> {
+    if !mouse_buttons().left {
+        return Ok(());
+    }
+    let ns_win = ns_window_from_handle(window)?;
+    let loc = ns_win.mouseLocationOutsideOfEventStream();
+    let timestamp = NSProcessInfo::processInfo().systemUptime();
+    let win_num = ns_win.windowNumber();
+    let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+        NSEventType::LeftMouseDown,
+        loc,
+        NSEventModifierFlags::empty(),
+        timestamp,
+        win_num,
+        None,
+        0,
+        1,
+        1.0,
+    );
+    if let Some(ev) = event {
+        ns_win.performWindowDragWithEvent(&ev);
+    }
     Ok(())
 }

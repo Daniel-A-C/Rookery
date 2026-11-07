@@ -25,6 +25,15 @@ pub const DEFAULT_HOTKEY: &str = "CommandOrControl+Alt+Shift+R";
 /// Default global hotkey to summon / toggle the Rookery popover menu from anywhere.
 pub const DEFAULT_POPOVER_HOTKEY: &str = "CommandOrControl+Alt+Shift+P";
 
+/// Default popover menu background opacity (0.15..=1.0).
+pub const DEFAULT_POPOVER_OPACITY: f32 = 0.92;
+pub const MIN_POPOVER_OPACITY: f32 = 0.15;
+pub const MAX_POPOVER_OPACITY: f32 = 1.0;
+
+/// Default popover background blur radius in pixels (0..=64).
+pub const DEFAULT_POPOVER_BLUR: u32 = 20;
+pub const MAX_POPOVER_BLUR: u32 = 64;
+
 pub const SETTINGS_FILE_NAME: &str = "settings.json";
 
 #[derive(Debug, thiserror::Error)]
@@ -87,6 +96,8 @@ pub struct Settings {
     pub version: u32,
     pub hotkey: String,
     pub popover_hotkey: String,
+    pub popover_opacity: f32,
+    pub popover_blur: u32,
     pub active_app: String,
     pub schedule_mode: ScheduleMode,
     pub schedule_interval_mins: u32,
@@ -107,6 +118,8 @@ impl Default for Settings {
             version: SETTINGS_VERSION,
             hotkey: DEFAULT_HOTKEY.to_owned(),
             popover_hotkey: DEFAULT_POPOVER_HOTKEY.to_owned(),
+            popover_opacity: DEFAULT_POPOVER_OPACITY,
+            popover_blur: DEFAULT_POPOVER_BLUR,
             active_app: "living-rookery".to_owned(),
             schedule_mode: ScheduleMode::Manual,
             schedule_interval_mins: 30,
@@ -171,6 +184,10 @@ impl Settings {
         }
         self.frame = self.frame.clamped();
         self.audio = self.audio.clamped();
+        self.popover_opacity = self
+            .popover_opacity
+            .clamp(MIN_POPOVER_OPACITY, MAX_POPOVER_OPACITY);
+        self.popover_blur = self.popover_blur.min(MAX_POPOVER_BLUR);
         if self.hotkey.trim().is_empty() {
             self.hotkey = DEFAULT_HOTKEY.to_owned();
         }
@@ -311,6 +328,22 @@ mod tests {
         let s = Settings::default();
         assert!(s.update.auto_check);
         assert!(s.update.auto_download);
+    }
+
+    #[test]
+    fn popover_appearance_defaults_and_clamping() {
+        let s = Settings::default();
+        assert!((s.popover_opacity - DEFAULT_POPOVER_OPACITY).abs() < f32::EPSILON);
+        assert_eq!(s.popover_blur, DEFAULT_POPOVER_BLUR);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, r#"{"popover_opacity":0.01,"popover_blur":999}"#).unwrap();
+        let (loaded, outcome) = Settings::load(&path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        assert!((loaded.popover_opacity - MIN_POPOVER_OPACITY).abs() < f32::EPSILON);
+        assert_eq!(loaded.popover_blur, MAX_POPOVER_BLUR);
     }
 
     #[test]

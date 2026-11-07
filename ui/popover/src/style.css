@@ -232,13 +232,22 @@
 
 @layer components {
   .popover {
+    --effective-opacity: var(--menu-opacity, 0.92);
+    --card-opacity: calc(var(--effective-opacity) * var(--effective-opacity) * 72%);
+    --card-inner-opacity: calc(var(--effective-opacity) * var(--effective-opacity) * 65%);
     width: 100vw;
     height: 100vh;
     border-radius: var(--radius-window);
     corner-shape: squircle;
-    background-color: var(--bg);
+    background-color: color-mix(
+      in oklab,
+      var(--bg) calc(var(--effective-opacity) * 100%),
+      transparent
+    );
     background-image: var(--bg-pattern);
     background-size: 100% 100%, 20px 20px;
+    backdrop-filter: blur(var(--menu-blur, 20px));
+    -webkit-backdrop-filter: blur(var(--menu-blur, 20px));
     border: 2px solid var(--border-outer);
     box-shadow:
       inset 0 0 0 1px var(--border-inner),
@@ -249,7 +258,7 @@
     gap: 8px;
     overflow: hidden;
     transition:
-      background-color 0.22s ease,
+      background-color 0.12s ease,
       border-color 0.22s ease;
   }
 
@@ -261,6 +270,11 @@
     gap: 8px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
+    cursor: grab;
+  }
+
+  .header:active {
+    cursor: grabbing;
   }
 
   .brand {
@@ -395,7 +409,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
     gap: 5px;
-    background: var(--card-inner);
+    background: color-mix(in oklab, var(--card-inner) var(--card-inner-opacity, 85%), transparent);
     padding: 4px;
     border-radius: 11px;
     border: 1px solid var(--border);
@@ -448,7 +462,7 @@
   }
 
   .card {
-    background: var(--card);
+    background: color-mix(in oklab, var(--card) var(--card-opacity, 92%), transparent);
     border: 1px solid var(--border-outer);
     box-shadow:
       inset 0 0 0 1px var(--border-inner),
@@ -472,7 +486,7 @@
     justify-content: space-between;
     padding: 3px 8px;
     border-radius: 6px;
-    background: var(--card-inner);
+    background: color-mix(in oklab, var(--card-inner) var(--card-inner-opacity, 85%), transparent);
     border: 1px solid var(--border);
   }
 
@@ -519,7 +533,7 @@
 
   .stat-box {
     position: relative;
-    background: var(--card-inner);
+    background: color-mix(in oklab, var(--card-inner) var(--card-inner-opacity, 85%), transparent);
     border: 1px solid var(--border);
     border-left: 3px solid var(--accent);
     border-radius: 7px;
@@ -674,7 +688,7 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
-    background: var(--card-inner);
+    background: color-mix(in oklab, var(--card-inner) var(--card-inner-opacity, 85%), transparent);
     padding: 4px;
     border-radius: 10px;
     border: 1px solid var(--border);

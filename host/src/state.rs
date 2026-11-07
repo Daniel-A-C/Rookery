@@ -140,6 +140,8 @@ pub struct HostStatus {
 pub struct SettingsPatch {
     pub hotkey: Option<String>,
     pub popover_hotkey: Option<String>,
+    pub popover_opacity: Option<f32>,
+    pub popover_blur: Option<u32>,
     pub active_app: Option<String>,
     pub schedule_mode: Option<ScheduleMode>,
     pub schedule_interval_mins: Option<u32>,

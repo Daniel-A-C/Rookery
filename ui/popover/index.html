@@ -9,7 +9,7 @@
   <body>
     <main id="popover-root" class="popover" data-theme="living-rookery">
       <!-- Thematic Game Header -->
-      <header class="header">
+      <header class="header" data-tauri-drag-region="deep">
         <div class="brand">
           <div class="crest-frame">
             <span class="bird-glyph"><rk-icon id="brand-glyph" name="tree-evergreen"></rk-icon></span>
@@ -27,6 +27,7 @@
           class="settings-toggle-btn"
           type="button"
           aria-expanded="false"
+          data-tauri-drag-region="false"
           title="Open General Settings &amp; System Menu"
         >
           <rk-icon id="settings-toggle-icon" name="settings"></rk-icon>
@@ -347,8 +348,41 @@
           </button>
         </nav>
 
-        <!-- Settings Tab 1: General (Schedule, Audio, Displays) -->
+        <!-- Settings Tab 1: General (Appearance, Schedule, Audio, Displays) -->
         <div id="settings-panel-general" class="settings-panel">
+          <!-- Menu Appearance Card -->
+          <section id="card-appearance" class="card">
+            <div class="section-title">Menu Appearance</div>
+
+            <label class="control-row" for="slider-menu-opacity">
+              <span>Menu Opacity</span>
+              <strong id="val-menu-opacity">92%</strong>
+            </label>
+            <input
+              id="slider-menu-opacity"
+              type="range"
+              min="15"
+              max="100"
+              step="1"
+              value="92"
+              aria-valuetext="92%"
+            />
+
+            <label class="control-row" for="slider-menu-blur">
+              <span>Background Blur</span>
+              <strong id="val-menu-blur">20px</strong>
+            </label>
+            <input
+              id="slider-menu-blur"
+              type="range"
+              min="0"
+              max="64"
+              step="1"
+              value="20"
+              aria-valuetext="20px"
+            />
+          </section>
+
           <!-- Scheduler & Playlist Card -->
           <section id="card-scheduler" class="card">
             <div class="section-title">Playlist &amp; Schedule</div>

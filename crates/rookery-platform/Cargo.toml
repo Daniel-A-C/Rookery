@@ -16,7 +16,7 @@ serde.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSResponder", "NSScreen", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSEvent", "NSGraphicsContext", "NSResponder", "NSScreen", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSProcessInfo", "NSString"] }
 objc2-core-foundation = { version = "0.3", features = ["CFArray", "CFCGTypes", "CFDictionary", "CFNumber", "CFString"] }
 objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay", "CGDisplayConfiguration", "CGEvent", "CGEventSource", "CGEventTypes", "CGGeometry", "CGWindow", "CGWindowLevel"] }
