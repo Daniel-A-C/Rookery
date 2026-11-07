@@ -30,6 +30,7 @@ pub struct CustomShaderScene {
     height: f32,
     scale_factor: f32,
     time: f32,
+    color_phase: f32,
     pulse: f32,
     params: Arc<Mutex<[f32; 4]>>,
 }
@@ -121,6 +122,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {{
             height: 1080.0,
             scale_factor: 1.0,
             time: 0.0,
+            color_phase: initial_params[3],
             pulse: 0.0,
             params,
         })
@@ -136,7 +138,22 @@ impl Scene for CustomShaderScene {
 
     fn update(&mut self, gpu: &Gpu, dt: Duration, input: &SceneInput) -> Activity {
         let dt_secs = dt.as_secs_f32().min(0.2);
-        self.time += dt_secs;
+
+        let mut cur_params = self
+            .params
+            .lock()
+            .map(|p| *p)
+            .unwrap_or([1.0, 1.0, 0.0, 0.0]);
+
+        let speed_mult = cur_params[0].max(0.01);
+        self.time += dt_secs * speed_mult;
+
+        let color_rate = cur_params[2].max(0.0);
+        self.color_phase = (self.color_phase + dt_secs * color_rate).rem_euclid(1000.0);
+        cur_params[3] = self.color_phase;
+        if let Ok(mut guard) = self.params.lock() {
+            guard[3] = self.color_phase;
+        }
 
         if input.action != PointerAction::None {
             self.pulse = 1.0;
@@ -148,12 +165,6 @@ impl Scene for CustomShaderScene {
             .pointer
             .map(|p| (p.x, p.y))
             .unwrap_or((-1000.0, -1000.0));
-
-        let cur_params = self
-            .params
-            .lock()
-            .map(|p| *p)
-            .unwrap_or([1.0, 1.0, 0.0, 0.0]);
 
         let uniforms = CustomShaderUniforms {
             resolution: [self.width, self.height],

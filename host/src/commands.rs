@@ -287,6 +287,7 @@ pub fn reload_catalog(
         .map(|i| i.settings.active_app.clone())
         .unwrap_or_else(|_| "living-rookery".into());
     if manifests.iter().any(|m| m.metadata.id == active_app) {
+        crate::webview_sandbox::clear_loaded_webview_cache();
         let _ = state.switch_app(&app, &active_app);
     }
     state.emit_status_if_popover_open(&app);

@@ -384,10 +384,10 @@ impl HostState {
                     Effect::Promote => {
                         if let Ok(inner) = state.inner.lock() {
                             for d in inner.displays.values() {
-                                crate::webview_sandbox::set_interactive_webviews(
+                                if !crate::webview_sandbox::set_interactive_webviews(
                                     &app_clone, true, &d.info,
-                                );
-                                if let Err(e) = state.layer.promote_interactive(&d.window, &d.info)
+                                ) && let Err(e) =
+                                    state.layer.promote_interactive(&d.window, &d.info)
                                 {
                                     log::error!("promote failed on {}: {e:#}", d.info.id);
                                 }
@@ -397,10 +397,10 @@ impl HostState {
                     Effect::Demote => {
                         if let Ok(inner) = state.inner.lock() {
                             for d in inner.displays.values() {
-                                crate::webview_sandbox::set_interactive_webviews(
+                                if !crate::webview_sandbox::set_interactive_webviews(
                                     &app_clone, false, &d.info,
-                                );
-                                if let Err(e) = state.layer.demote_wallpaper(&d.window, &d.info) {
+                                ) && let Err(e) = state.layer.demote_wallpaper(&d.window, &d.info)
+                                {
                                     log::error!("demote failed on {}: {e:#}", d.info.id);
                                 }
                             }

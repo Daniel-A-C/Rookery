@@ -617,7 +617,11 @@ function applyCatalog(): void {
       crestGradient: m.theme?.crest_gradient || existing?.crestGradient,
     };
 
-    // Ensure card exists inside realmCardsContainer
+    // Ensure card exists inside realmCardsContainer (rebuild dynamic cards when manifest updates)
+    if (cards[m.metadata.id]?.classList.contains("app-dynamic-card")) {
+      cards[m.metadata.id].remove();
+      delete cards[m.metadata.id];
+    }
     if (!cards[m.metadata.id]) {
       const themeMeta = appThemes[m.metadata.id];
       const card = document.createElement("section");
@@ -698,10 +702,7 @@ function applyCatalog(): void {
         input.max = String(sl.max ?? 100);
         input.step = String(sl.step ?? 1);
         input.value = String(sl.default_val ?? 0);
-        input.addEventListener("input", () => {
-          valBadge.textContent = `${input.value}${sl.unit ?? ""}`;
-        });
-        input.addEventListener("change", async () => {
+        const sendSliderUpdate = async () => {
           try {
             const s = await api.executeAppAction(m.metadata.id, sl.id, {
               value: Number(input.value),
@@ -710,6 +711,13 @@ function applyCatalog(): void {
           } catch (e) {
             console.error("slider action error:", e);
           }
+        };
+        input.addEventListener("input", () => {
+          valBadge.textContent = `${input.value}${sl.unit ?? ""}`;
+          void sendSliderUpdate();
+        });
+        input.addEventListener("change", () => {
+          void sendSliderUpdate();
         });
         card.appendChild(input);
       }

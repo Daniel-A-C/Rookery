@@ -106,6 +106,9 @@ impl DesktopLayer for MacDesktopLayer {
         ns_win.setCollectionBehavior(desktop_collection_behavior());
         ns_win.setIgnoresMouseEvents(true);
         ns_win.orderBack(None);
+        if let Ok(mut map) = WALLPAPER_WINDOWS.lock() {
+            map.insert(display.id.clone(), Retained::as_ptr(&ns_win) as usize);
+        }
         log::info!(
             "demoted macOS wallpaper window on {} back to level {}",
             display.id,

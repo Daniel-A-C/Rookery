@@ -5,8 +5,9 @@
 //! traversal validation, manages the lifecycle of transparent desktop-level WebviewWindows,
 //! and dispatches DOM CustomEvents for popover controls and direct interaction.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use rookery_core::interaction::InteractionEvent;
 use rookery_platform::DisplayInfo;
@@ -19,6 +20,18 @@ use tauri::{
 use crate::state::HostState;
 
 static APPS_DIR: OnceLock<PathBuf> = OnceLock::new();
+static LOADED_WEBVIEW_APPS: OnceLock<Mutex<BTreeMap<String, String>>> = OnceLock::new();
+
+fn loaded_webview_apps() -> &'static Mutex<BTreeMap<String, String>> {
+    LOADED_WEBVIEW_APPS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Clear tracked webview app IDs so the next `update_webview_wallpaper` call forces a reload.
+pub fn clear_loaded_webview_cache() {
+    if let Ok(mut map) = loaded_webview_apps().lock() {
+        map.clear();
+    }
+}
 
 /// Initialize the global apps directory for custom protocol resolution.
 pub fn init_apps_dir(dir: PathBuf) {
@@ -284,6 +297,7 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
     let state = app.state::<HostState>();
 
     if !is_canvas {
+        clear_loaded_webview_cache();
         // Destroy all webview wallpaper windows to free WebKit / WebView2 memory
         let mut destroyed_any = false;
         for (label, window) in app.webview_windows() {
@@ -299,7 +313,7 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
                 if !is_vis {
                     let _ = d.window.show();
                 }
-                let _ = state.layer.demote_wallpaper(&d.window, &d.info);
+                let _ = state.layer.attach_wallpaper(&d.window, &d.info);
             }
         }
         return;
@@ -315,15 +329,46 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
         return;
     };
 
+    // Clean up any webview wallpaper windows belonging to unplugged displays
+    let expected_labels: BTreeSet<String> = inner
+        .displays
+        .values()
+        .map(|d| webview_wallpaper_label(&d.info.id.0))
+        .collect();
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("webview-wallpaper-") && !expected_labels.contains(&label) {
+            if let Ok(mut map) = loaded_webview_apps().lock() {
+                map.remove(&label);
+            }
+            let _ = window.destroy();
+        }
+    }
+
     for d in inner.displays.values() {
-        let _ = d.window.hide();
+        if d.window.is_visible().unwrap_or(true) {
+            let _ = d.window.hide();
+        }
 
         let init_script = sdk_init_script(active_app);
         let label = webview_wallpaper_label(&d.info.id.0);
         if let Some(existing) = app.get_webview_window(&label) {
-            let _ = existing.navigate(url.clone());
-            let _ = existing.eval(&init_script);
-            let _ = existing.show();
+            let already_loaded = loaded_webview_apps()
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&label).cloned())
+                .as_deref()
+                == Some(active_app);
+
+            if !already_loaded {
+                if let Ok(mut map) = loaded_webview_apps().lock() {
+                    map.insert(label.clone(), active_app.to_string());
+                }
+                let _ = existing.navigate(url.clone());
+                let _ = existing.eval(&init_script);
+            }
+            if !existing.is_visible().unwrap_or(true) {
+                let _ = existing.show();
+            }
             continue;
         }
 
@@ -373,6 +418,10 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
             log::error!("failed to attach webview wallpaper on {}: {e:#}", d.info.id);
         }
 
+        if let Ok(mut map) = loaded_webview_apps().lock() {
+            map.insert(label, active_app.to_string());
+        }
+
         let app_for_ev = app.clone();
         window.on_window_event(move |ev| {
             if let WindowEvent::Focused(false) = ev {
@@ -384,7 +433,8 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
 }
 
 /// Promote or demote webview wallpaper windows during direct interaction transitions.
-pub fn set_interactive_webviews(app: &AppHandle, promote: bool, info: &DisplayInfo) {
+/// Returns `true` if a webview wallpaper window existed for `info` and was updated.
+pub fn set_interactive_webviews(app: &AppHandle, promote: bool, info: &DisplayInfo) -> bool {
     let label = webview_wallpaper_label(&info.id.0);
     if let Some(win) = app.get_webview_window(&label) {
         let state = app.state::<HostState>();
@@ -396,6 +446,9 @@ pub fn set_interactive_webviews(app: &AppHandle, promote: bool, info: &DisplayIn
             let _ = state.layer.demote_wallpaper(&win, info);
             let _ = win.eval("window.dispatchEvent(new CustomEvent('rookery-interactive', { detail: { interactive: false } }));");
         }
+        true
+    } else {
+        false
     }
 }
 

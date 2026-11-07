@@ -61,38 +61,85 @@
     const PALETTES = [
       {
         name: 'Emerald Borealis',
-        top: 'rgba(0, 255, 135, ',
-        mid: 'rgba(96, 239, 255, ',
-        bottom: 'rgba(110, 72, 170, ',
-        glow: '#00ff87',
+        topRgb: [0, 255, 135],
+        midRgb: [96, 239, 255],
+        bottomRgb: [110, 72, 170],
+        glowRgb: [0, 255, 135],
       },
       {
         name: 'Amethyst Twilight',
-        top: 'rgba(196, 113, 237, ',
-        mid: 'rgba(246, 79, 89, ',
-        bottom: 'rgba(18, 194, 233, ',
-        glow: '#c471ed',
+        topRgb: [196, 113, 237],
+        midRgb: [246, 79, 89],
+        bottomRgb: [18, 194, 233],
+        glowRgb: [196, 113, 237],
       },
       {
         name: 'Solar Flare',
-        top: 'rgba(255, 210, 0, ',
-        mid: 'rgba(247, 151, 30, ',
-        bottom: 'rgba(235, 87, 87, ',
-        glow: '#ffd200',
+        topRgb: [255, 210, 0],
+        midRgb: [247, 151, 30],
+        bottomRgb: [235, 87, 87],
+        glowRgb: [255, 210, 0],
       },
       {
         name: 'Arctic Cyan',
-        top: 'rgba(0, 198, 255, ',
-        mid: 'rgba(0, 114, 255, ',
-        bottom: 'rgba(142, 45, 226, ',
-        glow: '#00c6ff',
+        topRgb: [0, 198, 255],
+        midRgb: [0, 114, 255],
+        bottomRgb: [142, 45, 226],
+        glowRgb: [0, 198, 255],
       }
     ];
 
     let currentPaletteIdx = 0;
-    let activePalette = PALETTES[0];
+    let colorPhase = 0.0;
+    let wavePhase = 0.0;
     let waveSpeedMult = 1.0;
+    let colorSpeedMult = 0.5;
     let meteorsSeen = 0;
+
+    function lerpRgb(a, b, t) {
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * t),
+        Math.round(a[1] + (b[1] - a[1]) * t),
+        Math.round(a[2] + (b[2] - a[2]) * t),
+      ];
+    }
+
+    function rgbToHex(rgb) {
+      return (
+        '#' +
+        rgb
+          .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0'))
+          .join('')
+      );
+    }
+
+    function computeBlendedPalette(phase) {
+      const len = PALETTES.length;
+      const wrapped = ((phase % len) + len) % len;
+      const idx0 = Math.floor(wrapped);
+      const idx1 = (idx0 + 1) % len;
+      const frac = wrapped - idx0;
+      const smooth = frac * frac * (3 - 2 * frac);
+
+      const p0 = PALETTES[idx0];
+      const p1 = PALETTES[idx1];
+      const top = lerpRgb(p0.topRgb, p1.topRgb, smooth);
+      const mid = lerpRgb(p0.midRgb, p1.midRgb, smooth);
+      const bottom = lerpRgb(p0.bottomRgb, p1.bottomRgb, smooth);
+      const glow = lerpRgb(p0.glowRgb, p1.glowRgb, smooth);
+      const nearestIdx = Math.round(wrapped) % len;
+
+      return {
+        nearestIdx,
+        name: PALETTES[nearestIdx].name,
+        top: `rgba(${top[0]}, ${top[1]}, ${top[2]}, `,
+        mid: `rgba(${mid[0]}, ${mid[1]}, ${mid[2]}, `,
+        bottom: `rgba(${bottom[0]}, ${bottom[1]}, ${bottom[2]}, `,
+        glow: rgbToHex(glow),
+      };
+    }
+
+    let activePalette = computeBlendedPalette(0);
 
     function syncTelemetry() {
       if (window.Rookery && typeof window.Rookery.setStats === 'function') {
@@ -206,8 +253,9 @@
         spawnSparks(cx, cy, 140, 8);
         addRipple(cx, cy);
       } else if (action === 'cycle_aurora') {
-        currentPaletteIdx = (currentPaletteIdx + 1) % PALETTES.length;
-        activePalette = PALETTES[currentPaletteIdx];
+        colorPhase = (Math.floor(colorPhase) + 1) % PALETTES.length;
+        activePalette = computeBlendedPalette(colorPhase);
+        currentPaletteIdx = activePalette.nearestIdx;
         spawnSparks(width * 0.5, height * 0.3, 40, 3);
         syncTelemetry();
       } else if (action === 'shooting_star') {
@@ -222,6 +270,11 @@
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed > 0) {
           waveSpeedMult = parsed;
+        }
+      } else if (id === 'color_speed') {
+        const parsed = parseFloat(value);
+        if (!Number.isNaN(parsed) && parsed >= 0) {
+          colorSpeedMult = parsed;
         }
       }
     });
@@ -244,7 +297,7 @@
 
     // Multi-Layer Aurora Ribbons Wave Equation
     function getWaveY(x, layerIdx, time) {
-      const t = time * 0.0006 * waveSpeedMult;
+      const t = wavePhase;
       let y = Math.sin(x * 0.0022 + t * 1.2 + layerIdx * 1.5) * 60;
       y += Math.sin(x * 0.0045 - t * 0.8 + layerIdx * 2.2) * 35;
       y += Math.cos(x * 0.0011 + t * 0.4) * 50;
@@ -276,6 +329,16 @@
     function render(now) {
       const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
+
+      wavePhase += dt * 0.6 * waveSpeedMult;
+      if (colorSpeedMult > 0) {
+        colorPhase = (colorPhase + dt * 0.12 * colorSpeedMult) % PALETTES.length;
+        activePalette = computeBlendedPalette(colorPhase);
+        if (activePalette.nearestIdx !== currentPaletteIdx) {
+          currentPaletteIdx = activePalette.nearestIdx;
+          syncTelemetry();
+        }
+      }
 
       // Clear with subtle nocturnal deep gradient
       const bgGrad = ctx.createLinearGradient(0, 0, 0, height);

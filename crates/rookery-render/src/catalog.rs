@@ -134,7 +134,11 @@ impl CatalogState {
                 .entry(app_id.to_string())
                 .or_insert_with(|| Arc::new(Mutex::new(computed)));
             if let Ok(mut guard) = entry.lock() {
+                let preserved_phase = guard[3];
                 *guard = computed;
+                if computed[3] == 0.0 {
+                    guard[3] = preserved_phase;
+                }
             }
             entry.clone()
         } else {
@@ -164,7 +168,11 @@ impl CatalogState {
                 .entry(app_id.to_string())
                 .or_insert_with(|| Arc::new(Mutex::new(computed)));
             if let Ok(mut guard) = entry.lock() {
+                let preserved_phase = guard[3];
                 *guard = computed;
+                if computed[3] == 0.0 {
+                    guard[3] = preserved_phase;
+                }
             }
         }
 

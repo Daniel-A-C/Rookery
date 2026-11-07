@@ -16,12 +16,20 @@ fn hash21(p: vec2<f32>) -> f32 {
     return fract(q.x + q.y);
 }
 
+fn rotate_hue(c: vec3<f32>, angle: f32) -> vec3<f32> {
+    let k = vec3<f32>(0.57735026, 0.57735026, 0.57735026);
+    let cos_a = cos(angle);
+    let sin_a = sin(angle);
+    let rotated = c * cos_a + cross(k, c) * sin_a + k * dot(k, c) * (1.0 - cos_a);
+    return clamp(rotated, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let aspect = u.resolution.x / max(u.resolution.y, 1.0);
     let p = vec2<f32>((uv.x - 0.5) * aspect, uv.y - 0.5);
-    let speed_mult = max(u.params.x, 0.1);
     let glow_mult = max(u.params.y, 0.1);
+    let hue_angle = u.params.w * 0.35;
 
     // Deep dusk gradient background
     var col = mix(vec3<f32>(0.01, 0.02, 0.05), vec3<f32>(0.05, 0.03, 0.08), uv.y);
@@ -32,7 +40,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         let ptr_p = vec2<f32>((ptr_uv.x - 0.5) * aspect, ptr_uv.y - 0.5);
         let dist = length(p - ptr_p);
         let glow = 0.015 / (dist + 0.02);
-        col += vec3<f32>(0.1, 0.3, 0.25) * glow;
+        col += rotate_hue(vec3<f32>(0.1, 0.3, 0.25), hue_angle) * glow;
     }
 
     // Expanding light wave when action / pulse is triggered
@@ -40,13 +48,13 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     if (excite > 0.01) {
         let wave_r = (1.0 - u.action) * 0.85;
         let ring = exp(-abs(length(p) - wave_r) * 18.0) * u.action;
-        col += vec3<f32>(0.25, 0.55, 0.30) * ring * 0.35;
+        col += rotate_hue(vec3<f32>(0.25, 0.55, 0.30), hue_angle) * ring * 0.35;
     }
 
     // Swarm of procedural fireflies
     for (var i = 0; i < 28; i++) {
         let fi = f32(i);
-        let speed = (0.3 + hash21(vec2<f32>(fi, 1.0)) * 0.4) * speed_mult;
+        let speed = 0.3 + hash21(vec2<f32>(fi, 1.0)) * 0.4;
         let t = u.time * speed + fi * 2.39;
 
         let fx = sin(t * 0.7 + fi) * 0.6 * aspect + cos(t * 0.3) * 0.1;
@@ -58,7 +66,8 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         let boost = (1.0 + excite * 1.6) * glow_mult;
         let intensity = (0.0018 / (d * d + 0.0003)) * (pulse * 0.7 + 0.3) * boost;
 
-        let firefly_col = mix(vec3<f32>(0.4, 0.9, 0.2), vec3<f32>(0.9, 0.8, 0.2), pulse);
+        let base_col = mix(vec3<f32>(0.4, 0.9, 0.2), vec3<f32>(0.9, 0.8, 0.2), pulse);
+        let firefly_col = rotate_hue(base_col, hue_angle);
         col += firefly_col * intensity;
     }
 
