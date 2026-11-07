@@ -80,14 +80,33 @@ pub fn app_webview_url(app_id: &str) -> Result<tauri::Url, tauri::Url> {
     tauri::Url::parse(&raw).map_err(|_| tauri::Url::parse("about:blank").unwrap())
 }
 
+type StatsCallback<'a> = &'a dyn Fn(&str, BTreeMap<String, String>);
+
 /// Custom URI scheme protocol handler for `rookery-app://`.
 pub fn handle_custom_protocol(request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-    handle_custom_protocol_with_app(None, request)
+    handle_custom_protocol_inner(None, None, request)
 }
 
 /// Custom URI scheme protocol handler with optional `AppHandle` for live SDK telemetry & state persistence.
 pub fn handle_custom_protocol_with_app(
     app: Option<&AppHandle>,
+    request: &Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
+    let Some(app_handle) = app else {
+        return handle_custom_protocol_inner(None, None, request);
+    };
+    let state = app_handle.state::<HostState>();
+    let state_dir = state.settings_path.parent().map(|p| p.join("apps_state"));
+    let on_stats = |app_id: &str, string_stats: BTreeMap<String, String>| {
+        state.catalog_state.set_stats(app_id, string_stats);
+        state.emit_status_if_popover_open(app_handle);
+    };
+    handle_custom_protocol_inner(state_dir.as_deref(), Some(&on_stats), request)
+}
+
+fn handle_custom_protocol_inner(
+    state_dir: Option<&Path>,
+    on_stats: Option<StatsCallback<'_>>,
     request: &Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     let path = request.uri().path().trim_start_matches('/');
@@ -102,7 +121,7 @@ pub fn handle_custom_protocol_with_app(
 
     // Handle sandboxed SDK bridge endpoints (`/__sdk/stats` and `/__sdk/state`)
     if let Some(sdk_endpoint) = file_subpath.strip_prefix("__sdk/") {
-        return handle_sdk_endpoint(app, app_id, sdk_endpoint, request);
+        return handle_sdk_endpoint(state_dir, on_stats, app_id, sdk_endpoint, request);
     }
 
     let apps_dir = get_apps_dir();
@@ -129,7 +148,8 @@ pub fn handle_custom_protocol_with_app(
 }
 
 fn handle_sdk_endpoint(
-    app: Option<&AppHandle>,
+    state_dir: Option<&Path>,
+    on_stats: Option<StatsCallback<'_>>,
     app_id: &str,
     endpoint: &str,
     request: &Request<Vec<u8>>,
@@ -145,12 +165,11 @@ fn handle_sdk_endpoint(
 
     match endpoint {
         "stats" => {
-            if let Some(app_handle) = app
-                && let Ok(parsed) = serde_json::from_slice::<
-                    std::collections::BTreeMap<String, serde_json::Value>,
-                >(request.body())
+            if let Some(cb) = on_stats
+                && let Ok(parsed) =
+                    serde_json::from_slice::<BTreeMap<String, serde_json::Value>>(request.body())
             {
-                let mut string_stats = std::collections::BTreeMap::new();
+                let mut string_stats = BTreeMap::new();
                 for (k, v) in parsed {
                     let s = match v {
                         serde_json::Value::String(s) => s,
@@ -158,14 +177,12 @@ fn handle_sdk_endpoint(
                     };
                     string_stats.insert(k, s);
                 }
-                let state = app_handle.state::<HostState>();
-                state.catalog_state.set_stats(app_id, string_stats);
-                state.emit_status_if_popover_open(app_handle);
+                cb(app_id, string_stats);
             }
             json_ok_response(b"{\"ok\":true}".to_vec())
         }
         "state" => {
-            let state_path = app_state_file_path(app, app_id);
+            let state_path = app_state_file_path(state_dir, app_id);
             if request.method() == "POST" {
                 let body = request.body();
                 if body.len() <= 512 * 1024
@@ -186,12 +203,9 @@ fn handle_sdk_endpoint(
     }
 }
 
-fn app_state_file_path(app: Option<&AppHandle>, app_id: &str) -> PathBuf {
-    if let Some(app_handle) = app {
-        let state = app_handle.state::<HostState>();
-        if let Some(parent) = state.settings_path.parent() {
-            return parent.join("apps_state").join(format!("{app_id}.json"));
-        }
+fn app_state_file_path(state_dir: Option<&Path>, app_id: &str) -> PathBuf {
+    if let Some(dir) = state_dir {
+        return dir.join(format!("{app_id}.json"));
     }
     get_apps_dir().join(".state").join(format!("{app_id}.json"))
 }
