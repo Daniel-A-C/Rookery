@@ -212,7 +212,6 @@ struct RenderThread {
     prev_left_down: bool,
     prev_right_down: bool,
     vignette: Option<(wgpu::TextureFormat, Vignette)>,
-    started: Instant,
 }
 
 impl RenderThread {
@@ -236,7 +235,6 @@ impl RenderThread {
             prev_left_down: false,
             prev_right_down: false,
             vignette: None,
-            started: Instant::now(),
         }
     }
 
@@ -459,7 +457,6 @@ impl RenderThread {
             PointerAction::None
         };
 
-        let elapsed = self.started.elapsed().as_secs_f32() % 4096.0;
         for d in self.displays.values_mut() {
             let Some(due) = d.next_due else { continue };
             if due > now {
@@ -526,7 +523,6 @@ impl RenderThread {
                         &mut encoder,
                         (d.config.width, d.config.height),
                         d.size.scale_factor,
-                        elapsed,
                         self.theme_color,
                     );
                 }

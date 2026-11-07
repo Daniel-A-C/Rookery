@@ -314,11 +314,7 @@ pub fn activate_app_and_focus_window(window: &dyn HasWindowHandle) -> Result<()>
 
 unsafe extern "C" {
     fn CGSMainConnectionID() -> u32;
-    fn CGSSetWindowBackgroundBlurRadius(
-        connection: u32,
-        window_number: usize,
-        radius: i32,
-    ) -> i32;
+    fn CGSSetWindowBackgroundBlurRadius(connection: u32, window_number: usize, radius: i32) -> i32;
 }
 
 pub fn style_popover_window(window: &dyn HasWindowHandle, corner_radius: f64) -> Result<()> {

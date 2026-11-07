@@ -60,7 +60,6 @@ impl Vignette {
         encoder: &mut wgpu::CommandEncoder,
         size: (u32, u32),
         scale: f64,
-        time: f32,
         color: [f32; 3],
     ) {
         gpu.queue.write_buffer(
@@ -68,7 +67,7 @@ impl Vignette {
             0,
             bytemuck::bytes_of(&Uniforms {
                 resolution: [size.0 as f32, size.1 as f32],
-                time,
+                time: 0.0,
                 scale: scale as f32,
                 color: [color[0], color[1], color[2], 1.0],
             }),
