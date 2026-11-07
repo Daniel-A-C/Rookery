@@ -193,9 +193,7 @@ fn app_state_file_path(app: Option<&AppHandle>, app_id: &str) -> PathBuf {
             return parent.join("apps_state").join(format!("{app_id}.json"));
         }
     }
-    get_apps_dir()
-        .join(".state")
-        .join(format!("{app_id}.json"))
+    get_apps_dir().join(".state").join(format!("{app_id}.json"))
 }
 
 fn json_ok_response(body: Vec<u8>) -> Response<Vec<u8>> {

@@ -399,7 +399,8 @@ impl HostState {
                             for d in inner.displays.values() {
                                 if !crate::webview_sandbox::set_interactive_webviews(
                                     &app_clone, false, &d.info,
-                                ) && let Err(e) = state.layer.demote_wallpaper(&d.window, &d.info)
+                                ) && let Err(e) =
+                                    state.layer.demote_wallpaper(&d.window, &d.info)
                                 {
                                     log::error!("demote failed on {}: {e:#}", d.info.id);
                                 }

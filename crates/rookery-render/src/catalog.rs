@@ -22,6 +22,12 @@ use crate::koi_scene::KoiPondScene;
 use crate::nebula_scene::CosmicNebulaScene;
 use crate::orbital_scene::OrbitalHavenScene;
 
+/// Shared `[f32; 4]` uniform parameter slot handle for an external shader app.
+pub type SharedShaderParams = Arc<Mutex<[f32; 4]>>;
+
+/// Per-app key-value map (`app_id -> key -> value`).
+pub type AppStringMap = BTreeMap<String, BTreeMap<String, String>>;
+
 /// Shared container holding simulation state for all installed catalog apps.
 #[derive(Clone)]
 pub struct CatalogState {
@@ -31,11 +37,11 @@ pub struct CatalogState {
     pub orbital: Arc<Mutex<OrbitalHavenState>>,
     pub audio: Option<AudioEngine>,
     /// Per-app control values (`app_id -> control_id -> string_value`).
-    pub custom_controls: Arc<Mutex<BTreeMap<String, BTreeMap<String, String>>>>,
+    pub custom_controls: Arc<Mutex<AppStringMap>>,
     /// Per-app shader uniform parameter slots (`app_id -> [f32; 4]`).
-    pub custom_params: Arc<Mutex<BTreeMap<String, Arc<Mutex<[f32; 4]>>>>>,
+    pub custom_params: Arc<Mutex<BTreeMap<String, SharedShaderParams>>>,
     /// Per-app live telemetry stats (`app_id -> stat_id -> formatted_value`).
-    pub custom_stats: Arc<Mutex<BTreeMap<String, BTreeMap<String, String>>>>,
+    pub custom_stats: Arc<Mutex<AppStringMap>>,
 }
 
 impl CatalogState {

@@ -421,12 +421,9 @@ pub fn execute_app_action(
                         serde_json::Value::String(s) => s.clone(),
                         v => v.to_string(),
                     };
-                    state.catalog_state.set_control_value(
-                        other,
-                        &action,
-                        val_str,
-                        Some(&manifest),
-                    );
+                    state
+                        .catalog_state
+                        .set_control_value(other, &action, val_str, Some(&manifest));
                     crate::webview_sandbox::dispatch_control(&app, &action, val);
                 } else {
                     crate::webview_sandbox::dispatch_action(&app, &action);
