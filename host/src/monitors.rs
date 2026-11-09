@@ -130,6 +130,7 @@ pub fn reconcile_on_main_thread(app: &AppHandle) {
                     let _ = existing
                         .window
                         .set_size(PhysicalSize::new(info.width_px, info.height_px));
+                    let _ = state.layer.attach_wallpaper(&existing.window, &existing.info);
                     Some(info.clone())
                 } else {
                     None
@@ -167,6 +168,7 @@ pub fn reconcile_on_main_thread(app: &AppHandle) {
             .shadow(false)
             .focused(false)
             .visible(true)
+            .position(pos.x as f64, pos.y as f64)
             .inner_size(logical_w, logical_h)
             .build()
         {

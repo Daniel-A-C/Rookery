@@ -266,6 +266,9 @@ const btnPrune = el<HTMLButtonElement>("btn-prune");
 const btnPlant = el<HTMLButtonElement>("btn-plant");
 const btnPanLeft = el<HTMLButtonElement>("btn-pan-left");
 const btnPanRight = el<HTMLButtonElement>("btn-pan-right");
+const selectRookeryStyle = el<HTMLSelectElement>("select-rookery-style");
+const btnStylePrev = el<HTMLButtonElement>("btn-style-prev");
+const btnStyleNext = el<HTMLButtonElement>("btn-style-next");
 const seedNotification = el<HTMLDivElement>("seed-notification");
 
 // Koi Pond Stats & Controls
@@ -891,6 +894,12 @@ function renderStatus(s: HostStatus): void {
     statBranches.textContent = String(s.rookery.total_branches);
     statFoliage.textContent = String(s.rookery.total_foliage);
     statBirds.textContent = `${s.rookery.birds_active} birds`;
+    if (
+      typeof s.rookery.aesthetic_style === "number" &&
+      document.activeElement !== selectRookeryStyle
+    ) {
+      selectRookeryStyle.value = String(s.rookery.aesthetic_style);
+    }
   }
 
   // Koi Pond Stats
@@ -1117,6 +1126,42 @@ btnPanRight.addEventListener("click", async () => {
     showNotification("caret-right", "Forest horizon panned east");
   } catch (err) {
     console.error("panForest error:", err);
+  }
+});
+
+selectRookeryStyle.addEventListener("change", async () => {
+  try {
+    const styleIdx = Number(selectRookeryStyle.value);
+    const s = await api.executeAppAction("living-rookery", "set_style", {
+      value: styleIdx,
+    });
+    renderStatus(s);
+    const styleName = s.rookery?.aesthetic_style_name ?? `Style ${styleIdx + 1}`;
+    showNotification("palette", `Switched to ${styleName}`);
+  } catch (err) {
+    console.error("set_style error:", err);
+  }
+});
+
+btnStylePrev.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "prev_style");
+    renderStatus(s);
+    const styleName = s.rookery?.aesthetic_style_name ?? "Previous Style";
+    showNotification("palette", `Mockup: ${styleName}`);
+  } catch (err) {
+    console.error("prev_style error:", err);
+  }
+});
+
+btnStyleNext.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "cycle_style");
+    renderStatus(s);
+    const styleName = s.rookery?.aesthetic_style_name ?? "Next Style";
+    showNotification("palette", `Mockup: ${styleName}`);
+  } catch (err) {
+    console.error("cycle_style error:", err);
   }
 });
 

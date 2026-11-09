@@ -322,6 +322,22 @@ impl AppCatalog {
                         icon: Some("caret-right".into()),
                         tooltip: Some("Explore the forest to the right".into()),
                     },
+                    AppControl::Select {
+                        id: "aesthetic_style".into(),
+                        label: "Aesthetic Mockup".into(),
+                        options: rookery_core::world::ROOKERY_STYLE_NAMES
+                            .iter()
+                            .enumerate()
+                            .map(|(i, n)| format!("{i}: {n}"))
+                            .collect(),
+                        default_val: "0: Classic SDF Woodland".into(),
+                    },
+                    AppControl::Button {
+                        id: "cycle_style".into(),
+                        label: "Next Mockup".into(),
+                        icon: Some("palette".into()),
+                        tooltip: Some("Cycle through the 8 ASCII aesthetic mock-up styles".into()),
+                    },
                 ],
                 budgets: AppBudgets {
                     target_fps: 30,

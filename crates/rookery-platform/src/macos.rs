@@ -8,9 +8,10 @@ use anyhow::{Context, Result, bail};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSScreen, NSView,
+    NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
     CGDisplayIsAsleep, CGEvent, CGEventSource, CGEventSourceStateID, CGMainDisplayID,
@@ -51,7 +52,42 @@ fn desktop_collection_behavior() -> NSWindowCollectionBehavior {
     NSWindowCollectionBehavior::CanJoinAllSpaces
         | NSWindowCollectionBehavior::Stationary
         | NSWindowCollectionBehavior::IgnoresCycle
-        | NSWindowCollectionBehavior::FullScreenNone
+        | NSWindowCollectionBehavior::FullScreenAuxiliary
+}
+
+fn set_window_display_frame(ns_win: &NSWindow, display: &DisplayInfo) {
+    if let Some(mtm) = MainThreadMarker::new() {
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens
+            .firstObject()
+            .map(|s| s.frame().size.height)
+            .unwrap_or(display.bounds_native.height);
+        let target_cocoa_y = primary_h - display.bounds_native.y - display.bounds_native.height;
+
+        let mut target_frame = NSRect::new(
+            NSPoint::new(display.bounds_native.x, target_cocoa_y),
+            NSSize::new(display.bounds_native.width, display.bounds_native.height),
+        );
+
+        for screen in screens.iter() {
+            let f = screen.frame();
+            if (f.origin.x - display.bounds_native.x).abs() < 1.0
+                && (f.origin.y - target_cocoa_y).abs() < 1.0
+            {
+                target_frame = f;
+                break;
+            }
+        }
+
+        let cur = ns_win.frame();
+        if (cur.origin.x - target_frame.origin.x).abs() > 0.5
+            || (cur.origin.y - target_frame.origin.y).abs() > 0.5
+            || (cur.size.width - target_frame.size.width).abs() > 0.5
+            || (cur.size.height - target_frame.size.height).abs() > 0.5
+        {
+            ns_win.setFrame_display(target_frame, false);
+        }
+    }
 }
 
 impl DesktopLayer for MacDesktopLayer {
@@ -62,6 +98,9 @@ impl DesktopLayer for MacDesktopLayer {
         ns_win.setCollectionBehavior(desktop_collection_behavior());
         ns_win.setIgnoresMouseEvents(true);
         ns_win.setHasShadow(false);
+
+        set_window_display_frame(&ns_win, display);
+
         ns_win.orderBack(None);
 
         if let Ok(mut map) = WALLPAPER_WINDOWS.lock() {
@@ -86,6 +125,7 @@ impl DesktopLayer for MacDesktopLayer {
         ns_win.setLevel(level);
         ns_win.setCollectionBehavior(desktop_collection_behavior());
         ns_win.setIgnoresMouseEvents(false);
+        set_window_display_frame(&ns_win, display);
         if let Some(mtm) = MainThreadMarker::new() {
             let app = NSApplication::sharedApplication(mtm);
             app.activate();
@@ -105,6 +145,7 @@ impl DesktopLayer for MacDesktopLayer {
         ns_win.setLevel(desktop_level);
         ns_win.setCollectionBehavior(desktop_collection_behavior());
         ns_win.setIgnoresMouseEvents(true);
+        set_window_display_frame(&ns_win, display);
         ns_win.orderBack(None);
         if let Ok(mut map) = WALLPAPER_WINDOWS.lock() {
             map.insert(display.id.clone(), Retained::as_ptr(&ns_win) as usize);

@@ -111,3 +111,59 @@ fn gif_and_png_encoding_smoke_test() {
     assert!(stream_mp4_path.exists());
     assert!(std::fs::metadata(&stream_mp4_path).unwrap().len() > 0);
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn living_rookery_all_aesthetic_styles_render_and_export() {
+    let gpu = Gpu::new_blocking().expect("GPU");
+    let mut w = WorldState::new(42);
+    // Advance several growth epochs so the tree has lush mature boughs, foliage, nests, houses, and birds
+    for _ in 0..5 {
+        w.on_wake(86_400.0);
+    }
+    let world = Arc::new(Mutex::new(w));
+
+    let width = 1280u32;
+    let height = 720u32;
+    let mut scene = LivingRookeryScene::new(&gpu, OFFSCREEN_FORMAT, world.clone());
+    scene.resize(&gpu, width, height, 1.0);
+    let off = Offscreen::new(&gpu, width, height);
+    let dt = Duration::from_millis(33);
+
+    let snapshot_dir = std::env::var("ROOKERY_SNAPSHOT_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(ref dir) = snapshot_dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    let mut rendered_frames = Vec::new();
+    for style_idx in 0..rookery_core::world::ROOKERY_STYLE_COUNT {
+        if let Ok(mut wg) = world.lock() {
+            wg.set_aesthetic_style(style_idx);
+        }
+        let frame = off.run(&gpu, &mut scene, 2, dt).unwrap();
+        let luma = mean_luma(&frame);
+        assert!(
+            luma > 1.5 && luma < 245.0,
+            "Style {style_idx} mean luma {luma} out of expected range"
+        );
+
+        if let Some(ref dir) = snapshot_dir {
+            let png_path = dir.join(format!("rookery_style_{style_idx}.png"));
+            rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
+        }
+        rendered_frames.push(frame);
+    }
+
+    // Verify each style produces a visually distinct frame from the previous style
+    for i in 1..rendered_frames.len() {
+        let d = diff(&rendered_frames[i - 1], &rendered_frames[i]);
+        assert!(
+            d > 1.0,
+            "Style {} and Style {} look too similar (diff = {d})",
+            i - 1,
+            i
+        );
+    }
+}

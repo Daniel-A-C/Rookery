@@ -361,6 +361,11 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
             let _ = d.window.hide();
         }
 
+        let logical_w = d.info.width_px as f64 / d.info.scale_factor;
+        let logical_h = d.info.height_px as f64 / d.info.scale_factor;
+        let phys_x = (d.info.bounds_native.x * d.info.scale_factor).round() as i32;
+        let phys_y = (d.info.bounds_native.y * d.info.scale_factor).round() as i32;
+
         let init_script = sdk_init_script(active_app);
         let label = webview_wallpaper_label(&d.info.id.0);
         if let Some(existing) = app.get_webview_window(&label) {
@@ -384,9 +389,6 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
             continue;
         }
 
-        let logical_w = d.info.width_px as f64 / d.info.scale_factor;
-        let logical_h = d.info.height_px as f64 / d.info.scale_factor;
-
         let window =
             match WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url.clone()))
                 .title(format!("Rookery Web Canvas - {}", d.info.name))
@@ -398,6 +400,7 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
                 .focused(false)
                 .visible(true)
                 .transparent(true)
+                .position(phys_x as f64, phys_y as f64)
                 .inner_size(logical_w, logical_h)
                 .build()
             {
@@ -411,20 +414,8 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
                 }
             };
 
-        if let Ok(pos) = d.window.outer_position() {
-            let _ = window.set_position(pos);
-        } else {
-            let _ = window.set_position(PhysicalPosition::new(
-                d.info.bounds_native.x as i32,
-                d.info.bounds_native.y as i32,
-            ));
-        }
-
-        if let Ok(sz) = d.window.inner_size() {
-            let _ = window.set_size(sz);
-        } else {
-            let _ = window.set_size(PhysicalSize::new(d.info.width_px, d.info.height_px));
-        }
+        let _ = window.set_position(PhysicalPosition::new(phys_x, phys_y));
+        let _ = window.set_size(PhysicalSize::new(d.info.width_px, d.info.height_px));
 
         if let Err(e) = state.layer.attach_wallpaper(&window, &d.info) {
             log::error!("failed to attach webview wallpaper on {}: {e:#}", d.info.id);

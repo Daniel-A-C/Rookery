@@ -841,6 +841,43 @@
     grid-column: span 2;
   }
 
+  .mockup-switcher-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-block-start: 4px;
+    padding-block-start: 6px;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .mockup-switcher-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .mockup-switcher-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mockup-select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .btn.icon-only {
+    padding: 5px 7px;
+    flex-shrink: 0;
+  }
+
   /* Old-School Game Command Buttons */
   .btn {
     border-radius: var(--radius-control);

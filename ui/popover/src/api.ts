@@ -37,6 +37,8 @@ export interface RookeryStatus {
   seeds_planted: number;
   snacks_eaten: number;
   nests_built: number;
+  aesthetic_style?: number;
+  aesthetic_style_name?: string;
 }
 
 export interface KoiStatus {

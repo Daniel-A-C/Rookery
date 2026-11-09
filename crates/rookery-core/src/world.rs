@@ -367,6 +367,19 @@ pub struct WorldStats {
     pub chicks_hatched: u32,
 }
 
+/// Aesthetic visual style names for The Living ASCII Rookery mock-ups.
+pub const ROOKERY_STYLE_COUNT: u8 = 8;
+pub const ROOKERY_STYLE_NAMES: [&str; 8] = [
+    "Classic SDF Woodland",
+    "Strict ANSI Roguelike",
+    "Full-Screen ASCII Matrix",
+    "Multi-Line ASCII Art",
+    "Retro Phosphor CRT",
+    "Sumi-e Ink & Parchment",
+    "Stained-Glass Mosaic",
+    "3D Volumetric Tree",
+];
+
 /// Complete serialized state of The Living ASCII Rookery world.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
@@ -392,6 +405,8 @@ pub struct WorldState {
     pub perches: Vec<Perch>,
     #[serde(default)]
     pub viewport_offset_x: f32,
+    #[serde(default)]
+    pub aesthetic_style: u8,
     #[serde(skip)]
     pub notes: Vec<FloatingNote>,
     #[serde(skip)]
@@ -507,6 +522,7 @@ impl WorldState {
             bird_baths,
             perches,
             viewport_offset_x: 0.0,
+            aesthetic_style: 0,
             notes: Vec::new(),
             chips: Vec::new(),
             stats: WorldStats::default(),
@@ -518,6 +534,30 @@ impl WorldState {
         world.advance_growth(300.0);
         world.recompute_stats();
         world
+    }
+
+    /// Set the active aesthetic mockup style index (`0..8`).
+    pub fn set_aesthetic_style(&mut self, style: u8) {
+        self.aesthetic_style = style % ROOKERY_STYLE_COUNT;
+    }
+
+    /// Cycle to the next aesthetic mockup style (`0..8`).
+    pub fn cycle_aesthetic_style(&mut self) -> u8 {
+        self.aesthetic_style = (self.aesthetic_style + 1) % ROOKERY_STYLE_COUNT;
+        self.aesthetic_style
+    }
+
+    /// Cycle to the previous aesthetic mockup style (`0..8`).
+    pub fn prev_aesthetic_style(&mut self) -> u8 {
+        self.aesthetic_style =
+            (self.aesthetic_style + ROOKERY_STYLE_COUNT - 1) % ROOKERY_STYLE_COUNT;
+        self.aesthetic_style
+    }
+
+    /// Human-readable display name for the current aesthetic style.
+    pub fn aesthetic_style_name(&self) -> &'static str {
+        let idx = (self.aesthetic_style % ROOKERY_STYLE_COUNT) as usize;
+        ROOKERY_STYLE_NAMES[idx]
     }
 
     /// Primary simulation update step. Returns [`Activity::Animating`] if birds are in flight
@@ -1802,5 +1842,23 @@ mod tests {
             assert_eq!(x, b.f32());
             assert!((0.0..1.0).contains(&x));
         }
+    }
+
+    #[test]
+    fn aesthetic_style_cycling_and_bounds() {
+        let mut world = WorldState::new(77);
+        assert_eq!(world.aesthetic_style, 0);
+        assert_eq!(world.aesthetic_style_name(), "Classic SDF Woodland");
+
+        assert_eq!(world.cycle_aesthetic_style(), 1);
+        assert_eq!(world.aesthetic_style_name(), "Strict ANSI Roguelike");
+
+        assert_eq!(world.prev_aesthetic_style(), 0);
+        assert_eq!(world.prev_aesthetic_style(), 7);
+        assert_eq!(world.aesthetic_style_name(), "3D Volumetric Tree");
+
+        world.set_aesthetic_style(10); // wraps modulo 8 -> 2
+        assert_eq!(world.aesthetic_style, 2);
+        assert_eq!(world.aesthetic_style_name(), "Full-Screen ASCII Matrix");
     }
 }

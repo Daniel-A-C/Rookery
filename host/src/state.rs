@@ -82,6 +82,8 @@ pub struct RookeryStatus {
     pub seeds_planted: u32,
     pub snacks_eaten: u32,
     pub nests_built: u32,
+    pub aesthetic_style: u8,
+    pub aesthetic_style_name: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -231,6 +233,8 @@ impl HostState {
             seeds_planted: w.stats.seeds_planted,
             snacks_eaten: w.stats.snacks_eaten,
             nests_built: w.stats.nests_built + w.stats.houses_built,
+            aesthetic_style: w.aesthetic_style,
+            aesthetic_style_name: w.aesthetic_style_name().to_string(),
         });
 
         let koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {

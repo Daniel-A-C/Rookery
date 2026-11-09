@@ -269,7 +269,11 @@ fn spawn_governor_thread(app: AppHandle) {
                 let power = pwr_probe.query();
                 let asleep = screens_asleep();
 
+                let mut woke_from_sleep = false;
                 if let Ok(mut inner) = state.inner.lock() {
+                    if inner.screens_asleep && !asleep {
+                        woke_from_sleep = true;
+                    }
                     inner.power = power;
                     inner.screens_asleep = asleep;
                     for (info, occ) in display_infos.iter().zip(occlusion_states) {
@@ -286,6 +290,14 @@ fn spawn_governor_thread(app: AppHandle) {
                             log::debug!("heartbeat save failed: {e}");
                         }
                     }
+                }
+
+                if woke_from_sleep {
+                    log::info!("screens woke from sleep, reconciling wallpaper windows immediately");
+                    let app_for_reconcile = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        monitors::reconcile_on_main_thread(&app_for_reconcile);
+                    });
                 }
 
                 // 1-minute periodic world & orbital autosave
