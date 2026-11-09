@@ -8,10 +8,9 @@ use anyhow::{Context, Result, bail};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSScreen, NSView,
-    NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSScreen, NSView, NSWindow,
+    NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
     CGDisplayIsAsleep, CGEvent, CGEventSource, CGEventSourceStateID, CGMainDisplayID,
@@ -20,6 +19,7 @@ use objc2_core_graphics::{
     kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
 };
 use objc2_foundation::NSProcessInfo;
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_io_kit::{IOPSCopyPowerSourcesInfo, IOPSGetProvidingPowerSourceType};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rookery_core::governor::PowerState;

@@ -112,7 +112,32 @@ pub fn run() {
             let orbital = OrbitalHavenState::load_or_init(&orbital_path, world.seed);
 
             let audio = AudioEngine::new(settings.audio, &settings.active_app);
-            let catalog_state = CatalogState::new(world.seed).with_audio(audio.clone());
+
+            // Import any persisted controls from apps_state/*.json into settings if not present
+            let apps_state_dir = config_dir.join("apps_state");
+            if let Ok(entries) = std::fs::read_dir(&apps_state_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("json")
+                        && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                        && let Ok(bytes) = std::fs::read(&path)
+                        && let Ok(serde_json::Value::Object(map)) = serde_json::from_slice(&bytes)
+                    {
+                        let app_entry = settings.app_controls.entry(stem.to_string()).or_default();
+                        for (k, v) in map {
+                            app_entry.entry(k).or_insert_with(|| match v {
+                                serde_json::Value::String(s) => s,
+                                serde_json::Value::Number(n) => n.to_string(),
+                                other => other.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            let catalog_state = CatalogState::new(world.seed)
+                .with_audio(audio.clone())
+                .with_controls(settings.app_controls.clone());
             *catalog_state.rookery.lock().unwrap() = world;
             *catalog_state.orbital.lock().unwrap() = orbital;
             let world_arc = catalog_state.rookery.clone();
@@ -293,7 +318,9 @@ fn spawn_governor_thread(app: AppHandle) {
                 }
 
                 if woke_from_sleep {
-                    log::info!("screens woke from sleep, reconciling wallpaper windows immediately");
+                    log::info!(
+                        "screens woke from sleep, reconciling wallpaper windows immediately"
+                    );
                     let app_for_reconcile = app.clone();
                     let _ = app.run_on_main_thread(move || {
                         monitors::reconcile_on_main_thread(&app_for_reconcile);

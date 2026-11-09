@@ -15,9 +15,7 @@ use std::time::Duration;
 
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
-use rookery_core::world::{
-    BirdSpecies, BirdState, ROOKERY_STYLE_COUNT, SnackType, WorldState,
-};
+use rookery_core::world::{BirdSpecies, BirdState, ROOKERY_STYLE_COUNT, SnackType, WorldState};
 
 pub use crate::atlas::{GlyphInstance, GlyphPass};
 use crate::fullscreen;
@@ -910,9 +908,8 @@ impl LivingRookeryScene {
             let r = (pt[1] / cell_h).floor();
             [(c + 0.5) * cell_w, (r + 0.5) * cell_h]
         };
-        let cell_pos = |c: i32, r: i32| -> [f32; 2] {
-            [(c as f32 + 0.5) * cell_w, (r as f32 + 0.5) * cell_h]
-        };
+        let cell_pos =
+            |c: i32, r: i32| -> [f32; 2] { [(c as f32 + 0.5) * cell_w, (r as f32 + 0.5) * cell_h] };
 
         // 1. Subterranean Dwarf-Fortress soil, roots & crystal strata
         for r in ground_row..rows.saturating_sub(1) {
@@ -1055,16 +1052,8 @@ impl LivingRookeryScene {
                         [0.52, 0.96, 0.60, 0.98],
                         if idx % 2 == 0 { '▒' } else { '*' },
                     ),
-                    2 => (
-                        [0.34, 0.24, 0.05, 0.88],
-                        [0.98, 0.84, 0.25, 0.98],
-                        '✦',
-                    ),
-                    _ => (
-                        [0.36, 0.10, 0.20, 0.88],
-                        [0.98, 0.58, 0.78, 0.98],
-                        '◆',
-                    ),
+                    2 => ([0.34, 0.24, 0.05, 0.88], [0.98, 0.84, 0.25, 0.98], '✦'),
+                    _ => ([0.36, 0.10, 0.20, 0.88], [0.98, 0.58, 0.78, 0.98], '◆'),
                 };
 
                 let offsets = [(0, 0), (-1, 0), (1, 0), (0, -1)];
@@ -1084,15 +1073,7 @@ impl LivingRookeryScene {
         for bird in &world_guard.birds {
             let p = snap(self.world_to_screen(bird.pos, offset_x));
             let col = Self::species_color(bird.species);
-            self.push_glyph(
-                '█',
-                p,
-                cell_size,
-                0.0,
-                0.22,
-                [0.08, 0.12, 0.18, 0.92],
-                0.0,
-            );
+            self.push_glyph('█', p, cell_size, 0.0, 0.22, [0.08, 0.12, 0.18, 0.92], 0.0);
             let bird_glyph = match bird.state {
                 BirdState::Perched { .. } | BirdState::Feeding { .. } => '@',
                 _ => {
@@ -1117,7 +1098,15 @@ impl LivingRookeryScene {
             } else {
                 '═'
             };
-            self.push_glyph(ch, cell_pos(c, bottom_r), cell_size, 0.0, 0.50, border_col, 0.0);
+            self.push_glyph(
+                ch,
+                cell_pos(c, bottom_r),
+                cell_size,
+                0.0,
+                0.50,
+                border_col,
+                0.0,
+            );
         }
         let status_str = format!(
             "╡ FORT SYLVAN · SEED #{} · BOUGHS:{} · BUDS:{} · FLOCK:{} ╞",
@@ -1159,7 +1148,11 @@ impl LivingRookeryScene {
                 if bud.bloom > 0.1 {
                     let mut fp = self.world_to_screen(b.point_at(bud.offset_along), offset_x);
                     fp[0] += bud.lateral_offset * tree_scale;
-                    foliage_pts.push((fp, 34.0 * bud.scale * bud.bloom * tree_scale, bud.color_idx));
+                    foliage_pts.push((
+                        fp,
+                        34.0 * bud.scale * bud.bloom * tree_scale,
+                        bud.color_idx,
+                    ));
                 }
             }
         }
@@ -1215,7 +1208,8 @@ impl LivingRookeryScene {
                 let dir_to_moon_x = (moon_px[0] - px).signum();
 
                 if best_foliage > 0.12 {
-                    let rim_light = ((px - self.width * 0.5) * dir_to_moon_x * 0.002).clamp(0.0, 0.35);
+                    let rim_light =
+                        ((px - self.width * 0.5) * dir_to_moon_x * 0.002).clamp(0.0, 0.35);
                     let luma = (best_foliage * 0.78 + rim_light).clamp(0.15, 0.99);
                     let idx = ((luma * 9.0).round() as usize).min(9);
                     let col = match best_color_idx {
@@ -1256,7 +1250,8 @@ impl LivingRookeryScene {
                         );
                     } else if uv_y > ground_h {
                         let depth_ground = ((uv_y - ground_h) / 0.11).clamp(0.0, 1.0);
-                        let wave = ((uv_x * 18.0 + r as f32 * 1.3).sin() * 0.5 + 0.5) * (1.0 - depth_ground * 0.6);
+                        let wave = ((uv_x * 18.0 + r as f32 * 1.3).sin() * 0.5 + 0.5)
+                            * (1.0 - depth_ground * 0.6);
                         let idx = ((wave * 6.0) as usize).min(9);
                         self.push_glyph(
                             ramp[idx],
@@ -1272,7 +1267,8 @@ impl LivingRookeryScene {
                         let cloud1 = (uv_x * 7.5 - t * 0.18 + (uv_y * 5.0).sin()).sin() * 0.5 + 0.5;
                         let cloud2 = (uv_x * 13.0 + t * 0.11 - uv_y * 8.0).cos() * 0.5 + 0.5;
                         let halo = (1.0 - (d_moon / (moon_r * 4.5)).min(1.0)) * 0.45;
-                        let sky_luma = (cloud1 * cloud2 * 0.55 + halo + (1.0 - uv_y) * 0.12).clamp(0.0, 0.85);
+                        let sky_luma =
+                            (cloud1 * cloud2 * 0.55 + halo + (1.0 - uv_y) * 0.12).clamp(0.0, 0.85);
                         if sky_luma > 0.14 {
                             let idx = ((sky_luma * 6.0) as usize).min(7);
                             self.push_glyph(
@@ -1281,7 +1277,12 @@ impl LivingRookeryScene {
                                 [cell_w * 0.9, cell_h * 0.9],
                                 0.0,
                                 0.02,
-                                [0.22 + halo * 0.6, 0.45 + sky_luma * 0.35, 0.68 + sky_luma * 0.25, 0.45 + sky_luma * 0.4],
+                                [
+                                    0.22 + halo * 0.6,
+                                    0.45 + sky_luma * 0.35,
+                                    0.68 + sky_luma * 0.25,
+                                    0.45 + sky_luma * 0.4,
+                                ],
                                 0.0,
                             );
                         }
@@ -1352,11 +1353,7 @@ impl LivingRookeryScene {
         }
 
         // 2. Drifting Multi-Line ASCII Clouds
-        let cloud_stamp = [
-            "   .--.   ",
-            ".-(    ). ",
-            "(___.__)__)",
-        ];
+        let cloud_stamp = ["   .--.   ", ".-(    ). ", "(___.__)__)"];
         for i in 0..4 {
             let cx = ((i as f32 * 380.0 + self.time as f32 * 8.0 - offset_x * 0.15)
                 .rem_euclid(self.width + 200.0))
@@ -1889,7 +1886,15 @@ impl LivingRookeryScene {
             } else {
                 "-v-"
             };
-            self.push_text(stroke, [p[0] - cw, p[1]], csize, cw * 0.8, 0.24, bird_ink, 0.0);
+            self.push_text(
+                stroke,
+                [p[0] - cw, p[1]],
+                csize,
+                cw * 0.8,
+                0.24,
+                bird_ink,
+                0.0,
+            );
             if idx < 2 {
                 let note = format!("· Fig. {}: {}", idx + 1, bird.species.display_name());
                 self.push_text(
@@ -1945,7 +1950,8 @@ impl LivingRookeryScene {
             let radius = ring as f32 * 88.0 * tree_scale;
             let count = ring * 18;
             for k in 0..count {
-                let angle = (k as f32 / count as f32) * std::f32::consts::TAU + self.time as f32 * 0.04;
+                let angle =
+                    (k as f32 / count as f32) * std::f32::consts::TAU + self.time as f32 * 0.04;
                 let p = snap_mosaic([
                     arch_center[0] + angle.cos() * radius,
                     arch_center[1] + angle.sin() * radius * 0.85,
@@ -1967,7 +1973,9 @@ impl LivingRookeryScene {
             let end = self.world_to_screen(branch.current_end(), offset_x);
             let dx = end[0] - start[0];
             let dy = end[1] - start[1];
-            let steps = ((dx * dx + dy * dy).sqrt() / (tile_h * 0.7)).ceil().max(1.0) as usize;
+            let steps = ((dx * dx + dy * dy).sqrt() / (tile_h * 0.7))
+                .ceil()
+                .max(1.0) as usize;
 
             for s in 0..=steps {
                 let t = s as f32 / steps as f32;
@@ -2011,18 +2019,18 @@ impl LivingRookeryScene {
                         [0.55, 0.98, 0.95, 0.98],
                         if idx % 2 == 0 { '◇' } else { '✦' },
                     ),
-                    2 => (
-                        [0.62, 0.38, 0.06, 0.88],
-                        [1.0, 0.92, 0.38, 0.98],
-                        '✦',
-                    ),
-                    _ => (
-                        [0.58, 0.12, 0.32, 0.88],
-                        [1.0, 0.62, 0.82, 0.98],
-                        '◆',
-                    ),
+                    2 => ([0.62, 0.38, 0.06, 0.88], [1.0, 0.92, 0.38, 0.98], '✦'),
+                    _ => ([0.58, 0.12, 0.32, 0.88], [1.0, 0.62, 0.82, 0.98], '◆'),
                 };
-                self.push_glyph('█', p, backing_size, 0.0, 0.14, tile_bg, branch.sway_factor * 0.6);
+                self.push_glyph(
+                    '█',
+                    p,
+                    backing_size,
+                    0.0,
+                    0.14,
+                    tile_bg,
+                    branch.sway_factor * 0.6,
+                );
                 self.push_glyph(
                     facet_ch,
                     p,
@@ -2071,24 +2079,8 @@ impl LivingRookeryScene {
                 0.0,
             );
             self.push_glyph('✦', p, fg_size, 0.0, 0.26, col, 0.0);
-            self.push_glyph(
-                '<',
-                [p[0] - tile_w, p[1]],
-                fg_size,
-                0.0,
-                0.25,
-                col,
-                0.0,
-            );
-            self.push_glyph(
-                '>',
-                [p[0] + tile_w, p[1]],
-                fg_size,
-                0.0,
-                0.25,
-                col,
-                0.0,
-            );
+            self.push_glyph('<', [p[0] - tile_w, p[1]], fg_size, 0.0, 0.25, col, 0.0);
+            self.push_glyph('>', [p[0] + tile_w, p[1]], fg_size, 0.0, 0.25, col, 0.0);
         }
     }
 
@@ -2148,7 +2140,12 @@ impl LivingRookeryScene {
                         screen_pos: sp,
                         size: [base_size[0] * persp * 0.9, base_size[1] * persp * 0.9],
                         z_cam: rz,
-                        color: [0.20, 0.72 * depth_fade, 0.88 * depth_fade, 0.75 * depth_fade],
+                        color: [
+                            0.20,
+                            0.72 * depth_fade,
+                            0.88 * depth_fade,
+                            0.75 * depth_fade,
+                        ],
                     });
                 }
             }
@@ -2260,10 +2257,30 @@ impl LivingRookeryScene {
                         let idx = ((luma * 9.0).round() as usize).min(9);
 
                         let col = match bud.color_idx {
-                            0 => [0.14 + luma * 0.28, 0.36 + luma * 0.64, 0.24 + luma * 0.38, 0.95],
-                            1 => [0.22 + luma * 0.38, 0.44 + luma * 0.56, 0.28 + luma * 0.34, 0.95],
-                            2 => [0.42 + luma * 0.58, 0.34 + luma * 0.54, 0.14 + luma * 0.18, 0.96],
-                            _ => [0.44 + luma * 0.56, 0.24 + luma * 0.44, 0.36 + luma * 0.54, 0.96],
+                            0 => [
+                                0.14 + luma * 0.28,
+                                0.36 + luma * 0.64,
+                                0.24 + luma * 0.38,
+                                0.95,
+                            ],
+                            1 => [
+                                0.22 + luma * 0.38,
+                                0.44 + luma * 0.56,
+                                0.28 + luma * 0.34,
+                                0.95,
+                            ],
+                            2 => [
+                                0.42 + luma * 0.58,
+                                0.34 + luma * 0.54,
+                                0.14 + luma * 0.18,
+                                0.96,
+                            ],
+                            _ => [
+                                0.44 + luma * 0.56,
+                                0.24 + luma * 0.44,
+                                0.36 + luma * 0.54,
+                                0.96,
+                            ],
                         };
 
                         projected.push(Projected3dGlyph {
@@ -2326,7 +2343,15 @@ impl LivingRookeryScene {
 
         let total_verts = projected.len();
         for item in projected {
-            self.push_glyph(item.c, item.screen_pos, item.size, 0.0, 0.20, item.color, 0.0);
+            self.push_glyph(
+                item.c,
+                item.screen_pos,
+                item.size,
+                0.0,
+                0.20,
+                item.color,
+                0.0,
+            );
         }
 
         // 6. 3D Orientation Gizmo [X / Y / Z] in Bottom-Left Corner & Viewport Header
@@ -2341,7 +2366,10 @@ impl LivingRookeryScene {
             let rx = vec3[0] * cos_y + vec3[2] * sin_y;
             let rz0 = -vec3[0] * sin_y + vec3[2] * cos_y;
             let ry = vec3[1] * cos_p - rz0 * sin_p;
-            let end_pt = [gizmo_origin[0] + rx * axis_len, gizmo_origin[1] - ry * axis_len];
+            let end_pt = [
+                gizmo_origin[0] + rx * axis_len,
+                gizmo_origin[1] - ry * axis_len,
+            ];
             for step in 1..=4 {
                 let f = step as f32 / 5.0;
                 self.push_glyph(

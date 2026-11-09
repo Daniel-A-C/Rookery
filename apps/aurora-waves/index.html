@@ -96,6 +96,66 @@
     let colorSpeedMult = 0.5;
     let meteorsSeen = 0;
 
+    const STORAGE_KEY = 'rookery_aurora_settings';
+
+    function applySettings(data) {
+      if (!data || typeof data !== 'object') return;
+      const ws = data.wave_speed ?? data.waveSpeed;
+      if (typeof ws === 'number' && !Number.isNaN(ws) && ws > 0) {
+        waveSpeedMult = ws;
+      } else if (typeof ws === 'string') {
+        const parsed = parseFloat(ws);
+        if (!Number.isNaN(parsed) && parsed > 0) waveSpeedMult = parsed;
+      }
+
+      const cs = data.color_speed ?? data.colorSpeed;
+      if (typeof cs === 'number' && !Number.isNaN(cs) && cs >= 0) {
+        colorSpeedMult = cs;
+      } else if (typeof cs === 'string') {
+        const parsed = parseFloat(cs);
+        if (!Number.isNaN(parsed) && parsed >= 0) colorSpeedMult = parsed;
+      }
+    }
+
+    function persistSettings() {
+      const data = {
+        wave_speed: waveSpeedMult,
+        color_speed: colorSpeedMult,
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {}
+      if (window.Rookery && typeof window.Rookery.saveState === 'function') {
+        window.Rookery.saveState(data);
+      }
+    }
+
+    // 1. Synchronously restore from host-injected initial controls
+    if (window.__ROOKERY_INITIAL_CONTROLS__) {
+      applySettings(window.__ROOKERY_INITIAL_CONTROLS__);
+    }
+
+    // 2. Synchronously restore from localStorage (for immediate apply before 1st frame)
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        applySettings(JSON.parse(cached));
+      }
+    } catch (e) {}
+
+    // 3. Asynchronously restore / sync from sandboxed Rookery state backend
+    async function restorePersistedState() {
+      if (window.Rookery && typeof window.Rookery.loadState === 'function') {
+        try {
+          const state = await window.Rookery.loadState();
+          if (state) {
+            applySettings(state);
+          }
+        } catch (e) {}
+      }
+    }
+    restorePersistedState();
+
     function lerpRgb(a, b, t) {
       return [
         Math.round(a[0] + (b[0] - a[0]) * t),
@@ -266,16 +326,22 @@
     // Handle Rookery Popover Slider & Select Controls
     window.addEventListener('rookery-control', (e) => {
       const { id, value } = e.detail || {};
+      let changed = false;
       if (id === 'wave_speed') {
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed > 0) {
           waveSpeedMult = parsed;
+          changed = true;
         }
       } else if (id === 'color_speed') {
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed >= 0) {
           colorSpeedMult = parsed;
+          changed = true;
         }
+      }
+      if (changed) {
+        persistSettings();
       }
     });
 

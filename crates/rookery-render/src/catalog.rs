@@ -63,6 +63,14 @@ impl CatalogState {
         self
     }
 
+    /// Pre-populate custom controls from persisted settings.
+    pub fn with_controls(self, controls: BTreeMap<String, BTreeMap<String, String>>) -> Self {
+        if let Ok(mut map) = self.custom_controls.lock() {
+            *map = controls;
+        }
+        self
+    }
+
     /// Advance offline catchup across all catalog apps.
     pub fn on_wake_all(&self, elapsed_secs: f64) {
         if let Ok(mut w) = self.rookery.lock() {
@@ -717,5 +725,20 @@ mod tests {
         assert_eq!(aurora.metadata.archetype, AppArchetype::WebCanvas);
         assert!(aurora.controls.len() >= 3);
         assert!(aurora.theme.border_rgb_f32().is_some());
+    }
+
+    #[test]
+    fn catalog_state_with_controls_populates_values() {
+        let mut controls = BTreeMap::new();
+        let mut aurora_controls = BTreeMap::new();
+        aurora_controls.insert("wave_speed".to_string(), "2.5".to_string());
+        aurora_controls.insert("color_speed".to_string(), "1.2".to_string());
+        controls.insert("aurora-waves".to_string(), aurora_controls);
+
+        let state = CatalogState::new(42).with_controls(controls);
+        let all = state.all_controls();
+        let aurora = all.get("aurora-waves").unwrap();
+        assert_eq!(aurora.get("wave_speed").unwrap(), "2.5");
+        assert_eq!(aurora.get("color_speed").unwrap(), "1.2");
     }
 }

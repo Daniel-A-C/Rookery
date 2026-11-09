@@ -694,9 +694,10 @@ function applyCatalog(): void {
         row.htmlFor = sliderId;
         const label = document.createElement("span");
         label.textContent = sl.label;
+        const existingVal = currentStatus?.app_controls?.[m.metadata.id]?.[sl.id];
         const valBadge = document.createElement("strong");
         valBadge.id = `val-${m.metadata.id}-${sl.id}`;
-        valBadge.textContent = `${sl.default_val ?? 0}${sl.unit ?? ""}`;
+        valBadge.textContent = `${existingVal ?? sl.default_val ?? 0}${sl.unit ?? ""}`;
         row.appendChild(label);
         row.appendChild(valBadge);
         card.appendChild(row);
@@ -707,7 +708,7 @@ function applyCatalog(): void {
         input.min = String(sl.min ?? 0);
         input.max = String(sl.max ?? 100);
         input.step = String(sl.step ?? 1);
-        input.value = String(sl.default_val ?? 0);
+        input.value = String(existingVal ?? sl.default_val ?? 0);
         const sendSliderUpdate = async () => {
           try {
             const s = await api.executeAppAction(m.metadata.id, sl.id, {
@@ -739,11 +740,13 @@ function applyCatalog(): void {
         const selectEl = document.createElement("select");
         selectEl.id = `select-${m.metadata.id}-${sel.id}`;
         selectEl.className = "select-input";
+        const existingSelVal = currentStatus?.app_controls?.[m.metadata.id]?.[sel.id];
         for (const opt of sel.options || []) {
           const optEl = document.createElement("option");
           optEl.value = opt;
           optEl.textContent = opt;
-          if (opt === sel.default_val) optEl.selected = true;
+          const targetVal = existingSelVal ?? sel.default_val;
+          if (opt === targetVal) optEl.selected = true;
           selectEl.appendChild(optEl);
         }
         selectEl.addEventListener("change", async () => {

@@ -4,6 +4,7 @@
 //! a missing file yields defaults, and a corrupt file is preserved as
 //! `settings.json.bak-<unix-ts>` before falling back to defaults.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -112,6 +113,9 @@ pub struct Settings {
     pub last_run_utc: Option<DateTime<Utc>>,
     /// False while running; set true on clean shutdown. Lets M2 detect crashes.
     pub last_shutdown_clean: bool,
+    /// Persisted per-app control slider and selector values (`app_id -> control_id -> string_value`).
+    #[serde(default)]
+    pub app_controls: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl Default for Settings {
@@ -132,6 +136,7 @@ impl Default for Settings {
             update: UpdateSettings::default(),
             last_run_utc: None,
             last_shutdown_clean: true,
+            app_controls: BTreeMap::new(),
         }
     }
 }
@@ -358,5 +363,27 @@ mod tests {
         s.mark_clean_shutdown(now);
         assert!(s.last_shutdown_clean);
         assert_eq!(s.last_run_utc, Some(now));
+    }
+
+    #[test]
+    fn app_controls_persistence_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        let mut s = Settings::default();
+        s.app_controls
+            .entry("aurora-waves".to_string())
+            .or_default()
+            .insert("wave_speed".to_string(), "2.4".to_string());
+        s.app_controls
+            .entry("aurora-waves".to_string())
+            .or_default()
+            .insert("color_speed".to_string(), "1.25".to_string());
+        s.save(&path).unwrap();
+
+        let (loaded, outcome) = Settings::load(&path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        let aurora = loaded.app_controls.get("aurora-waves").unwrap();
+        assert_eq!(aurora.get("wave_speed").unwrap(), "2.4");
+        assert_eq!(aurora.get("color_speed").unwrap(), "1.25");
     }
 }

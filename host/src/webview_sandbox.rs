@@ -222,13 +222,33 @@ fn json_ok_response(body: Vec<u8>) -> Response<Vec<u8>> {
 
 /// Generate the `window.Rookery` client SDK initialization script injected into Web Canvas apps.
 pub fn sdk_init_script(app_id: &str) -> String {
+    sdk_init_script_with_controls(app_id, None)
+}
+
+/// Generate the `window.Rookery` client SDK initialization script with optional preloaded control values.
+pub fn sdk_init_script_with_controls(
+    app_id: &str,
+    initial_controls: Option<&BTreeMap<String, String>>,
+) -> String {
     let escaped = app_id.replace('\\', "\\\\").replace('\'', "\\'");
+    let controls_json = initial_controls
+        .and_then(|c| serde_json::to_string(c).ok())
+        .unwrap_or_else(|| "{}".to_string());
     format!(
         r#"(function() {{
   const appId = '{escaped}';
+  const initialControls = {controls_json};
+  window.__ROOKERY_INITIAL_CONTROLS__ = initialControls;
   const sdkBase = window.location.origin + '/' + appId + '/__sdk';
   window.Rookery = {{
     appId,
+    initialControls,
+    getControl(id, fallback) {{
+      if (initialControls && id in initialControls) {{
+        return initialControls[id];
+      }}
+      return fallback;
+    }},
     onAction(cb) {{
       window.addEventListener('rookery-action', (e) => cb(e.detail?.action, e.detail));
     }},
@@ -366,7 +386,13 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
         let phys_x = (d.info.bounds_native.x * d.info.scale_factor).round() as i32;
         let phys_y = (d.info.bounds_native.y * d.info.scale_factor).round() as i32;
 
-        let init_script = sdk_init_script(active_app);
+        let controls = state
+            .catalog_state
+            .custom_controls
+            .lock()
+            .ok()
+            .and_then(|m| m.get(active_app).cloned());
+        let init_script = sdk_init_script_with_controls(active_app, controls.as_ref());
         let label = webview_wallpaper_label(&d.info.id.0);
         if let Some(existing) = app.get_webview_window(&label) {
             let already_loaded = loaded_webview_apps()
@@ -588,5 +614,21 @@ mod tests {
         let get_res = handle_custom_protocol(&get_state);
         assert_eq!(get_res.status(), StatusCode::OK);
         assert_eq!(get_res.body(), b"{\"score\":42}");
+    }
+
+    #[test]
+    fn sdk_init_script_with_controls_injection() {
+        let mut controls = BTreeMap::new();
+        controls.insert("wave_speed".to_string(), "2.5".to_string());
+        controls.insert("color_speed".to_string(), "0.8".to_string());
+
+        let script = sdk_init_script_with_controls("aurora-waves", Some(&controls));
+        assert!(
+            script.contains(
+                "const initialControls = {\"color_speed\":\"0.8\",\"wave_speed\":\"2.5\"};"
+            )
+        );
+        assert!(script.contains("window.__ROOKERY_INITIAL_CONTROLS__ = initialControls;"));
+        assert!(script.contains("getControl(id, fallback)"));
     }
 }

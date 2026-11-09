@@ -516,9 +516,23 @@ pub fn execute_app_action(
                         serde_json::Value::String(s) => s.clone(),
                         v => v.to_string(),
                     };
-                    state
-                        .catalog_state
-                        .set_control_value(other, &action, val_str, Some(&manifest));
+                    state.catalog_state.set_control_value(
+                        other,
+                        &action,
+                        val_str.clone(),
+                        Some(&manifest),
+                    );
+                    if let Ok(mut inner) = state.inner.lock() {
+                        inner
+                            .settings
+                            .app_controls
+                            .entry(other.to_string())
+                            .or_default()
+                            .insert(action.clone(), val_str);
+                        if let Err(e) = inner.settings.save(&state.settings_path) {
+                            log::warn!("failed to save control setting: {e}");
+                        }
+                    }
                     crate::webview_sandbox::dispatch_control(&app, &action, val);
                 } else {
                     crate::webview_sandbox::dispatch_action(&app, &action);
