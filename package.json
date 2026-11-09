@@ -12,7 +12,9 @@
     "dev": "tauri dev -c host/tauri.conf.json",
     "build": "tauri build -c host/tauri.conf.json",
     "icons": "node ui/icons/build.mjs",
-    "icons:sync": "node ui/icons/build.mjs --sync"
+    "icons:sync": "node ui/icons/build.mjs --sync",
+    "fmt": "cargo fmt --all",
+    "check:ci": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && cargo run -p rookery-bench -- --ticks 200 --assert-budgets && npm run build:ui"
   },
   "devDependencies": {
     "@phosphor-icons/core": "2.1.1",
