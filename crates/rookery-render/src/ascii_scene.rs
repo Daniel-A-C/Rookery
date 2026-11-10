@@ -14,7 +14,7 @@ pub use crate::atlas::{GlyphInstance, GlyphPass};
 use crate::fullscreen;
 use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 
-const MAX_INSTANCES: usize = 32_768;
+const MAX_INSTANCES: usize = 65_536;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -323,6 +323,13 @@ impl LivingRookeryScene {
 
         // 3. Stepped Monospace Box-Drawing Tree Boughs & Multi-Column Bark
         for branch in &world_guard.branches {
+            // Viewport culling: only render branches within or near the visible screen area
+            let min_x = branch.start[0].min(branch.current_end()[0]);
+            let max_x = branch.start[0].max(branch.current_end()[0]);
+            if max_x < offset_x - 150.0 || min_x > offset_x + 1150.0 {
+                continue;
+            }
+
             let start = self.world_to_screen(branch.start, offset_x);
             let end = self.world_to_screen(branch.current_end(), offset_x);
             let c0 = (start[0] / cell_w).round() as i32;
@@ -360,13 +367,19 @@ impl LivingRookeryScene {
                 let t = s as f32 / steps as f32;
                 let cc = (c0 as f32 + (c1 - c0) as f32 * t).round() as i32;
                 let rr = (r0 as f32 + (r1 - r0) as f32 * t).round() as i32;
-                let pos = cell_pos(cc, rr);
+                if cc < 0 || cc >= cols || rr < 0 || rr >= rows {
+                    continue;
+                }
 
                 if branch.depth == 0 {
                     // Wide ANSI trunk with double-line box-drawing edges
                     let span = trunk_col_span.clamp(1, 3);
                     for dx in -span..=span {
-                        let tp = cell_pos(cc + dx, rr);
+                        let col_idx = cc + dx;
+                        if col_idx < 0 || col_idx >= cols {
+                            continue;
+                        }
+                        let tp = cell_pos(col_idx, rr);
                         self.push_glyph('█', tp, cell_size, 0.0, 0.08, bark_bg, 0.0);
                         let ch = if dx == 0 {
                             '║'
@@ -393,6 +406,7 @@ impl LivingRookeryScene {
                     } else {
                         '┐'
                     };
+                    let pos = cell_pos(cc, rr);
                     self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
                     self.push_glyph(box_ch, pos, cell_size, 0.0, 0.11, bark_fg, 0.0);
                 }
@@ -407,6 +421,9 @@ impl LivingRookeryScene {
                 pt[0] += bud.lateral_offset;
                 let center_c = (pt[0] / cell_w).floor() as i32;
                 let center_r = (pt[1] / cell_h).floor() as i32;
+                if center_c < -1 || center_c > cols || center_r < 0 || center_r >= rows {
+                    continue;
+                }
 
                 let (bg_col, fg_col, tile_char) = match (palette, bud.color_idx) {
                     (RookeryPalette::AutumnHearth, 0) => (
@@ -469,7 +486,11 @@ impl LivingRookeryScene {
                     if oi > 0 && idx % 2 != 0 {
                         continue;
                     }
-                    let cp = cell_pos(center_c + dc, center_r + dr);
+                    let (cc, rr) = (center_c + dc, center_r + dr);
+                    if cc < 0 || cc >= cols || rr < 0 || rr >= rows {
+                        continue;
+                    }
+                    let cp = cell_pos(cc, rr);
                     let ch = if oi == 0 { tile_char } else { '░' };
                     self.push_glyph('█', cp, cell_size, 0.0, 0.14, bg_col, 0.0);
                     self.push_glyph(ch, cp, cell_size, 0.0, 0.16, fg_col, 0.0);
@@ -483,6 +504,9 @@ impl LivingRookeryScene {
             let sp = self.world_to_screen(bird.pos, offset_x);
             let center_c = (sp[0] / cell_w).round() as i32;
             let center_r = (sp[1] / cell_h).round() as i32;
+            if center_c < -2 || center_c > cols + 2 || center_r < 0 || center_r >= rows {
+                continue;
+            }
             let col = Self::species_color(bird.species);
 
             match bird.state {
@@ -507,19 +531,25 @@ impl LivingRookeryScene {
                     };
 
                     // Tail
-                    let p_tail = cell_pos(c_tail, center_r);
-                    self.push_glyph('█', p_tail, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(tail_ch, p_tail, cell_size, 0.0, 0.25, col, 0.0);
+                    if c_tail >= 0 && c_tail < cols {
+                        let p_tail = cell_pos(c_tail, center_r);
+                        self.push_glyph('█', p_tail, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(tail_ch, p_tail, cell_size, 0.0, 0.25, col, 0.0);
+                    }
 
                     // Body
-                    let p_body = cell_pos(c_body, center_r);
-                    self.push_glyph('█', p_body, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(body_ch, p_body, cell_size, 0.0, 0.26, col, 0.0);
+                    if c_body >= 0 && c_body < cols {
+                        let p_body = cell_pos(c_body, center_r);
+                        self.push_glyph('█', p_body, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(body_ch, p_body, cell_size, 0.0, 0.26, col, 0.0);
+                    }
 
                     // Head/Beak
-                    let p_head = cell_pos(c_head, center_r);
-                    self.push_glyph('█', p_head, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(head_ch, p_head, cell_size, 0.0, 0.25, col, 0.0);
+                    if c_head >= 0 && c_head < cols {
+                        let p_head = cell_pos(c_head, center_r);
+                        self.push_glyph('█', p_head, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(head_ch, p_head, cell_size, 0.0, 0.25, col, 0.0);
+                    }
                 }
                 _ => {
                     // 3-cell flight posture: Wing left, Body/Direction, Wing right
@@ -534,19 +564,25 @@ impl LivingRookeryScene {
                     let dir_ch = if bird.facing_left { '<' } else { '>' };
 
                     // Wing left
-                    let p_wl = cell_pos(center_c - 1, center_r);
-                    self.push_glyph('█', p_wl, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(wing_l, p_wl, cell_size, 0.0, 0.25, col, 0.0);
+                    if center_c >= 1 && center_c - 1 < cols {
+                        let p_wl = cell_pos(center_c - 1, center_r);
+                        self.push_glyph('█', p_wl, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(wing_l, p_wl, cell_size, 0.0, 0.25, col, 0.0);
+                    }
 
                     // Center
-                    let p_mid = cell_pos(center_c, center_r);
-                    self.push_glyph('█', p_mid, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(dir_ch, p_mid, cell_size, 0.0, 0.26, col, 0.0);
+                    if center_c >= 0 && center_c < cols {
+                        let p_mid = cell_pos(center_c, center_r);
+                        self.push_glyph('█', p_mid, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(dir_ch, p_mid, cell_size, 0.0, 0.26, col, 0.0);
+                    }
 
                     // Wing right
-                    let p_wr = cell_pos(center_c + 1, center_r);
-                    self.push_glyph('█', p_wr, cell_size, 0.0, 0.22, bird_bg, 0.0);
-                    self.push_glyph(wing_r, p_wr, cell_size, 0.0, 0.25, col, 0.0);
+                    if center_c >= -1 && center_c + 1 < cols {
+                        let p_wr = cell_pos(center_c + 1, center_r);
+                        self.push_glyph('█', p_wr, cell_size, 0.0, 0.22, bird_bg, 0.0);
+                        self.push_glyph(wing_r, p_wr, cell_size, 0.0, 0.25, col, 0.0);
+                    }
 
                     // Celestial Raven stardust trail
                     if bird.species == BirdSpecies::CelestialRaven {
@@ -555,16 +591,18 @@ impl LivingRookeryScene {
                         } else {
                             center_c - 2
                         };
-                        let p_trail = cell_pos(trail_c, center_r);
-                        self.push_glyph(
-                            '✦',
-                            p_trail,
-                            cell_size,
-                            0.0,
-                            0.20,
-                            [0.45, 0.85, 1.0, 0.70],
-                            0.0,
-                        );
+                        if trail_c >= 0 && trail_c < cols {
+                            let p_trail = cell_pos(trail_c, center_r);
+                            self.push_glyph(
+                                '✦',
+                                p_trail,
+                                cell_size,
+                                0.0,
+                                0.20,
+                                [0.45, 0.85, 1.0, 0.70],
+                                0.0,
+                            );
+                        }
                     }
                 }
             }
@@ -573,19 +611,28 @@ impl LivingRookeryScene {
         // 6. Forest Infrastructure: Plant Signs, Lanterns, Baths & Perches
         for sign in &world_guard.signs {
             let sp = snap(self.world_to_screen(sign.pos, offset_x));
-            self.push_glyph('█', sp, cell_size, 0.0, 0.30, [0.28, 0.18, 0.10, 0.95], 0.0);
-            self.push_glyph('i', sp, cell_size, 0.0, 0.32, [0.98, 0.92, 0.55, 0.98], 0.0);
+            let c = (sp[0] / cell_w).round() as i32;
+            if c >= 0 && c < cols {
+                self.push_glyph('█', sp, cell_size, 0.0, 0.30, [0.28, 0.18, 0.10, 0.95], 0.0);
+                self.push_glyph('i', sp, cell_size, 0.0, 0.32, [0.98, 0.92, 0.55, 0.98], 0.0);
+            }
         }
 
         for bath in &world_guard.bird_baths {
             let sp = snap(self.world_to_screen(bath.pos, offset_x));
-            self.push_glyph('█', sp, cell_size, 0.0, 0.28, [0.18, 0.22, 0.26, 0.95], 0.0);
-            self.push_glyph('♨', sp, cell_size, 0.0, 0.30, [0.45, 0.85, 0.98, 0.98], 0.0);
+            let c = (sp[0] / cell_w).round() as i32;
+            if c >= 0 && c < cols {
+                self.push_glyph('█', sp, cell_size, 0.0, 0.28, [0.18, 0.22, 0.26, 0.95], 0.0);
+                self.push_glyph('♨', sp, cell_size, 0.0, 0.30, [0.45, 0.85, 0.98, 0.98], 0.0);
+            }
         }
 
         for perch in &world_guard.perches {
             let sp = snap(self.world_to_screen(perch.pos, offset_x));
-            self.push_glyph('═', sp, cell_size, 0.0, 0.28, [0.68, 0.52, 0.35, 0.95], 0.0);
+            let c = (sp[0] / cell_w).round() as i32;
+            if c >= 0 && c < cols {
+                self.push_glyph('═', sp, cell_size, 0.0, 0.28, [0.68, 0.52, 0.35, 0.95], 0.0);
+            }
         }
 
         for lantern in &world_guard.lanterns {
@@ -594,9 +641,31 @@ impl LivingRookeryScene {
                 .iter()
                 .find(|b| b.id == lantern.branch_id)
             {
-                let sp = snap(self.world_to_screen(b.point_at(lantern.t), offset_x));
-                self.push_glyph('█', sp, cell_size, 0.0, 0.30, [0.22, 0.14, 0.04, 0.95], 0.0);
-                self.push_glyph('¤', sp, cell_size, 0.0, 0.32, [1.0, 0.88, 0.25, 0.98], 0.0);
+                let pt = b.point_at(lantern.t);
+                if pt[0] >= offset_x - 50.0 && pt[0] <= offset_x + 1050.0 {
+                    let sp = snap(self.world_to_screen(pt, offset_x));
+                    let c = (sp[0] / cell_w).round() as i32;
+                    if c >= 0 && c < cols {
+                        self.push_glyph(
+                            '█',
+                            sp,
+                            cell_size,
+                            0.0,
+                            0.30,
+                            [0.22, 0.14, 0.04, 0.95],
+                            0.0,
+                        );
+                        self.push_glyph(
+                            '¤',
+                            sp,
+                            cell_size,
+                            0.0,
+                            0.32,
+                            [1.0, 0.88, 0.25, 0.98],
+                            0.0,
+                        );
+                    }
+                }
             }
         }
 
@@ -801,5 +870,57 @@ impl Scene for LivingRookeryScene {
 
         // Render pass 2: Overlapping ASCII glyph instances with alpha blending
         self.glyphs.render(view, encoder);
+    }
+}
+
+impl LivingRookeryScene {
+    pub fn glyph_instance_count(&self) -> usize {
+        self.glyphs.instance_count()
+    }
+
+    pub fn generate_scene_instances_for_test(&mut self) {
+        self.generate_scene_instances();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rookery_core::world::TreeSpecies;
+
+    #[test]
+    fn test_viewport_culling_prevents_glyph_buffer_overflow() {
+        let gpu = match Gpu::new_blocking() {
+            Ok(g) => g,
+            Err(_) => return, // Headless environment without GPU adapter
+        };
+
+        let mut world = WorldState::new(42);
+        // Simulate succession with 15 trees and hundreds of branches
+        for i in 1..=15 {
+            let next_x = 500.0 + i as f32 * 800.0;
+            world.plant_new_sapling(next_x, TreeSpecies::AncientOak);
+            for _ in 0..20 {
+                world.execute_growth_step();
+            }
+        }
+        // Pan camera to the last tree
+        world.viewport_offset_x = 500.0 + 15.0 * 800.0 - 500.0;
+        let total_branches = world.branches.len();
+        assert!(
+            total_branches > 150,
+            "Should have accumulated many branches across trees"
+        );
+
+        let world_arc = Arc::new(Mutex::new(world));
+        let mut scene = LivingRookeryScene::new(&gpu, wgpu::TextureFormat::Rgba8Unorm, world_arc);
+        scene.resize(&gpu, 1920, 1080, 1.0);
+        scene.generate_scene_instances_for_test();
+
+        let count = scene.glyph_instance_count();
+        assert!(
+            count > 0 && count < 15_000,
+            "Glyph count ({count}) should be bounded by viewport culling, well under MAX_INSTANCES"
+        );
     }
 }

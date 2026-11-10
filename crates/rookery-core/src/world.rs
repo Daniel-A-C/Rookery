@@ -92,6 +92,9 @@ pub struct Branch {
     pub has_nest: bool,
     /// Amplitude of wind sway (increases further up the tree).
     pub sway_factor: f32,
+    /// Whether this branch segment represents a ground buttress root.
+    #[serde(default)]
+    pub is_root: bool,
     /// Foliage clusters along this branch.
     pub foliage: Vec<FoliageBud>,
 }
@@ -623,6 +626,7 @@ impl WorldState {
             children_spawned: false,
             has_nest: false,
             sway_factor: 0.04,
+            is_root: false,
             foliage: vec![FoliageBud {
                 offset_along: 1.0,
                 lateral_offset: 0.0,
@@ -741,6 +745,146 @@ impl WorldState {
         world
     }
 
+    pub fn debug_dump(&self) -> String {
+        let mut dump = String::new();
+        dump.push_str("=== World State Dump ===\n");
+        dump.push_str(&format!("Trees: {}\n", self.trees.len()));
+        for tree in &self.trees {
+            dump.push_str(&format!(
+                "  Tree ID: {}, Mature: {}, Growth Steps: {}/{}\n",
+                tree.id, tree.is_mature, tree.growth_steps_completed, tree.target_growth_steps
+            ));
+        }
+        dump.push_str(&format!("Birds: {}\n", self.birds.len()));
+        for bird in &self.birds {
+            dump.push_str(&format!(
+                "  Bird Species: {:?}, State: {:?}\n",
+                bird.species, bird.state
+            ));
+        }
+        dump
+    }
+
+    /// Renders a 2D text canvas of the active viewport, displaying the tree structure,
+    /// foliage, ground line, and bird flock. Extremely useful for test logging and inspection.
+    #[allow(clippy::needless_range_loop)]
+    pub fn render_ascii_art(&self, width_chars: usize, height_chars: usize) -> String {
+        let w = width_chars.max(40);
+        let h = height_chars.max(15);
+        let mut grid = vec![vec![' '; w]; h];
+
+        let vp_x = self.viewport_offset_x;
+        let ground_y = 750.0f32;
+        let ground_row = ((ground_y / 800.0) * h as f32).clamp(1.0, (h - 2) as f32) as usize;
+
+        // 1. Draw ground horizon
+        for c in 0..w {
+            grid[ground_row][c] = '─';
+            for r in (ground_row + 1)..h {
+                grid[r][c] = if (c + r) % 3 == 0 { '.' } else { ' ' };
+            }
+        }
+
+        // Coordinate mapper from world space to grid cell (col, row)
+        let world_to_grid = |pt: [f32; 2]| -> Option<(usize, usize)> {
+            let rel_x = pt[0] - vp_x;
+            if !(0.0..=1000.0).contains(&rel_x) || !(0.0..=800.0).contains(&pt[1]) {
+                return None;
+            }
+            let c = ((rel_x / 1000.0) * w as f32) as usize;
+            let r = ((pt[1] / 800.0) * h as f32) as usize;
+            if c < w && r < h { Some((c, r)) } else { None }
+        };
+
+        // 2. Draw tree branches
+        for b in &self.branches {
+            let start = b.start;
+            let end = b.current_end();
+            let steps = 25;
+            for s in 0..=steps {
+                let t = s as f32 / steps as f32;
+                let pt = [
+                    start[0] + (end[0] - start[0]) * t,
+                    start[1] + (end[1] - start[1]) * t,
+                ];
+                if let Some((c, r)) = world_to_grid(pt)
+                    && (r < ground_row || (b.is_root && r <= ground_row + 1))
+                {
+                    let ch = if b.depth == 0 {
+                        '║'
+                    } else if b.angle.abs() < 0.25 {
+                        '│'
+                    } else if b.angle < -1.1 || b.angle > 1.1 {
+                        '═'
+                    } else if b.angle < 0.0 {
+                        '\\'
+                    } else {
+                        '/'
+                    };
+                    grid[r][c] = ch;
+                }
+            }
+
+            // 3. Draw foliage
+            for bud in &b.foliage {
+                if bud.bloom > 0.1
+                    && let Some((c, r)) = world_to_grid(b.point_at(bud.offset_along))
+                    && r < ground_row
+                    && grid[r][c] == ' '
+                {
+                    grid[r][c] = '*';
+                }
+            }
+        }
+
+        // 4. Draw birds
+        for b in &self.birds {
+            if let Some((c, r)) = world_to_grid(b.pos)
+                && r < h
+            {
+                let sprite = match b.state {
+                    BirdState::Perched { .. } => {
+                        if b.facing_left {
+                            "<@/"
+                        } else {
+                            "\\@>"
+                        }
+                    }
+                    _ => "\\^/",
+                };
+                for (offset, ch) in sprite.chars().enumerate() {
+                    let col_idx =
+                        (c as isize - 1 + offset as isize).clamp(0, (w - 1) as isize) as usize;
+                    grid[r][col_idx] = ch;
+                }
+            }
+        }
+
+        // 5. Build boxed string output
+        let mut out = String::new();
+        out.push('┌');
+        for _ in 0..w {
+            out.push('─');
+        }
+        out.push_str("┐\n");
+
+        for row in grid {
+            out.push('│');
+            for ch in row {
+                out.push(ch);
+            }
+            out.push_str("│\n");
+        }
+
+        out.push('└');
+        for _ in 0..w {
+            out.push('─');
+        }
+        out.push_str("┘\n");
+
+        out
+    }
+
     /// Set the active curated ANSI Roguelike color palette.
     pub fn set_palette(&mut self, palette: RookeryPalette) {
         self.active_palette = palette;
@@ -853,6 +997,7 @@ impl WorldState {
             children_spawned: false,
             has_nest: false,
             sway_factor: 0.04,
+            is_root: false,
             foliage: vec![FoliageBud {
                 offset_along: 1.0,
                 lateral_offset: 0.0,
@@ -927,27 +1072,27 @@ impl WorldState {
             idx += 1;
         }
 
-        // 1. Stage 1 (Steps 1..8): Trunk Ascent & Root Spreading
-        if step <= 8 {
-            let target_trunk_len = match species {
-                TreeSpecies::AlpinePine => 170.0,
-                TreeSpecies::SilverBirch => 140.0,
-                TreeSpecies::AncientOak => 125.0,
-                TreeSpecies::GreatBaobab => 100.0,
-                TreeSpecies::WeepingWillow => 95.0,
-                TreeSpecies::JapaneseMaple => 85.0,
-            };
-            let target_thickness = match species {
-                TreeSpecies::GreatBaobab => 24.0,
-                TreeSpecies::AncientOak => 18.0,
-                TreeSpecies::AlpinePine => 14.0,
-                TreeSpecies::WeepingWillow => 12.0,
-                TreeSpecies::JapaneseMaple => 11.0,
-                TreeSpecies::SilverBirch => 9.0,
-            };
+        // 1. Stage 1 (Steps 1..18): Progressive Trunk Ascent & Buttress Roots
+        let target_trunk_len = match species {
+            TreeSpecies::AlpinePine => 380.0,
+            TreeSpecies::SilverBirch => 260.0,
+            TreeSpecies::AncientOak => 165.0,
+            TreeSpecies::GreatBaobab => 160.0,
+            TreeSpecies::WeepingWillow => 140.0,
+            TreeSpecies::JapaneseMaple => 120.0,
+        };
+        let target_thickness = match species {
+            TreeSpecies::GreatBaobab => 28.0,
+            TreeSpecies::AncientOak => 22.0,
+            TreeSpecies::AlpinePine => 16.0,
+            TreeSpecies::WeepingWillow => 14.0,
+            TreeSpecies::JapaneseMaple => 12.0,
+            TreeSpecies::SilverBirch => 10.0,
+        };
 
+        if step <= 18 {
             if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
-                let frac = step as f32 / 8.0;
+                let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
                 let new_len = 18.0 + (target_trunk_len - 18.0) * frac;
                 let new_thick = 4.0 + (target_thickness - 4.0) * frac;
                 trunk.length = new_len;
@@ -979,18 +1124,20 @@ impl WorldState {
                     children_spawned: true,
                     has_nest: false,
                     sway_factor: 0.0,
+                    is_root: true,
                     foliage: Vec::new(),
                 });
             }
         }
-        // 2. Stage 2 (Steps 9..28): Primary Scaffold Limbs & Species Branching
-        else if step <= 28 {
+
+        // 2. Stage 2 (Steps 6..28): Primary Scaffold Limbs & Species Branching
+        if (6..=28).contains(&step) {
             let mut candidates: Vec<u32> = tree_branch_ids
                 .iter()
                 .copied()
                 .filter(|&bid| {
                     if let Some(b) = self.branches.iter().find(|b| b.id == bid) {
-                        b.depth < 4
+                        !b.is_root && b.depth < 4
                     } else {
                         false
                     }
@@ -1001,14 +1148,26 @@ impl WorldState {
                 candidates.push(root_id);
             }
 
-            let parent_id = candidates[self.rng.range_i32(0, candidates.len() as i32) as usize];
+            let is_pine = species == TreeSpecies::AlpinePine;
+            let primary_pine_whorls = self
+                .branches
+                .iter()
+                .filter(|b| b.parent_id == Some(root_id) && !b.is_root)
+                .count();
+
+            let parent_id = if is_pine && primary_pine_whorls < 10 && self.rng.f32() < 0.70 {
+                root_id
+            } else {
+                candidates[self.rng.range_i32(0, candidates.len() as i32) as usize]
+            };
+
             let parent_data = self
                 .branches
                 .iter()
                 .find(|b| b.id == parent_id)
-                .map(|b| (b.end, b.angle, b.depth, b.thickness));
+                .map(|b| (b.start, b.end, b.angle, b.depth, b.thickness, b.length));
 
-            if let Some((p_end, p_angle, p_depth, p_thick)) = parent_data {
+            if let Some((_p_start, p_end, p_angle, p_depth, p_thick, p_len)) = parent_data {
                 let depth = p_depth + 1;
                 let count = if depth == 1 {
                     match species {
@@ -1020,45 +1179,106 @@ impl WorldState {
                     1
                 };
 
+                let attach_pos = if parent_id == root_id {
+                    let t = match species {
+                        TreeSpecies::AlpinePine => {
+                            let tier_idx = (primary_pine_whorls / 2) % 6;
+                            0.28 + (tier_idx as f32) * 0.13
+                        }
+                        TreeSpecies::AncientOak => self.rng.range(0.40, 0.95),
+                        TreeSpecies::GreatBaobab => self.rng.range(0.70, 0.98),
+                        _ => self.rng.range(0.45, 0.95),
+                    };
+                    if let Some(trunk) = self.branches.iter().find(|b| b.id == root_id) {
+                        trunk.point_at(t)
+                    } else {
+                        p_end
+                    }
+                } else {
+                    p_end
+                };
+
                 for k in 0..count {
                     self.next_id += 1;
                     let id = self.next_id;
 
+                    let branch_sign = if count == 1 {
+                        if self.rng.f32() > 0.5 { 1.0 } else { -1.0 }
+                    } else if k % 2 == 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+
                     let (angle, target_len) = match species {
                         TreeSpecies::AlpinePine => {
-                            let sign = if k == 0 { -1.0 } else { 1.0 };
-                            let a = sign * self.rng.range(1.45, 1.62);
-                            let h_factor = ((p_end[1] - 300.0) / 450.0).clamp(0.2, 1.0);
-                            let l = (70.0 * h_factor).clamp(24.0, 75.0);
-                            (a, l)
+                            if depth == 1 {
+                                let a = branch_sign * self.rng.range(1.22, 1.45);
+                                let dist_from_trunk_base = (750.0 - attach_pos[1]).max(10.0);
+                                let h_factor = 1.0
+                                    - (dist_from_trunk_base / target_trunk_len).clamp(0.0, 0.75);
+                                let l = (75.0 * h_factor).clamp(24.0, 75.0);
+                                (a, l)
+                            } else {
+                                let a = (p_angle + branch_sign * self.rng.range(0.20, 0.45))
+                                    .clamp(-1.50, 1.50);
+                                let l = (p_len * 0.65).clamp(18.0, 42.0);
+                                (a, l)
+                            }
                         }
                         TreeSpecies::WeepingWillow => {
                             if depth <= 2 {
-                                let a = p_angle + self.rng.range(-0.45, 0.45);
-                                (a.clamp(-1.0, 1.0), self.rng.range(40.0, 65.0))
+                                let a = if parent_id == root_id {
+                                    branch_sign * self.rng.range(0.35, 0.95)
+                                } else {
+                                    (p_angle + branch_sign * self.rng.range(0.15, 0.45))
+                                        .clamp(-1.15, 1.15)
+                                };
+                                (a, self.rng.range(40.0, 65.0))
                             } else {
                                 // Downward weeping cascade
-                                let sign = if self.rng.f32() > 0.5 { 1.0 } else { -1.0 };
-                                let a = sign * self.rng.range(2.1, 2.9);
+                                let a = branch_sign * self.rng.range(2.1, 2.9);
                                 (a, self.rng.range(35.0, 60.0))
                             }
                         }
                         TreeSpecies::JapaneseMaple => {
-                            let zig = if depth % 2 == 0 { 0.72 } else { -0.72 };
-                            let a = (p_angle + zig + self.rng.range(-0.2, 0.2)).clamp(-1.3, 1.3);
-                            (a, self.rng.range(30.0, 55.0))
+                            let a = if parent_id == root_id {
+                                branch_sign * self.rng.range(0.45, 0.95)
+                            } else {
+                                let zig = if depth % 2 == 0 { 0.55 } else { -0.55 };
+                                (p_angle + zig * branch_sign + self.rng.range(-0.15, 0.15))
+                                    .clamp(-1.3, 1.3)
+                            };
+                            (a, self.rng.range(28.0, 52.0))
                         }
                         TreeSpecies::SilverBirch => {
-                            let a = (p_angle + self.rng.range(-0.35, 0.35)).clamp(-0.8, 0.8);
+                            let a = if parent_id == root_id {
+                                branch_sign * self.rng.range(0.25, 0.65)
+                            } else {
+                                (p_angle + branch_sign * self.rng.range(0.15, 0.35))
+                                    .clamp(-0.85, 0.85)
+                            };
                             (a, self.rng.range(35.0, 60.0))
                         }
                         TreeSpecies::GreatBaobab => {
-                            let a = self.rng.range(-1.15, 1.15);
+                            let a = if parent_id == root_id {
+                                let spread = [-1.1, -0.6, 0.6, 1.1];
+                                let base_a = spread[(k as usize).min(spread.len() - 1)];
+                                base_a + self.rng.range(-0.2, 0.2)
+                            } else {
+                                (p_angle + branch_sign * self.rng.range(0.15, 0.4))
+                                    .clamp(-1.35, 1.35)
+                            };
                             (a, self.rng.range(28.0, 48.0))
                         }
                         TreeSpecies::AncientOak => {
-                            let a = (p_angle + self.rng.range(-0.65, 0.65)).clamp(-1.1, 1.1);
-                            (a, self.rng.range(40.0, 75.0))
+                            let a = if parent_id == root_id {
+                                branch_sign * self.rng.range(0.35, 0.85)
+                            } else {
+                                (p_angle + branch_sign * self.rng.range(0.20, 0.55))
+                                    .clamp(-1.25, 1.25)
+                            };
+                            (a, self.rng.range(38.0, 72.0))
                         }
                     };
 
@@ -1102,10 +1322,10 @@ impl WorldState {
                         id,
                         parent_id: Some(parent_id),
                         depth,
-                        start: p_end,
+                        start: attach_pos,
                         end: [
-                            p_end[0] + angle.sin() * target_len,
-                            p_end[1] - angle.cos() * target_len,
+                            attach_pos[0] + angle.sin() * target_len,
+                            attach_pos[1] - angle.cos() * target_len,
                         ],
                         angle,
                         length: target_len,
@@ -1115,19 +1335,20 @@ impl WorldState {
                         children_spawned: false,
                         has_nest: false,
                         sway_factor: (depth as f32 * 0.12).min(0.65),
+                        is_root: false,
                         foliage,
                     });
                 }
             }
         }
         // 3. Stage 3 (Steps 29..max_steps): Foliage Bloom, Densification & Maturation
-        else {
+        if step > 28 {
             for bid in &tree_branch_ids {
                 if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid) {
                     for bud in &mut b.foliage {
                         bud.bloom = 1.0;
                     }
-                    if b.depth >= 2 && b.foliage.len() < 10 {
+                    if !b.is_root && b.depth >= 2 && b.foliage.len() < 10 {
                         b.foliage.push(FoliageBud {
                             offset_along: 0.8,
                             lateral_offset: 6.0,
@@ -1315,6 +1536,14 @@ impl WorldState {
             return;
         }
 
+        let vp_x = self.viewport_offset_x;
+        let active_tree_base_x = self
+            .trees
+            .iter()
+            .find(|t| t.id == self.active_tree_id)
+            .map(|t| t.base_pos[0])
+            .unwrap_or(vp_x + 500.0);
+
         // Decay water splash timers on bird baths
         for bb in &mut self.bird_baths {
             bb.splash_timer = (bb.splash_timer - dt_secs).max(0.0);
@@ -1340,11 +1569,17 @@ impl WorldState {
                         // Arrived near target: choose new action
                         let roll = self.rng.f32();
                         if roll < 0.40 && branch_count > 1 {
-                            // Find suitable mature branch to perch on
+                            // Find suitable mature branch to perch on within visible viewport
                             let candidates: Vec<u32> = self
                                 .branches
                                 .iter()
-                                .filter(|b| b.growth_progress >= 0.8 && b.depth >= 1)
+                                .filter(|b| {
+                                    !b.is_root
+                                        && b.growth_progress >= 0.8
+                                        && b.depth >= 1
+                                        && (b.start[0] >= vp_x - 150.0
+                                            && b.start[0] <= vp_x + 1150.0)
+                                })
                                 .map(|b| b.id)
                                 .collect();
                             if !candidates.is_empty() {
@@ -1379,14 +1614,14 @@ impl WorldState {
                             });
                         } else if roll < 0.82 {
                             next_state = Some(BirdState::Circling {
-                                center: [500.0, 320.0],
+                                center: [active_tree_base_x, 320.0],
                                 radius: self.rng.range(140.0, 300.0),
                                 angle: self.rng.range(0.0, std::f32::consts::TAU),
                                 speed: self.rng.range(0.4, 0.8)
                                     * if self.rng.f32() > 0.5 { 1.0 } else { -1.0 },
                             });
                         } else {
-                            let tx = self.rng.range(150.0, 850.0);
+                            let tx = vp_x + self.rng.range(150.0, 850.0);
                             let ty = self.rng.range(100.0, 480.0);
                             let sp = self.rng.range(40.0, 80.0);
                             next_state = Some(BirdState::Flying {
@@ -1414,7 +1649,7 @@ impl WorldState {
 
                     // Chance to break into perch, bathing, or direct flight
                     if self.rng.bool_with_prob(0.03 * dt_secs) {
-                        let tx = self.rng.range(100.0, 900.0);
+                        let tx = vp_x + self.rng.range(100.0, 900.0);
                         let ty = self.rng.range(120.0, 450.0);
                         let sp = self.rng.range(45.0, 85.0);
                         next_state = Some(BirdState::Flying {
@@ -1464,7 +1699,7 @@ impl WorldState {
                                 target_nest_id: nest.id,
                             });
                         } else {
-                            let tx = self.rng.range(100.0, 900.0);
+                            let tx = vp_x + self.rng.range(100.0, 900.0);
                             let ty = self.rng.range(80.0, 350.0);
                             let sp = self.rng.range(50.0, 90.0);
                             next_state = Some(BirdState::Flying {
@@ -1524,7 +1759,7 @@ impl WorldState {
                         }
                     } else {
                         // Nest was pruned or missing
-                        let tx = self.rng.range(200.0, 800.0);
+                        let tx = vp_x + self.rng.range(200.0, 800.0);
                         let ty = self.rng.range(100.0, 300.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1555,7 +1790,7 @@ impl WorldState {
                                 self.stats.nests_built += 1;
                             }
                         }
-                        let tx = self.rng.range(150.0, 850.0);
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
                         let ty = self.rng.range(100.0, 350.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1598,7 +1833,7 @@ impl WorldState {
                                 });
                             }
                         }
-                        let tx = self.rng.range(150.0, 850.0);
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
                         let ty = self.rng.range(100.0, 350.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1617,7 +1852,7 @@ impl WorldState {
                         bb.splash_timer = 0.5;
                     }
                     if *remaining_secs <= 0.0 {
-                        let tx = self.rng.range(200.0, 800.0);
+                        let tx = vp_x + self.rng.range(200.0, 800.0);
                         let ty = self.rng.range(120.0, 350.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1636,7 +1871,7 @@ impl WorldState {
                     }
                     if *remaining_secs <= 0.0 {
                         self.stats.snacks_eaten += 1;
-                        let tx = self.rng.range(200.0, 800.0);
+                        let tx = vp_x + self.rng.range(200.0, 800.0);
                         let ty = self.rng.range(100.0, 300.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1654,7 +1889,7 @@ impl WorldState {
                     bird.facing_left = dir[0] < 0.0;
 
                     if *remaining_secs <= 0.0 {
-                        let tx = self.rng.range(150.0, 850.0);
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
                         let ty = self.rng.range(100.0, 350.0);
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
@@ -1662,6 +1897,17 @@ impl WorldState {
                         });
                     }
                 }
+            }
+
+            // Redirect stranded birds (e.g. from camera panning or succession) back toward active flock
+            if (bird.pos[0] - (vp_x + 500.0)).abs() > 1300.0 {
+                next_state = Some(BirdState::Flying {
+                    target: [
+                        vp_x + self.rng.range(250.0, 750.0),
+                        self.rng.range(150.0, 400.0),
+                    ],
+                    speed: 95.0,
+                });
             }
 
             if let Some(st) = next_state {
@@ -1674,7 +1920,11 @@ impl WorldState {
         // Wildlife arrivals from off-screen margins
         if self.birds.len() < 8 && self.rng.bool_with_prob(0.015 * dt_secs) {
             let from_left = self.rng.f32() < 0.5;
-            let start_x = if from_left { -60.0 } else { 1060.0 };
+            let start_x = if from_left {
+                vp_x - 60.0
+            } else {
+                vp_x + 1060.0
+            };
             let start_y = self.rng.range(120.0, 360.0);
             let species_pool = [
                 BirdSpecies::Rook,
@@ -1695,7 +1945,10 @@ impl WorldState {
                 vel: [if from_left { 65.0 } else { -65.0 }, 0.0],
                 facing_left: !from_left,
                 state: BirdState::Flying {
-                    target: [self.rng.range(300.0, 700.0), self.rng.range(150.0, 400.0)],
+                    target: [
+                        vp_x + self.rng.range(300.0, 700.0),
+                        self.rng.range(150.0, 400.0),
+                    ],
                     speed: self.rng.range(45.0, 80.0),
                 },
                 sing_timer: self.rng.range(5.0, 15.0),
@@ -1884,6 +2137,7 @@ impl WorldState {
             children_spawned: false,
             has_nest: false,
             sway_factor: 0.1,
+            is_root: false,
             foliage: Vec::new(),
         };
         self.branches.push(branch);
@@ -2066,6 +2320,50 @@ impl WorldState {
                         });
                         state.active_tree_id = 1;
                     }
+
+                    // Migration: Mark ground flare buttress roots as is_root and sanitize any children
+                    for b in &mut state.branches {
+                        if b.depth == 1 && b.start[1] >= 748.0 && b.angle.abs() > 1.0 {
+                            b.is_root = true;
+                        }
+                    }
+                    let root_ids: Vec<u32> = state
+                        .branches
+                        .iter()
+                        .filter(|b| b.is_root)
+                        .map(|b| b.id)
+                        .collect();
+                    state.branches.retain(|b| {
+                        if let Some(pid) = b.parent_id {
+                            !root_ids.contains(&pid)
+                        } else {
+                            true
+                        }
+                    });
+
+                    // Migration: Reposition any birds stranded far outside active viewport
+                    let active_x = state
+                        .trees
+                        .iter()
+                        .find(|t| t.id == state.active_tree_id)
+                        .map(|t| t.base_pos[0])
+                        .unwrap_or(state.viewport_offset_x + 500.0);
+                    let vp_x = state.viewport_offset_x;
+                    for (i, bird) in state.birds.iter_mut().enumerate() {
+                        if (bird.pos[0] - active_x).abs() > 1200.0 {
+                            bird.pos = [
+                                vp_x + 250.0 + ((i as f32 % 5.0) * 110.0),
+                                200.0 + ((i as f32 % 3.0) * 70.0),
+                            ];
+                            bird.state = BirdState::Circling {
+                                center: [active_x, 320.0],
+                                radius: 160.0 + ((i as f32) * 20.0),
+                                angle: (i as f32) * 1.5,
+                                speed: if i % 2 == 0 { 0.55 } else { -0.55 },
+                            };
+                        }
+                    }
+
                     state.recompute_stats();
                     log::info!(
                         "loaded world state from {} (age {:.1}h, {} branches)",
@@ -2176,7 +2474,29 @@ mod tests {
 
     #[test]
     fn world_initializes_with_tree_and_birds() {
-        let world = WorldState::new(42);
+        let mut world = WorldState::new(42);
+
+        println!("Initial bird count: {}", world.birds.len());
+        for b in &world.birds {
+            println!(
+                "Bird {}: species={:?}, state={:?}, pos={:?}",
+                b.id, b.species, b.state, b.pos
+            );
+        }
+
+        // Advance 10 seconds of simulation
+        for _ in 0..10 {
+            world.update(1.0, false, None);
+        }
+
+        println!("\nAfter 10 seconds of update:");
+        for b in &world.birds {
+            println!(
+                "Bird {}: species={:?}, state={:?}, pos={:?}",
+                b.id, b.species, b.state, b.pos
+            );
+        }
+
         assert!(!world.branches.is_empty(), "must have initial branches");
         assert_eq!(world.birds.len(), 4, "must have 4 initial birds");
         assert!(world.branches[0].depth == 0, "root must have depth 0");
@@ -2432,5 +2752,258 @@ mod tests {
             world.target_viewport_offset_x > 0.0,
             "camera must pan towards next tree"
         );
+    }
+
+    #[test]
+    fn test_all_species_tree_growth_and_geometry() {
+        for &species in TreeSpecies::all() {
+            let mut world = WorldState::new(42);
+            world.trees[0].species = species;
+            world.trees[0].target_growth_steps = species.max_growth_steps();
+
+            println!("\n=== Growing Species: {:?} ===", species);
+            let mut steps_safety = 0;
+            while world.trees[0].growth_steps_completed < species.max_growth_steps()
+                && steps_safety < 100
+            {
+                world.advance_growth(7.0);
+                steps_safety += 1;
+            }
+
+            println!("{}", world.render_ascii_art(80, 24));
+
+            let root_id = world.trees[0].root_branch_id;
+            let base_x = world.trees[0].base_pos[0];
+
+            let mut tree_0_branch_ids = vec![root_id];
+            let mut idx = 0;
+            while idx < tree_0_branch_ids.len() {
+                let pid = tree_0_branch_ids[idx];
+                for b in &world.branches {
+                    if b.parent_id == Some(pid) && !tree_0_branch_ids.contains(&b.id) {
+                        tree_0_branch_ids.push(b.id);
+                    }
+                }
+                idx += 1;
+            }
+
+            let non_root_branches: Vec<&Branch> = world
+                .branches
+                .iter()
+                .filter(|b| !b.is_root && b.id != root_id && tree_0_branch_ids.contains(&b.id))
+                .collect();
+
+            assert!(
+                !non_root_branches.is_empty(),
+                "{:?} must have canopy branches",
+                species
+            );
+
+            // 1. Zero canopy branches should crawl along the ground (y > 725)
+            for b in &non_root_branches {
+                assert!(
+                    b.end[1] < 725.0,
+                    "{:?} branch {} crawled along the ground: end={:?}",
+                    species,
+                    b.id,
+                    b.end
+                );
+            }
+
+            // 2. Tree canopy must reach upward into the sky
+            let min_y = non_root_branches
+                .iter()
+                .map(|b| b.end[1])
+                .fold(750.0f32, f32::min);
+            let expected_max_y = match species {
+                TreeSpecies::WeepingWillow
+                | TreeSpecies::JapaneseMaple
+                | TreeSpecies::GreatBaobab => 610.0,
+                _ => 520.0,
+            };
+            assert!(
+                min_y < expected_max_y,
+                "{:?} tree failed to reach upward: min_y={} (expected < {})",
+                species,
+                min_y,
+                expected_max_y
+            );
+
+            // 3. Canopy branches must spread on both left and right of trunk
+            let min_x = non_root_branches
+                .iter()
+                .map(|b| b.end[0])
+                .fold(base_x, f32::min);
+            let max_x = non_root_branches
+                .iter()
+                .map(|b| b.end[0])
+                .fold(base_x, f32::max);
+            assert!(
+                min_x < base_x - 30.0,
+                "{:?} lacks left branch spread: min_x={}, base_x={}",
+                species,
+                min_x,
+                base_x
+            );
+            assert!(
+                max_x > base_x + 30.0,
+                "{:?} lacks right branch spread: max_x={}, base_x={}",
+                species,
+                max_x,
+                base_x
+            );
+
+            // 4. Alpine Pine specific check: branches originate at multiple heights along trunk
+            if species == TreeSpecies::AlpinePine {
+                let primary_starts: Vec<f32> = non_root_branches
+                    .iter()
+                    .filter(|b| b.parent_id == Some(root_id))
+                    .map(|b| b.start[1])
+                    .collect();
+                let mut distinct_heights = primary_starts.clone();
+                distinct_heights.sort_by(|a, b| a.total_cmp(b));
+                distinct_heights.dedup_by(|a, b| (*a - *b).abs() < 5.0);
+                assert!(
+                    distinct_heights.len() >= 3,
+                    "Alpine Pine should have at least 3 whorl tiers, found: {:?}",
+                    distinct_heights
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_birds_follow_active_viewport_across_succession() {
+        let mut world = WorldState::new(101);
+
+        // Advance growth to trigger succession and camera panning to Tree 2
+        world.advance_growth(350.0);
+        assert!(world.trees.len() >= 2);
+        let target_vp = world.target_viewport_offset_x;
+        assert!(target_vp > 0.0);
+
+        // Pan viewport to Tree 2
+        world.viewport_offset_x = target_vp;
+
+        // Run simulation updates
+        for _ in 0..30 {
+            world.update(1.0, false, None);
+        }
+
+        println!("\n=== ASCII Viewport after Forest Succession ===");
+        println!("{}", world.render_ascii_art(80, 24));
+
+        let vp_x = world.viewport_offset_x;
+
+        // Verify birds are within or near active viewport
+        for bird in &world.birds {
+            assert!(
+                bird.pos[0] >= vp_x - 150.0 && bird.pos[0] <= vp_x + 1150.0,
+                "Bird {:?} pos {:?} outside active viewport [{} .. {}]",
+                bird.species,
+                bird.pos,
+                vp_x,
+                vp_x + 1000.0
+            );
+        }
+    }
+
+    #[test]
+    fn test_load_or_init_sanitizes_ground_branches_and_relocates_birds() {
+        let temp_dir = std::env::temp_dir().join(format!("rookery_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let save_path = temp_dir.join("test_save.json");
+
+        let mut world = WorldState::new(42);
+        // Simulate an expanded forest at x = 12,800
+        world.viewport_offset_x = 12800.0;
+        world.target_viewport_offset_x = 12800.0;
+        world.trees.push(TreeRecord {
+            id: 17,
+            species: TreeSpecies::SilverBirch,
+            base_pos: [13300.0, 750.0],
+            root_branch_id: 507,
+            is_mature: false,
+            growth_steps_completed: 20,
+            target_growth_steps: 40,
+            planted_age_secs: 50000.0,
+        });
+        world.active_tree_id = 17;
+
+        // Add a ground buttress root and a corrupted ground child branch
+        let root_branch_id = 998;
+        let ground_child_id = 999;
+        world.branches.push(Branch {
+            id: root_branch_id,
+            parent_id: Some(507),
+            depth: 1,
+            start: [13300.0, 750.0],
+            end: [13280.0, 746.0],
+            angle: -1.35,
+            length: 20.0,
+            target_length: 20.0,
+            thickness: 6.0,
+            growth_progress: 1.0,
+            children_spawned: true,
+            has_nest: false,
+            sway_factor: 0.0,
+            is_root: true,
+            foliage: Vec::new(),
+        });
+        world.branches.push(Branch {
+            id: ground_child_id,
+            parent_id: Some(root_branch_id),
+            depth: 2,
+            start: [13280.0, 746.0],
+            end: [13210.0, 745.0],
+            angle: -1.57,
+            length: 70.0,
+            target_length: 70.0,
+            thickness: 4.0,
+            growth_progress: 1.0,
+            children_spawned: true,
+            has_nest: false,
+            sway_factor: 0.0,
+            is_root: false,
+            foliage: Vec::new(),
+        });
+
+        // Set all birds back at Tree 1 (x = 300..600, 12,000 pixels away)
+        for b in &mut world.birds {
+            b.pos = [450.0, 300.0];
+        }
+
+        // Save raw world JSON to disk
+        let json_str = serde_json::to_string_pretty(&world).unwrap();
+        std::fs::write(&save_path, json_str).unwrap();
+
+        // Load via load_or_init
+        let loaded = WorldState::load_or_init(&save_path, 42);
+
+        // Verify corrupted ground child was pruned
+        assert!(
+            !loaded.branches.iter().any(|b| b.id == ground_child_id),
+            "Corrupted ground child branch must be removed"
+        );
+
+        // Verify buttress root is marked as is_root
+        let root_b = loaded
+            .branches
+            .iter()
+            .find(|b| b.id == root_branch_id)
+            .expect("buttress root should remain");
+        assert!(root_b.is_root);
+
+        // Verify birds were relocated into the active viewport
+        for bird in &loaded.birds {
+            assert!(
+                bird.pos[0] >= loaded.viewport_offset_x - 100.0
+                    && bird.pos[0] <= loaded.viewport_offset_x + 1100.0,
+                "Bird pos {:?} should be in active viewport",
+                bird.pos
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

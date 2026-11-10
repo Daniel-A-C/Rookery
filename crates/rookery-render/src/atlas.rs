@@ -283,6 +283,10 @@ impl GlyphPass {
         self.instances.clear();
     }
 
+    pub fn instance_count(&self) -> usize {
+        self.instances.len()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn push(
         &mut self,
