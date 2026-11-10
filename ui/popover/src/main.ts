@@ -1139,8 +1139,8 @@ selectRookeryStyle.addEventListener("change", async () => {
       value: styleIdx,
     });
     renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? `Style ${styleIdx + 1}`;
-    showNotification("palette", `Switched to ${styleName}`);
+    const styleName = s.rookery?.aesthetic_style_name ?? `Palette ${styleIdx + 1}`;
+    showNotification("palette", `Palette: ${styleName}`);
   } catch (err) {
     console.error("set_style error:", err);
   }
@@ -1150,8 +1150,8 @@ btnStylePrev.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("living-rookery", "prev_style");
     renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? "Previous Style";
-    showNotification("palette", `Mockup: ${styleName}`);
+    const styleName = s.rookery?.aesthetic_style_name ?? "Previous Palette";
+    showNotification("palette", `Palette: ${styleName}`);
   } catch (err) {
     console.error("prev_style error:", err);
   }
@@ -1161,8 +1161,8 @@ btnStyleNext.addEventListener("click", async () => {
   try {
     const s = await api.executeAppAction("living-rookery", "cycle_style");
     renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? "Next Style";
-    showNotification("palette", `Mockup: ${styleName}`);
+    const styleName = s.rookery?.aesthetic_style_name ?? "Next Palette";
+    showNotification("palette", `Palette: ${styleName}`);
   } catch (err) {
     console.error("cycle_style error:", err);
   }

@@ -381,15 +381,23 @@ pub fn execute_app_action(
                 "pan_right" => {
                     w.pan_forest(150.0);
                 }
-                "cycle_style" => {
-                    w.cycle_aesthetic_style();
+                "cycle_style" | "cycle_palette" => {
+                    w.cycle_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
-                "prev_style" => {
-                    w.prev_aesthetic_style();
+                "prev_style" | "prev_palette" => {
+                    w.prev_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
-                "set_style" | "aesthetic_style" => {
+                "cycle_bird_style" => {
+                    w.cycle_bird_style();
+                    state.audio.play_sfx(SoundEffect::BirdChirp);
+                }
+                "sprout_now" => {
+                    w.execute_growth_step();
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
+                }
+                "set_style" | "set_palette" | "aesthetic_style" | "color_palette" => {
                     if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
                         let parsed_idx = match val {
                             serde_json::Value::Number(n) => n.as_u64().map(|v| v as u8),
@@ -400,11 +408,11 @@ pub fn execute_app_action(
                             _ => None,
                         };
                         if let Some(idx) = parsed_idx {
-                            w.set_aesthetic_style(idx);
+                            w.set_palette(rookery_core::world::RookeryPalette::from_u8(idx));
                             state.audio.play_sfx(SoundEffect::PaletteCycle);
                         }
                     } else {
-                        w.cycle_aesthetic_style();
+                        w.cycle_palette();
                         state.audio.play_sfx(SoundEffect::PaletteCycle);
                     }
                 }

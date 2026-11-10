@@ -39,6 +39,10 @@ export interface RookeryStatus {
   nests_built: number;
   aesthetic_style?: number;
   aesthetic_style_name?: string;
+  active_species?: string;
+  forest_trees_count?: number;
+  active_tree_growth_steps?: number;
+  active_tree_target_steps?: number;
 }
 
 export interface KoiStatus {

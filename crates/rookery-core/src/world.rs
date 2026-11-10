@@ -367,7 +367,178 @@ pub struct WorldStats {
     pub chicks_hatched: u32,
 }
 
-/// Aesthetic visual style names for The Living ASCII Rookery mock-ups.
+/// Real-world inspired tree species supported by The Living ASCII Rookery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TreeSpecies {
+    #[default]
+    AncientOak,
+    WeepingWillow,
+    AlpinePine,
+    JapaneseMaple,
+    SilverBirch,
+    GreatBaobab,
+}
+
+impl TreeSpecies {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::AncientOak => "Ancient Oak",
+            Self::WeepingWillow => "Weeping Willow",
+            Self::AlpinePine => "Alpine Pine",
+            Self::JapaneseMaple => "Japanese Maple",
+            Self::SilverBirch => "Silver Birch",
+            Self::GreatBaobab => "Great Baobab",
+        }
+    }
+
+    pub fn all() -> &'static [TreeSpecies] {
+        &[
+            Self::AncientOak,
+            Self::WeepingWillow,
+            Self::AlpinePine,
+            Self::JapaneseMaple,
+            Self::SilverBirch,
+            Self::GreatBaobab,
+        ]
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::AncientOak => Self::WeepingWillow,
+            Self::WeepingWillow => Self::AlpinePine,
+            Self::AlpinePine => Self::JapaneseMaple,
+            Self::JapaneseMaple => Self::SilverBirch,
+            Self::SilverBirch => Self::GreatBaobab,
+            Self::GreatBaobab => Self::AncientOak,
+        }
+    }
+
+    pub fn max_growth_steps(&self) -> u32 {
+        match self {
+            Self::AncientOak => 42,
+            Self::WeepingWillow => 40,
+            Self::AlpinePine => 45,
+            Self::JapaneseMaple => 36,
+            Self::SilverBirch => 40,
+            Self::GreatBaobab => 38,
+        }
+    }
+}
+
+/// Curated ANSI Roguelike color palettes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RookeryPalette {
+    #[default]
+    EarthAndSylvan, // 0: Caves of Qud / Earth Sylvan (umber bark, jade & emerald canopy)
+    MidnightStarlight, // 1: Moonlit silver & slate bark, frosted cyan foliage, obsidian sky
+    AutumnHearth,      // 2: Rust & mahogany bark, golden amber, burnt orange, ruby canopy
+    VerdantRainforest, // 3: Dark mossy bark, vibrant lime, emerald & orchid blossom canopy
+    AmberPhosphor,     // 4: Retro monochrome amber CRT terminal
+    MatrixGreen,       // 5: Retro hacker green phosphor terminal
+}
+
+pub const ROOKERY_PALETTE_COUNT: u8 = 6;
+pub const ROOKERY_PALETTE_NAMES: [&str; 6] = [
+    "Earth & Sylvan (Caves of Qud)",
+    "Midnight Starlight",
+    "Autumn Hearth",
+    "Verdant Rainforest",
+    "Amber Phosphor CRT",
+    "Emerald Matrix",
+];
+
+impl RookeryPalette {
+    pub fn display_name(&self) -> &'static str {
+        ROOKERY_PALETTE_NAMES[self.as_u8() as usize]
+    }
+
+    pub fn all() -> &'static [RookeryPalette] {
+        &[
+            Self::EarthAndSylvan,
+            Self::MidnightStarlight,
+            Self::AutumnHearth,
+            Self::VerdantRainforest,
+            Self::AmberPhosphor,
+            Self::MatrixGreen,
+        ]
+    }
+
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            Self::EarthAndSylvan => 0,
+            Self::MidnightStarlight => 1,
+            Self::AutumnHearth => 2,
+            Self::VerdantRainforest => 3,
+            Self::AmberPhosphor => 4,
+            Self::MatrixGreen => 5,
+        }
+    }
+
+    pub fn from_u8(val: u8) -> Self {
+        match val % ROOKERY_PALETTE_COUNT {
+            0 => Self::EarthAndSylvan,
+            1 => Self::MidnightStarlight,
+            2 => Self::AutumnHearth,
+            3 => Self::VerdantRainforest,
+            4 => Self::AmberPhosphor,
+            _ => Self::MatrixGreen,
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        Self::from_u8(self.as_u8() + 1)
+    }
+
+    pub fn prev(&self) -> Self {
+        Self::from_u8((self.as_u8() + ROOKERY_PALETTE_COUNT - 1) % ROOKERY_PALETTE_COUNT)
+    }
+}
+
+/// ANSI roguelike bird rendering styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BirdStyle {
+    #[default]
+    Classic3Cell, // 3-cell CP437 avians (< @ / perched, \ ^ / flight)
+    Streamlined2Cell, // 2-cell songbirds (< @ perched, ^ ^ flight)
+    OrnateFlock,      // Distinct 3x1 and 2x2 silhouettes for rare species
+}
+
+impl BirdStyle {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Classic3Cell => "3-Cell Classic CP437",
+            Self::Streamlined2Cell => "2-Cell Streamlined",
+            Self::OrnateFlock => "Ornate Silhouettes",
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Classic3Cell => Self::Streamlined2Cell,
+            Self::Streamlined2Cell => Self::OrnateFlock,
+            Self::OrnateFlock => Self::Classic3Cell,
+        }
+    }
+}
+
+/// State record for an individual tree in the forest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TreeRecord {
+    pub id: u32,
+    pub species: TreeSpecies,
+    pub base_pos: [f32; 2],
+    pub root_branch_id: u32,
+    pub is_mature: bool,
+    pub growth_steps_completed: u32,
+    pub target_growth_steps: u32,
+    pub planted_age_secs: f64,
+}
+
+fn default_growth_step_timer() -> f32 {
+    6.0
+}
+
+/// Aesthetic visual style names for The Living ASCII Rookery mock-ups (retained for backward compatibility).
 pub const ROOKERY_STYLE_COUNT: u8 = 8;
 pub const ROOKERY_STYLE_NAMES: [&str; 8] = [
     "Classic SDF Woodland",
@@ -407,6 +578,18 @@ pub struct WorldState {
     pub viewport_offset_x: f32,
     #[serde(default)]
     pub aesthetic_style: u8,
+    #[serde(default)]
+    pub trees: Vec<TreeRecord>,
+    #[serde(default)]
+    pub active_tree_id: u32,
+    #[serde(default = "default_growth_step_timer")]
+    pub growth_step_timer: f32,
+    #[serde(default)]
+    pub target_viewport_offset_x: f32,
+    #[serde(default)]
+    pub active_palette: RookeryPalette,
+    #[serde(default)]
+    pub bird_style: BirdStyle,
     #[serde(skip)]
     pub notes: Vec<FloatingNote>,
     #[serde(skip)]
@@ -418,31 +601,49 @@ pub struct WorldState {
 
 impl WorldState {
     /// Initialize a brand new Living Rookery world with the given random seed.
+    /// The active tree starts as a tiny sapling barely taking up a few cells at ground level.
     pub fn new(seed: u64) -> Self {
         let mut rng = WorldRng::new(seed);
         let mut branches = Vec::new();
 
-        // Base trunk at default normalized coordinate space [500.0, 750.0]
-        // (will be scaled/mapped to viewport by the renderer).
+        // Base trunk sprout at default normalized coordinate space [500.0, 750.0]
         let trunk_base = [500.0, 750.0];
-        let trunk_len = 110.0;
+        let sprout_len = 18.0;
         let trunk = Branch {
             id: 1,
             parent_id: None,
             depth: 0,
             start: trunk_base,
-            end: [trunk_base[0], trunk_base[1] - trunk_len],
+            end: [trunk_base[0], trunk_base[1] - sprout_len],
             angle: 0.0,
-            length: trunk_len,
-            target_length: trunk_len,
-            thickness: 18.0,
+            length: sprout_len,
+            target_length: sprout_len,
+            thickness: 4.0,
             growth_progress: 1.0,
             children_spawned: false,
             has_nest: false,
-            sway_factor: 0.05,
-            foliage: Vec::new(),
+            sway_factor: 0.04,
+            foliage: vec![FoliageBud {
+                offset_along: 1.0,
+                lateral_offset: 0.0,
+                char_code: b'*',
+                color_idx: 0,
+                scale: 1.0,
+                bloom: 0.8,
+            }],
         };
         branches.push(trunk);
+
+        let initial_tree = TreeRecord {
+            id: 1,
+            species: TreeSpecies::AncientOak,
+            base_pos: trunk_base,
+            root_branch_id: 1,
+            is_mature: false,
+            growth_steps_completed: 0,
+            target_growth_steps: TreeSpecies::AncientOak.max_growth_steps(),
+            planted_age_secs: 0.0,
+        };
 
         let mut birds = Vec::new();
         let species_pool = [
@@ -482,7 +683,7 @@ impl WorldState {
             tree_root_id: 1,
             pos: [trunk_base[0] + 34.0, trunk_base[1] + 2.0],
             planted_age_secs: 0.0,
-            label: format!("Ancestral Tree · Seed #{seed}"),
+            label: format!("Ancestral Sapling · Seed #{seed}"),
             lineage_gen: 1,
         }];
 
@@ -522,7 +723,13 @@ impl WorldState {
             bird_baths,
             perches,
             viewport_offset_x: 0.0,
-            aesthetic_style: 0,
+            aesthetic_style: 1, // Strict ANSI Roguelike
+            trees: vec![initial_tree],
+            active_tree_id: 1,
+            growth_step_timer: 6.0,
+            target_viewport_offset_x: 0.0,
+            active_palette: RookeryPalette::EarthAndSylvan,
+            bird_style: BirdStyle::Classic3Cell,
             notes: Vec::new(),
             chips: Vec::new(),
             stats: WorldStats::default(),
@@ -530,34 +737,54 @@ impl WorldState {
             total_offline_caught_up_secs: 0.0,
         };
 
-        // Advance a few initial growth ticks so the sapling has its first branches
-        world.advance_growth(300.0);
         world.recompute_stats();
         world
     }
 
-    /// Set the active aesthetic mockup style index (`0..8`).
+    /// Set the active curated ANSI Roguelike color palette.
+    pub fn set_palette(&mut self, palette: RookeryPalette) {
+        self.active_palette = palette;
+        self.aesthetic_style = palette.as_u8();
+    }
+
+    /// Cycle to the next curated color palette.
+    pub fn cycle_palette(&mut self) -> RookeryPalette {
+        self.active_palette = self.active_palette.next();
+        self.aesthetic_style = self.active_palette.as_u8();
+        self.active_palette
+    }
+
+    /// Cycle to the previous curated color palette.
+    pub fn prev_palette(&mut self) -> RookeryPalette {
+        self.active_palette = self.active_palette.prev();
+        self.aesthetic_style = self.active_palette.as_u8();
+        self.active_palette
+    }
+
+    /// Cycle bird rendering style.
+    pub fn cycle_bird_style(&mut self) -> BirdStyle {
+        self.bird_style = self.bird_style.next();
+        self.bird_style
+    }
+
+    /// Set the active aesthetic style index (delegates to palette for backward compatibility).
     pub fn set_aesthetic_style(&mut self, style: u8) {
-        self.aesthetic_style = style % ROOKERY_STYLE_COUNT;
+        self.set_palette(RookeryPalette::from_u8(style));
     }
 
-    /// Cycle to the next aesthetic mockup style (`0..8`).
+    /// Cycle to next aesthetic style (delegates to palette).
     pub fn cycle_aesthetic_style(&mut self) -> u8 {
-        self.aesthetic_style = (self.aesthetic_style + 1) % ROOKERY_STYLE_COUNT;
-        self.aesthetic_style
+        self.cycle_palette().as_u8()
     }
 
-    /// Cycle to the previous aesthetic mockup style (`0..8`).
+    /// Cycle to previous aesthetic style (delegates to palette).
     pub fn prev_aesthetic_style(&mut self) -> u8 {
-        self.aesthetic_style =
-            (self.aesthetic_style + ROOKERY_STYLE_COUNT - 1) % ROOKERY_STYLE_COUNT;
-        self.aesthetic_style
+        self.prev_palette().as_u8()
     }
 
-    /// Human-readable display name for the current aesthetic style.
+    /// Human-readable display name for the current active palette.
     pub fn aesthetic_style_name(&self) -> &'static str {
-        let idx = (self.aesthetic_style % ROOKERY_STYLE_COUNT) as usize;
-        ROOKERY_STYLE_NAMES[idx]
+        self.active_palette.display_name()
     }
 
     /// Primary simulation update step. Returns [`Activity::Animating`] if birds are in flight
@@ -606,38 +833,189 @@ impl WorldState {
         }
     }
 
-    /// Advance tree growth by `dt_secs`.
-    pub fn advance_growth(&mut self, dt_secs: f32) {
-        // Growth rate: 1.0 growth progress takes ~120-240 seconds per branch segment in real-time,
-        // producing a majestic slow-evolving structure.
-        let base_rate = 0.006 * dt_secs;
-        let mut new_branches = Vec::new();
+    /// Plant a brand-new sapling of a specific species at `base_x`.
+    pub fn plant_new_sapling(&mut self, base_x: f32, species: TreeSpecies) -> u32 {
+        self.next_id += 1;
+        let root_id = self.next_id;
+        let trunk_base = [base_x, 750.0];
+        let sprout_len = 18.0;
+        let trunk = Branch {
+            id: root_id,
+            parent_id: None,
+            depth: 0,
+            start: trunk_base,
+            end: [base_x, 750.0 - sprout_len],
+            angle: 0.0,
+            length: sprout_len,
+            target_length: sprout_len,
+            thickness: 4.0,
+            growth_progress: 1.0,
+            children_spawned: false,
+            has_nest: false,
+            sway_factor: 0.04,
+            foliage: vec![FoliageBud {
+                offset_along: 1.0,
+                lateral_offset: 0.0,
+                char_code: b'*',
+                color_idx: 0,
+                scale: 1.0,
+                bloom: 0.85,
+            }],
+        };
+        self.branches.push(trunk);
 
-        let branch_count = self.branches.len();
-        for i in 0..branch_count {
-            let b = &mut self.branches[i];
-            if b.growth_progress < 1.0 {
-                // Trunk grows faster, outer twigs slower
-                let depth_factor = 1.0 / (b.depth as f32 * 0.4 + 1.0);
-                b.growth_progress = (b.growth_progress + base_rate * depth_factor).min(1.0);
-                b.end = b.current_end();
+        self.next_id += 1;
+        let tree_id = self.next_id;
+        let record = TreeRecord {
+            id: tree_id,
+            species,
+            base_pos: trunk_base,
+            root_branch_id: root_id,
+            is_mature: false,
+            growth_steps_completed: 0,
+            target_growth_steps: species.max_growth_steps(),
+            planted_age_secs: self.total_age_secs,
+        };
+        self.trees.push(record);
+        self.active_tree_id = tree_id;
+        self.recompute_stats();
+        tree_id
+    }
+
+    /// Discrete growth engine: fires every 5-10 seconds to visibly grow a new element on the active tree.
+    pub fn execute_growth_step(&mut self) {
+        // Find active tree that is not yet mature
+        let active_idx = self
+            .trees
+            .iter()
+            .position(|t| t.id == self.active_tree_id && !t.is_mature)
+            .or_else(|| self.trees.iter().position(|t| !t.is_mature));
+
+        let active_idx = match active_idx {
+            Some(idx) => idx,
+            None => {
+                // If all trees are mature, check if we need to pan and plant the next tree
+                if let Some(last) = self.trees.last() {
+                    let next_x = last.base_pos[0] + 800.0;
+                    let next_species = last.species.next();
+                    self.target_viewport_offset_x = last.base_pos[0] + 800.0 - 500.0;
+                    self.plant_new_sapling(next_x, next_species);
+                }
+                return;
+            }
+        };
+
+        let tree = &mut self.trees[active_idx];
+        tree.growth_steps_completed += 1;
+        let step = tree.growth_steps_completed;
+        let species = tree.species;
+        let root_id = tree.root_branch_id;
+        let base_x = tree.base_pos[0];
+        let max_steps = tree.target_growth_steps;
+        let is_now_mature = step >= max_steps;
+
+        // Collect all branches currently belonging to this tree
+        let mut tree_branch_ids = vec![root_id];
+        let mut idx = 0;
+        while idx < tree_branch_ids.len() {
+            let pid = tree_branch_ids[idx];
+            for b in &self.branches {
+                if b.parent_id == Some(pid) && !tree_branch_ids.contains(&b.id) {
+                    tree_branch_ids.push(b.id);
+                }
+            }
+            idx += 1;
+        }
+
+        // 1. Stage 1 (Steps 1..8): Trunk Ascent & Root Spreading
+        if step <= 8 {
+            let target_trunk_len = match species {
+                TreeSpecies::AlpinePine => 170.0,
+                TreeSpecies::SilverBirch => 140.0,
+                TreeSpecies::AncientOak => 125.0,
+                TreeSpecies::GreatBaobab => 100.0,
+                TreeSpecies::WeepingWillow => 95.0,
+                TreeSpecies::JapaneseMaple => 85.0,
+            };
+            let target_thickness = match species {
+                TreeSpecies::GreatBaobab => 24.0,
+                TreeSpecies::AncientOak => 18.0,
+                TreeSpecies::AlpinePine => 14.0,
+                TreeSpecies::WeepingWillow => 12.0,
+                TreeSpecies::JapaneseMaple => 11.0,
+                TreeSpecies::SilverBirch => 9.0,
+            };
+
+            if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
+                let frac = step as f32 / 8.0;
+                let new_len = 18.0 + (target_trunk_len - 18.0) * frac;
+                let new_thick = 4.0 + (target_thickness - 4.0) * frac;
+                trunk.length = new_len;
+                trunk.target_length = new_len;
+                trunk.thickness = new_thick;
+                trunk.end = trunk.current_end();
             }
 
-            // Once mature, spawn child branches if not already done and max depth not reached
-            if b.growth_progress >= 1.0 && !b.children_spawned && b.depth < 5 && branch_count < 120
-            {
-                b.children_spawned = true;
-                let parent_id = b.id;
-                let parent_end = b.end;
-                let parent_angle = b.angle;
-                let depth = b.depth + 1;
-                let parent_thickness = b.thickness;
+            // At step 3 & 5: flare buttress roots at the ground
+            if step == 3 || step == 5 {
+                let flare_dir = if step == 3 { -1.0 } else { 1.0 };
+                let root_angle = flare_dir * self.rng.range(1.2, 1.45);
+                let root_len = self.rng.range(16.0, 28.0);
+                self.next_id += 1;
+                self.branches.push(Branch {
+                    id: self.next_id,
+                    parent_id: Some(root_id),
+                    depth: 1,
+                    start: [base_x, 750.0],
+                    end: [
+                        base_x + root_angle.sin() * root_len,
+                        750.0 - root_angle.cos() * root_len,
+                    ],
+                    angle: root_angle,
+                    length: root_len,
+                    target_length: root_len,
+                    thickness: 6.0,
+                    growth_progress: 1.0,
+                    children_spawned: true,
+                    has_nest: false,
+                    sway_factor: 0.0,
+                    foliage: Vec::new(),
+                });
+            }
+        }
+        // 2. Stage 2 (Steps 9..28): Primary Scaffold Limbs & Species Branching
+        else if step <= 28 {
+            let mut candidates: Vec<u32> = tree_branch_ids
+                .iter()
+                .copied()
+                .filter(|&bid| {
+                    if let Some(b) = self.branches.iter().find(|b| b.id == bid) {
+                        b.depth < 4
+                    } else {
+                        false
+                    }
+                })
+                .collect();
 
-                // Determine child count: trunk gets 2-3 branches, twigs get 1-2
+            if candidates.is_empty() {
+                candidates.push(root_id);
+            }
+
+            let parent_id = candidates[self.rng.range_i32(0, candidates.len() as i32) as usize];
+            let parent_data = self
+                .branches
+                .iter()
+                .find(|b| b.id == parent_id)
+                .map(|b| (b.end, b.angle, b.depth, b.thickness));
+
+            if let Some((p_end, p_angle, p_depth, p_thick)) = parent_data {
+                let depth = p_depth + 1;
                 let count = if depth == 1 {
-                    self.rng.range_i32(2, 4)
-                } else if depth <= 3 {
-                    self.rng.range_i32(1, 3)
+                    match species {
+                        TreeSpecies::AlpinePine => 2, // symmetrical horizontal whorl
+                        TreeSpecies::GreatBaobab => self.rng.range_i32(2, 4),
+                        _ => self.rng.range_i32(1, 3),
+                    }
                 } else {
                     1
                 };
@@ -646,74 +1024,207 @@ impl WorldState {
                     self.next_id += 1;
                     let id = self.next_id;
 
-                    // Branch spread angles
-                    let angle_offset = if count == 1 {
-                        self.rng.range(-0.35, 0.35)
-                    } else {
-                        let span = 0.85;
-                        let step = span / ((count - 1).max(1) as f32);
-                        -span * 0.5 + step * (k as f32) + self.rng.range(-0.15, 0.15)
-                    };
-                    let angle = (parent_angle + angle_offset).clamp(-1.2, 1.2);
-
-                    let target_len = (b.target_length * self.rng.range(0.68, 0.88)).max(24.0);
-                    let thickness = (parent_thickness * 0.72).max(2.0);
-                    let sway = (b.sway_factor * 1.35).min(0.8);
-
-                    // Generate foliage clusters along new twigs
-                    let mut foliage = Vec::new();
-                    if depth >= 2 {
-                        let leaves_count = self.rng.range_i32(3, 8) as usize;
-                        let chars = *b"*%&@o8#";
-                        for _ in 0..leaves_count {
-                            let char_code =
-                                chars[self.rng.range_i32(0, chars.len() as i32) as usize];
-                            let color_idx = if depth == 4 {
-                                self.rng.range_i32(0, 4) as u8
-                            } else {
-                                self.rng.range_i32(0, 2) as u8
-                            };
-                            foliage.push(FoliageBud {
-                                offset_along: self.rng.range(0.3, 1.0),
-                                lateral_offset: self.rng.range(-12.0, 12.0),
-                                char_code,
-                                color_idx,
-                                scale: self.rng.range(0.8, 1.3),
-                                bloom: 0.1,
-                            });
+                    let (angle, target_len) = match species {
+                        TreeSpecies::AlpinePine => {
+                            let sign = if k == 0 { -1.0 } else { 1.0 };
+                            let a = sign * self.rng.range(1.45, 1.62);
+                            let h_factor = ((p_end[1] - 300.0) / 450.0).clamp(0.2, 1.0);
+                            let l = (70.0 * h_factor).clamp(24.0, 75.0);
+                            (a, l)
                         }
+                        TreeSpecies::WeepingWillow => {
+                            if depth <= 2 {
+                                let a = p_angle + self.rng.range(-0.45, 0.45);
+                                (a.clamp(-1.0, 1.0), self.rng.range(40.0, 65.0))
+                            } else {
+                                // Downward weeping cascade
+                                let sign = if self.rng.f32() > 0.5 { 1.0 } else { -1.0 };
+                                let a = sign * self.rng.range(2.1, 2.9);
+                                (a, self.rng.range(35.0, 60.0))
+                            }
+                        }
+                        TreeSpecies::JapaneseMaple => {
+                            let zig = if depth % 2 == 0 { 0.72 } else { -0.72 };
+                            let a = (p_angle + zig + self.rng.range(-0.2, 0.2)).clamp(-1.3, 1.3);
+                            (a, self.rng.range(30.0, 55.0))
+                        }
+                        TreeSpecies::SilverBirch => {
+                            let a = (p_angle + self.rng.range(-0.35, 0.35)).clamp(-0.8, 0.8);
+                            (a, self.rng.range(35.0, 60.0))
+                        }
+                        TreeSpecies::GreatBaobab => {
+                            let a = self.rng.range(-1.15, 1.15);
+                            (a, self.rng.range(28.0, 48.0))
+                        }
+                        TreeSpecies::AncientOak => {
+                            let a = (p_angle + self.rng.range(-0.65, 0.65)).clamp(-1.1, 1.1);
+                            (a, self.rng.range(40.0, 75.0))
+                        }
+                    };
+
+                    let thickness = (p_thick * 0.72).max(2.5);
+
+                    // Generate species-specific foliage buds
+                    let mut foliage = Vec::new();
+                    let leaf_count = self.rng.range_i32(3, 7) as usize;
+                    let chars: &[u8] = match species {
+                        TreeSpecies::AlpinePine => b"^*+^#",
+                        TreeSpecies::WeepingWillow => b"|~;:,",
+                        TreeSpecies::JapaneseMaple => b"*@&#",
+                        TreeSpecies::SilverBirch => b"\"'`*",
+                        _ => b"*%&@o#",
+                    };
+
+                    for _ in 0..leaf_count {
+                        let char_code = chars[self.rng.range_i32(0, chars.len() as i32) as usize];
+                        let color_idx = match species {
+                            TreeSpecies::JapaneseMaple => self.rng.range_i32(2, 4) as u8,
+                            TreeSpecies::SilverBirch => {
+                                if self.rng.f32() > 0.5 {
+                                    1
+                                } else {
+                                    2
+                                }
+                            }
+                            _ => self.rng.range_i32(0, 3) as u8,
+                        };
+                        foliage.push(FoliageBud {
+                            offset_along: self.rng.range(0.35, 1.0),
+                            lateral_offset: self.rng.range(-10.0, 10.0),
+                            char_code,
+                            color_idx,
+                            scale: self.rng.range(0.9, 1.3),
+                            bloom: 0.85,
+                        });
                     }
 
-                    new_branches.push(Branch {
+                    self.branches.push(Branch {
                         id,
                         parent_id: Some(parent_id),
                         depth,
-                        start: parent_end,
-                        end: parent_end,
+                        start: p_end,
+                        end: [
+                            p_end[0] + angle.sin() * target_len,
+                            p_end[1] - angle.cos() * target_len,
+                        ],
                         angle,
                         length: target_len,
                         target_length: target_len,
                         thickness,
-                        growth_progress: 0.05,
+                        growth_progress: 1.0,
                         children_spawned: false,
                         has_nest: false,
-                        sway_factor: sway,
+                        sway_factor: (depth as f32 * 0.12).min(0.65),
                         foliage,
                     });
                 }
             }
-
-            // Bloom foliage on existing branches
-            for f in &mut b.foliage {
-                if f.bloom < 1.0 {
-                    f.bloom = (f.bloom + base_rate * 1.5).min(1.0);
+        }
+        // 3. Stage 3 (Steps 29..max_steps): Foliage Bloom, Densification & Maturation
+        else {
+            for bid in &tree_branch_ids {
+                if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid) {
+                    for bud in &mut b.foliage {
+                        bud.bloom = 1.0;
+                    }
+                    if b.depth >= 2 && b.foliage.len() < 10 {
+                        b.foliage.push(FoliageBud {
+                            offset_along: 0.8,
+                            lateral_offset: 6.0,
+                            char_code: b'*',
+                            color_idx: 0,
+                            scale: 1.1,
+                            bloom: 1.0,
+                        });
+                    }
                 }
             }
         }
 
-        self.branches.extend(new_branches);
+        // Spawn a subtle wood chip spark from the active growth
+        self.chips.push(FallingChip {
+            pos: [
+                base_x + self.rng.range(-40.0, 40.0),
+                750.0 - (step as f32 * 12.0).min(550.0),
+            ],
+            vel: [self.rng.range(-15.0, 15.0), self.rng.range(-20.0, -8.0)],
+            rotation: 0.0,
+            rot_vel: self.rng.range(-2.0, 2.0),
+            glyph: '+',
+            life: 0.0,
+            max_life: 1.0,
+        });
 
-        // Milestone 4 & 5: Ecosystem structures on mature branches over time
+        // Check if tree has reached full maturity
+        if is_now_mature {
+            self.trees[active_idx].is_mature = true;
+            let forest_num = self.trees.len();
+
+            // Commemorative plant sign marker
+            let sign_id = self.next_id + 1;
+            self.next_id += 1;
+            self.signs.push(PlantSign {
+                id: sign_id,
+                tree_root_id: root_id,
+                pos: [base_x + 36.0, 752.0],
+                planted_age_secs: self.total_age_secs,
+                label: format!("Grand {} · Forest #{}", species.display_name(), forest_num),
+                lineage_gen: forest_num as u32,
+            });
+
+            // Forest Succession: smoothly pan camera left and plant next tree in center!
+            let next_species = species.next();
+            let next_x = base_x + 800.0;
+            self.target_viewport_offset_x = base_x + 800.0 - 500.0;
+            self.plant_new_sapling(next_x, next_species);
+        }
+
+        self.recompute_stats();
+    }
+
+    /// Advance tree growth by `dt_secs`.
+    pub fn advance_growth(&mut self, dt_secs: f32) {
+        if dt_secs <= 0.0 {
+            return;
+        }
+
+        // 1. Smooth horizontal viewport camera panning
+        let offset_diff = self.target_viewport_offset_x - self.viewport_offset_x;
+        if offset_diff.abs() > 0.1 {
+            let step = offset_diff * (dt_secs * 2.5).min(0.25);
+            self.viewport_offset_x += step;
+        } else {
+            self.viewport_offset_x = self.target_viewport_offset_x;
+        }
+
+        // 2. Discrete 5-10s growth step timer
+        self.growth_step_timer -= dt_secs;
+        let max_loops = ((dt_secs / 6.0).ceil() as usize).clamp(1, 60);
+        let mut loop_guard = 0;
+        while self.growth_step_timer <= 0.0 && loop_guard < max_loops {
+            self.growth_step_timer += self.rng.range(5.0, 8.0);
+            self.execute_growth_step();
+            loop_guard += 1;
+        }
+        if self.growth_step_timer <= 0.0 {
+            self.growth_step_timer = self.rng.range(5.0, 8.0);
+        }
+
+        // 3. Smooth continuous branch & foliage interpolation
+        let base_rate = 0.015 * dt_secs;
+        for b in &mut self.branches {
+            if b.growth_progress < 1.0 {
+                b.growth_progress = (b.growth_progress + base_rate).min(1.0);
+                b.end = b.current_end();
+            }
+            for f in &mut b.foliage {
+                if f.bloom < 1.0 {
+                    f.bloom = (f.bloom + base_rate * 2.0).min(1.0);
+                }
+            }
+        }
+
+        // 4. Ecosystem structures on mature branches over time
         if self.houses.len() < 12 && self.rng.f32() < 0.008 * (dt_secs / 10.0).clamp(0.01, 1.0) {
             let candidates: Vec<u32> = self
                 .branches
@@ -1393,7 +1904,9 @@ impl WorldState {
 
     /// User interaction: pan forest horizontally.
     pub fn pan_forest(&mut self, delta_x: f32) {
-        self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(-3000.0, 3000.0);
+        let max_offset = (self.trees.len() as f32 * 800.0 + 1000.0).max(3000.0);
+        self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(-1000.0, max_offset);
+        self.target_viewport_offset_x = self.viewport_offset_x;
     }
 
     /// User micro-interaction: drop a snack on nearest branch to attract birds.
@@ -1483,9 +1996,8 @@ impl WorldState {
         self.total_offline_caught_up_secs += elapsed_secs;
         self.total_age_secs += elapsed_secs;
 
-        // Step through in bulk chunks of 15 seconds, capped at max 400 steps (6,000s = 100 min)
-        // For longer durations (e.g. 24h), execute 200 bulk steps with scaled dt.
-        let max_steps = 200;
+        // Step through in bulk chunks, capped at max 60 steps for instant wake-up (< 20ms)
+        let max_steps = 60;
         let step_dt = (elapsed_secs / max_steps as f64).min(30.0) as f32;
         let steps = ((elapsed_secs / step_dt as f64).round() as usize).min(max_steps);
 
@@ -1525,6 +2037,35 @@ impl WorldState {
         match fs::read_to_string(path) {
             Ok(content) => match serde_json::from_str::<WorldState>(&content) {
                 Ok(mut state) => {
+                    if state.trees.is_empty() && !state.branches.is_empty() {
+                        let root_branch = state
+                            .branches
+                            .iter()
+                            .find(|b| b.depth == 0)
+                            .map(|b| b.id)
+                            .unwrap_or(1);
+                        let base_pos = state
+                            .branches
+                            .iter()
+                            .find(|b| b.id == root_branch)
+                            .map(|b| b.start)
+                            .unwrap_or([500.0, 750.0]);
+                        state.trees.push(TreeRecord {
+                            id: 1,
+                            species: TreeSpecies::AncientOak,
+                            base_pos,
+                            root_branch_id: root_branch,
+                            is_mature: state.branches.len() > 25,
+                            growth_steps_completed: if state.branches.len() > 25 {
+                                40
+                            } else {
+                                state.branches.len() as u32
+                            },
+                            target_growth_steps: 40,
+                            planted_age_secs: 0.0,
+                        });
+                        state.active_tree_id = 1;
+                    }
                     state.recompute_stats();
                     log::info!(
                         "loaded world state from {} (age {:.1}h, {} branches)",
@@ -1845,20 +2386,51 @@ mod tests {
     }
 
     #[test]
-    fn aesthetic_style_cycling_and_bounds() {
+    fn palette_cycling_and_tree_species() {
         let mut world = WorldState::new(77);
-        assert_eq!(world.aesthetic_style, 0);
-        assert_eq!(world.aesthetic_style_name(), "Classic SDF Woodland");
+        assert_eq!(world.active_palette, RookeryPalette::EarthAndSylvan);
+        assert_eq!(
+            world.aesthetic_style_name(),
+            "Earth & Sylvan (Caves of Qud)"
+        );
 
-        assert_eq!(world.cycle_aesthetic_style(), 1);
-        assert_eq!(world.aesthetic_style_name(), "Strict ANSI Roguelike");
+        assert_eq!(world.cycle_palette(), RookeryPalette::MidnightStarlight);
+        assert_eq!(world.aesthetic_style_name(), "Midnight Starlight");
 
-        assert_eq!(world.prev_aesthetic_style(), 0);
-        assert_eq!(world.prev_aesthetic_style(), 7);
-        assert_eq!(world.aesthetic_style_name(), "3D Volumetric Tree");
+        assert_eq!(world.prev_palette(), RookeryPalette::EarthAndSylvan);
+        assert_eq!(world.prev_palette(), RookeryPalette::MatrixGreen);
 
-        world.set_aesthetic_style(10); // wraps modulo 8 -> 2
-        assert_eq!(world.aesthetic_style, 2);
-        assert_eq!(world.aesthetic_style_name(), "Full-Screen ASCII Matrix");
+        world.set_palette(RookeryPalette::AutumnHearth);
+        assert_eq!(world.active_palette, RookeryPalette::AutumnHearth);
+        assert_eq!(world.aesthetic_style_name(), "Autumn Hearth");
+
+        // Verify all 6 real-tree species exist and cycle
+        let species = TreeSpecies::all();
+        assert_eq!(species.len(), 6);
+        assert_eq!(TreeSpecies::AncientOak.next(), TreeSpecies::WeepingWillow);
+        assert_eq!(TreeSpecies::WeepingWillow.next(), TreeSpecies::AlpinePine);
+        assert_eq!(TreeSpecies::AlpinePine.next(), TreeSpecies::JapaneseMaple);
+        assert_eq!(TreeSpecies::JapaneseMaple.next(), TreeSpecies::SilverBirch);
+        assert_eq!(TreeSpecies::SilverBirch.next(), TreeSpecies::GreatBaobab);
+        assert_eq!(TreeSpecies::GreatBaobab.next(), TreeSpecies::AncientOak);
+
+        // Verify sapling starts with 1 branch taking up only a few cells
+        assert_eq!(world.branches.len(), 1);
+        assert!(world.branches[0].length <= 20.0);
+        assert_eq!(world.trees.len(), 1);
+        assert!(!world.trees[0].is_mature);
+
+        // Advance 350 seconds of growth -> discrete steps mature the tree and trigger forest succession
+        world.advance_growth(350.0);
+        assert!(world.trees[0].is_mature);
+        assert!(
+            world.trees.len() >= 2,
+            "must have planted next tree in the forest"
+        );
+        assert_eq!(world.trees[1].species, TreeSpecies::WeepingWillow);
+        assert!(
+            world.target_viewport_offset_x > 0.0,
+            "camera must pan towards next tree"
+        );
     }
 }

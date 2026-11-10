@@ -84,6 +84,10 @@ pub struct RookeryStatus {
     pub nests_built: u32,
     pub aesthetic_style: u8,
     pub aesthetic_style_name: String,
+    pub active_species: String,
+    pub forest_trees_count: u32,
+    pub active_tree_growth_steps: u32,
+    pub active_tree_target_steps: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -235,6 +239,25 @@ impl HostState {
             nests_built: w.stats.nests_built + w.stats.houses_built,
             aesthetic_style: w.aesthetic_style,
             aesthetic_style_name: w.aesthetic_style_name().to_string(),
+            active_species: w
+                .trees
+                .iter()
+                .find(|t| t.id == w.active_tree_id)
+                .map(|t| t.species.display_name().to_string())
+                .unwrap_or_else(|| "Ancient Oak".to_string()),
+            forest_trees_count: w.trees.len() as u32,
+            active_tree_growth_steps: w
+                .trees
+                .iter()
+                .find(|t| t.id == w.active_tree_id)
+                .map(|t| t.growth_steps_completed)
+                .unwrap_or(0),
+            active_tree_target_steps: w
+                .trees
+                .iter()
+                .find(|t| t.id == w.active_tree_id)
+                .map(|t| t.target_growth_steps)
+                .unwrap_or(42),
         });
 
         let koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {

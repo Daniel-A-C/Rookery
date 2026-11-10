@@ -331,20 +331,20 @@ impl AppCatalog {
                         tooltip: Some("Explore the forest to the right".into()),
                     },
                     AppControl::Select {
-                        id: "aesthetic_style".into(),
-                        label: "Aesthetic Mockup".into(),
-                        options: rookery_core::world::ROOKERY_STYLE_NAMES
+                        id: "color_palette".into(),
+                        label: "Color Palette".into(),
+                        options: rookery_core::world::ROOKERY_PALETTE_NAMES
                             .iter()
                             .enumerate()
                             .map(|(i, n)| format!("{i}: {n}"))
                             .collect(),
-                        default_val: "0: Classic SDF Woodland".into(),
+                        default_val: "0: Earth & Sylvan (Caves of Qud)".into(),
                     },
                     AppControl::Button {
-                        id: "cycle_style".into(),
-                        label: "Next Mockup".into(),
+                        id: "cycle_palette".into(),
+                        label: "Next Palette".into(),
                         icon: Some("palette".into()),
-                        tooltip: Some("Cycle through the 8 ASCII aesthetic mock-up styles".into()),
+                        tooltip: Some("Cycle through the 6 curated ANSI roguelike color palettes".into()),
                     },
                 ],
                 budgets: AppBudgets {

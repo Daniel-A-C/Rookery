@@ -138,19 +138,19 @@ fn living_rookery_all_aesthetic_styles_render_and_export() {
     }
 
     let mut rendered_frames = Vec::new();
-    for style_idx in 0..rookery_core::world::ROOKERY_STYLE_COUNT {
+    for palette_idx in 0..rookery_core::world::ROOKERY_PALETTE_COUNT {
         if let Ok(mut wg) = world.lock() {
-            wg.set_aesthetic_style(style_idx);
+            wg.set_palette(rookery_core::world::RookeryPalette::from_u8(palette_idx));
         }
         let frame = off.run(&gpu, &mut scene, 2, dt).unwrap();
         let luma = mean_luma(&frame);
         assert!(
             luma > 1.5 && luma < 245.0,
-            "Style {style_idx} mean luma {luma} out of expected range"
+            "Palette {palette_idx} mean luma {luma} out of expected range"
         );
 
         if let Some(ref dir) = snapshot_dir {
-            let png_path = dir.join(format!("rookery_style_{style_idx}.png"));
+            let png_path = dir.join(format!("rookery_palette_{palette_idx}.png"));
             rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
         }
         rendered_frames.push(frame);
