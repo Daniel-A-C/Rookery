@@ -180,10 +180,20 @@ pub enum BirdState {
         angle: f32,
         speed: f32,
     },
+    ApproachingPerch {
+        branch_id: u32,
+        t: f32,
+        speed: f32,
+    },
     Perched {
         branch_id: u32,
         t: f32,
         remaining_secs: f32,
+    },
+    ApproachingFeed {
+        branch_id: u32,
+        t: f32,
+        speed: f32,
     },
     Feeding {
         branch_id: u32,
@@ -204,6 +214,11 @@ pub enum BirdState {
         target_nest_id: u32,
         speed: f32,
     },
+    ApproachingNest {
+        nest_id: u32,
+        is_brooding: bool,
+        speed: f32,
+    },
     BuildingNest {
         nest_id: u32,
         remaining_secs: f32,
@@ -211,6 +226,10 @@ pub enum BirdState {
     BroodingEggs {
         nest_id: u32,
         remaining_secs: f32,
+    },
+    ApproachingBath {
+        bath_id: u32,
+        speed: f32,
     },
     Bathing {
         bath_id: u32,
@@ -713,23 +732,32 @@ impl WorldState {
             BirdSpecies::EmeraldDove,
         ];
 
-        // Seed 4 initial birds circling or flying
+        // Seed 4 initial birds circling gracefully around the ancestral tree
         for i in 0..4 {
             let sp = species_pool[(i as usize) % species_pool.len()];
-            let x = rng.range(200.0, 800.0);
-            let y = rng.range(150.0, 450.0);
-            let speed = rng.range(35.0, 75.0);
+            let _dummy_x = rng.range(200.0, 800.0);
+            let _dummy_y = rng.range(150.0, 450.0);
+            let _dummy_speed = rng.range(35.0, 75.0);
+            let center = [500.0, 350.0];
+            let radius = rng.range(120.0, 260.0);
+            let angle = rng.range(0.0, std::f32::consts::TAU);
+            let speed = rng.range(0.3, 0.7) * if i % 2 == 0 { 1.0 } else { -1.0 };
+            let x = center[0] + angle.cos() * radius;
+            let y = center[1] + angle.sin() * radius * 0.45;
             birds.push(Bird {
                 id: i + 1,
                 species: sp,
                 pos: [x, y],
-                vel: [if i % 2 == 0 { speed } else { -speed }, 0.0],
-                facing_left: i % 2 != 0,
+                vel: [
+                    -speed * angle.sin() * radius,
+                    speed * angle.cos() * radius * 0.45,
+                ],
+                facing_left: speed < 0.0,
                 state: BirdState::Circling {
-                    center: [500.0, 350.0],
-                    radius: rng.range(120.0, 260.0),
-                    angle: rng.range(0.0, std::f32::consts::TAU),
-                    speed: rng.range(0.3, 0.7) * if i % 2 == 0 { 1.0 } else { -1.0 },
+                    center,
+                    radius,
+                    angle,
+                    speed,
                 },
                 sing_timer: rng.range(4.0, 15.0),
                 wing_phase: rng.range(0.0, std::f32::consts::TAU),
@@ -1018,6 +1046,10 @@ impl WorldState {
                 b.state,
                 BirdState::Flying { .. }
                     | BirdState::Circling { .. }
+                    | BirdState::ApproachingPerch { .. }
+                    | BirdState::ApproachingBath { .. }
+                    | BirdState::ApproachingFeed { .. }
+                    | BirdState::ApproachingNest { .. }
                     | BirdState::Startled { .. }
                     | BirdState::CarryingTwig { .. }
                     | BirdState::Feeding { .. }
@@ -2017,41 +2049,61 @@ impl WorldState {
                                 } else {
                                     self.rng.range(0.35, 0.95)
                                 };
-                                next_state = Some(BirdState::Perched {
+                                next_state = Some(BirdState::ApproachingPerch {
                                     branch_id,
                                     t,
-                                    remaining_secs: self.rng.range(8.0, 22.0),
+                                    speed: self.rng.range(50.0, 85.0),
                                 });
                             }
                         } else if roll < 0.55 && !active_nests.is_empty() {
                             let n_idx = self.rng.range_i32(0, active_nests.len() as i32) as usize;
                             let nest = active_nests[n_idx];
                             if nest.progress < 1.0 {
-                                next_state = Some(BirdState::BuildingNest {
+                                next_state = Some(BirdState::ApproachingNest {
                                     nest_id: nest.id,
-                                    remaining_secs: 3.5,
+                                    is_brooding: false,
+                                    speed: self.rng.range(50.0, 75.0),
                                 });
                             } else if nest.eggs_count > 0 {
-                                next_state = Some(BirdState::BroodingEggs {
+                                next_state = Some(BirdState::ApproachingNest {
                                     nest_id: nest.id,
-                                    remaining_secs: 7.0,
+                                    is_brooding: true,
+                                    speed: self.rng.range(50.0, 75.0),
                                 });
                             }
                         } else if roll < 0.68 && !active_baths.is_empty() {
                             let bath_id = active_baths
                                 [self.rng.range_i32(0, active_baths.len() as i32) as usize];
-                            next_state = Some(BirdState::Bathing {
+                            next_state = Some(BirdState::ApproachingBath {
                                 bath_id,
-                                remaining_secs: self.rng.range(4.0, 7.0),
+                                speed: self.rng.range(50.0, 75.0),
                             });
                         } else if roll < 0.82 {
-                            next_state = Some(BirdState::Circling {
-                                center: [active_tree_base_x, 300.0],
-                                radius: self.rng.range(160.0, 360.0),
-                                angle: self.rng.range(0.0, std::f32::consts::TAU),
-                                speed: self.rng.range(0.4, 0.8)
-                                    * if self.rng.f32() > 0.5 { 1.0 } else { -1.0 },
-                            });
+                            let center = [active_tree_base_x, 300.0];
+                            let rel_x = bird.pos[0] - center[0];
+                            let rel_y = (bird.pos[1] - center[1]) / 0.45;
+                            let cur_r = (rel_x * rel_x + rel_y * rel_y).sqrt();
+                            let angle = rel_y.atan2(rel_x);
+                            let target_r = cur_r.clamp(140.0, 360.0);
+                            if (cur_r - target_r).abs() > 35.0 {
+                                let entry_target = [
+                                    center[0] + angle.cos() * target_r,
+                                    center[1] + angle.sin() * target_r * 0.45,
+                                ];
+                                next_state = Some(BirdState::Flying {
+                                    target: entry_target,
+                                    speed: self.rng.range(50.0, 80.0),
+                                });
+                            } else {
+                                let sp = self.rng.range(0.35, 0.75)
+                                    * if self.rng.f32() > 0.5 { 1.0 } else { -1.0 };
+                                next_state = Some(BirdState::Circling {
+                                    center,
+                                    radius: cur_r,
+                                    angle,
+                                    speed: sp,
+                                });
+                            }
                         } else {
                             let tx = vp_x + self.rng.range(120.0, 880.0);
                             let ty = self.rng.range(80.0, 480.0);
@@ -2078,8 +2130,12 @@ impl WorldState {
                     bird.pos[0] = center[0] + angle.cos() * *radius;
                     bird.pos[1] = center[1] + angle.sin() * *radius * 0.45;
                     bird.facing_left = *speed < 0.0;
+                    bird.vel = [
+                        -*speed * angle.sin() * *radius,
+                        *speed * angle.cos() * *radius * 0.45,
+                    ];
 
-                    // Chance to break into perch, bathing, or direct flight
+                    // Chance to break into direct flight from current orbit point
                     if self.rng.bool_with_prob(0.03 * dt_secs) {
                         let tx = vp_x + self.rng.range(100.0, 900.0);
                         let ty = self.rng.range(120.0, 450.0);
@@ -2087,6 +2143,172 @@ impl WorldState {
                         next_state = Some(BirdState::Flying {
                             target: [tx, ty],
                             speed: sp,
+                        });
+                    }
+                }
+                BirdState::ApproachingPerch {
+                    branch_id,
+                    t,
+                    speed,
+                } => {
+                    let target_pos = self
+                        .branches
+                        .iter()
+                        .find(|br| br.id == *branch_id)
+                        .map(|b| b.point_at(*t));
+                    if let Some(target) = target_pos {
+                        let dx = target[0] - bird.pos[0];
+                        let dy = target[1] - bird.pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        bird.facing_left = dx < 0.0;
+
+                        if dist < 12.0 {
+                            bird.pos = target;
+                            bird.vel = [0.0, 0.0];
+                            next_state = Some(BirdState::Perched {
+                                branch_id: *branch_id,
+                                t: *t,
+                                remaining_secs: self.rng.range(8.0, 22.0),
+                            });
+                        } else {
+                            let step = (*speed * dt_secs).min(dist);
+                            bird.pos[0] += (dx / dist) * step;
+                            bird.pos[1] += (dy / dist) * step;
+                            bird.vel = [(dx / dist) * *speed, (dy / dist) * *speed];
+                        }
+                    } else {
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 60.0,
+                        });
+                    }
+                }
+                BirdState::ApproachingBath { bath_id, speed } => {
+                    let bath_pos = self
+                        .bird_baths
+                        .iter()
+                        .find(|b| b.id == *bath_id)
+                        .map(|b| [b.pos[0], b.pos[1] - 8.0]);
+                    if let Some(target) = bath_pos {
+                        let dx = target[0] - bird.pos[0];
+                        let dy = target[1] - bird.pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        bird.facing_left = dx < 0.0;
+
+                        if dist < 12.0 {
+                            bird.pos = target;
+                            bird.vel = [0.0, 0.0];
+                            next_state = Some(BirdState::Bathing {
+                                bath_id: *bath_id,
+                                remaining_secs: self.rng.range(4.0, 7.0),
+                            });
+                        } else {
+                            let step = (*speed * dt_secs).min(dist);
+                            bird.pos[0] += (dx / dist) * step;
+                            bird.pos[1] += (dy / dist) * step;
+                            bird.vel = [(dx / dist) * *speed, (dy / dist) * *speed];
+                        }
+                    } else {
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 60.0,
+                        });
+                    }
+                }
+                BirdState::ApproachingNest {
+                    nest_id,
+                    is_brooding,
+                    speed,
+                } => {
+                    let nest_pos = self.nests.iter().find(|n| n.id == *nest_id).and_then(|n| {
+                        self.branches
+                            .iter()
+                            .find(|b| b.id == n.branch_id)
+                            .map(|b| b.point_at(n.t))
+                    });
+                    if let Some(target) = nest_pos {
+                        let dx = target[0] - bird.pos[0];
+                        let dy = target[1] - bird.pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        bird.facing_left = dx < 0.0;
+
+                        if dist < 12.0 {
+                            bird.pos = target;
+                            bird.vel = [0.0, 0.0];
+                            if *is_brooding {
+                                next_state = Some(BirdState::BroodingEggs {
+                                    nest_id: *nest_id,
+                                    remaining_secs: 7.0,
+                                });
+                            } else {
+                                next_state = Some(BirdState::BuildingNest {
+                                    nest_id: *nest_id,
+                                    remaining_secs: 3.5,
+                                });
+                            }
+                        } else {
+                            let step = (*speed * dt_secs).min(dist);
+                            bird.pos[0] += (dx / dist) * step;
+                            bird.pos[1] += (dy / dist) * step;
+                            bird.vel = [(dx / dist) * *speed, (dy / dist) * *speed];
+                        }
+                    } else {
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 60.0,
+                        });
+                    }
+                }
+                BirdState::ApproachingFeed {
+                    branch_id,
+                    t,
+                    speed,
+                } => {
+                    let branch_pos = self
+                        .branches
+                        .iter()
+                        .find(|b| b.id == *branch_id)
+                        .map(|b| b.point_at(*t));
+                    if let Some(target) = branch_pos {
+                        let dx = target[0] - bird.pos[0];
+                        let dy = target[1] - bird.pos[1];
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        bird.facing_left = dx < 0.0;
+
+                        if dist < 12.0 {
+                            bird.pos = target;
+                            bird.vel = [0.0, 0.0];
+                            // Consume one serving on arrival
+                            if let Some(snack) = self
+                                .snacks
+                                .iter_mut()
+                                .find(|s| s.branch_id == *branch_id && (s.t - *t).abs() < 0.02)
+                            {
+                                snack.servings_left = snack.servings_left.saturating_sub(1);
+                            }
+                            next_state = Some(BirdState::Feeding {
+                                branch_id: *branch_id,
+                                t: *t,
+                                remaining_secs: 5.0,
+                            });
+                        } else {
+                            let step = (*speed * dt_secs).min(dist);
+                            bird.pos[0] += (dx / dist) * step;
+                            bird.pos[1] += (dy / dist) * step;
+                            bird.vel = [(dx / dist) * *speed, (dy / dist) * *speed];
+                        }
+                    } else {
+                        let tx = vp_x + self.rng.range(150.0, 850.0);
+                        let ty = self.rng.range(100.0, 350.0);
+                        next_state = Some(BirdState::Flying {
+                            target: [tx, ty],
+                            speed: 60.0,
                         });
                     }
                 }
@@ -2179,7 +2401,9 @@ impl WorldState {
                         let dist = (dx * dx + dy * dy).sqrt();
                         bird.facing_left = dx < 0.0;
 
-                        if dist < 14.0 {
+                        if dist < 12.0 {
+                            bird.pos = target;
+                            bird.vel = [0.0, 0.0];
                             next_state = Some(BirdState::BuildingNest {
                                 nest_id: *target_nest_id,
                                 remaining_secs: 3.5,
@@ -2188,6 +2412,7 @@ impl WorldState {
                             let step = (*speed * dt_secs).min(dist);
                             bird.pos[0] += (dx / dist) * step;
                             bird.pos[1] += (dy / dist) * step;
+                            bird.vel = [(dx / dist) * *speed, (dy / dist) * *speed];
                         }
                     } else {
                         // Nest was pruned or missing
@@ -2393,23 +2618,43 @@ impl WorldState {
             });
         }
 
-        // Check if snacks attract perched birds
+        // Check if snacks attract perched or flying birds
         if !self.snacks.is_empty() {
             for snack in &mut self.snacks {
                 if snack.servings_left > 0 {
-                    // Find a bird to feed
-                    for b in &mut self.birds {
-                        if matches!(
-                            b.state,
-                            BirdState::Circling { .. } | BirdState::Flying { .. }
-                        ) {
-                            b.state = BirdState::Feeding {
-                                branch_id: snack.branch_id,
-                                t: snack.t,
-                                remaining_secs: 5.0,
-                            };
-                            snack.servings_left -= 1;
-                            break;
+                    let branch_id = snack.branch_id;
+                    let t = snack.t;
+                    let targeted_count = self
+                        .birds
+                        .iter()
+                        .filter(|b| match b.state {
+                            BirdState::ApproachingFeed {
+                                branch_id: bid,
+                                t: bt,
+                                ..
+                            }
+                            | BirdState::Feeding {
+                                branch_id: bid,
+                                t: bt,
+                                ..
+                            } => bid == branch_id && (bt - t).abs() < 0.02,
+                            _ => false,
+                        })
+                        .count();
+
+                    if targeted_count < snack.servings_left as usize {
+                        for b in &mut self.birds {
+                            if matches!(
+                                b.state,
+                                BirdState::Circling { .. } | BirdState::Flying { .. }
+                            ) {
+                                b.state = BirdState::ApproachingFeed {
+                                    branch_id,
+                                    t,
+                                    speed: 75.0,
+                                };
+                                break;
+                            }
                         }
                     }
                 }
@@ -2536,7 +2781,9 @@ impl WorldState {
             let needs_flight = match &bird.state {
                 BirdState::Perched { branch_id, .. }
                 | BirdState::Feeding { branch_id, .. }
-                | BirdState::GatheringTwig { branch_id, .. } => to_remove.contains(branch_id),
+                | BirdState::GatheringTwig { branch_id, .. }
+                | BirdState::ApproachingPerch { branch_id, .. }
+                | BirdState::ApproachingFeed { branch_id, .. } => to_remove.contains(branch_id),
                 _ => false,
             };
             if needs_flight {
@@ -2781,18 +3028,21 @@ impl WorldState {
                         .find(|t| t.id == state.active_tree_id)
                         .map(|t| t.base_pos[0])
                         .unwrap_or(state.viewport_offset_x + 500.0);
-                    let vp_x = state.viewport_offset_x;
                     for (i, bird) in state.birds.iter_mut().enumerate() {
                         if (bird.pos[0] - active_x).abs() > 1200.0 {
+                            let center = [active_x, 320.0];
+                            let radius = 160.0 + ((i as f32) * 20.0);
+                            let angle = (i as f32) * 1.5;
+                            let speed = if i % 2 == 0 { 0.55 } else { -0.55 };
                             bird.pos = [
-                                vp_x + 250.0 + ((i as f32 % 5.0) * 110.0),
-                                200.0 + ((i as f32 % 3.0) * 70.0),
+                                center[0] + angle.cos() * radius,
+                                center[1] + angle.sin() * radius * 0.45,
                             ];
                             bird.state = BirdState::Circling {
-                                center: [active_x, 320.0],
-                                radius: 160.0 + ((i as f32) * 20.0),
-                                angle: (i as f32) * 1.5,
-                                speed: if i % 2 == 0 { 0.55 } else { -0.55 },
+                                center,
+                                radius,
+                                angle,
+                                speed,
                             };
                         }
                     }
@@ -3656,6 +3906,89 @@ mod tests {
         assert!(
             has_left_foliage_or_branch,
             "Elder tree boughs must be visible in the left portion of the rendered ASCII viewport"
+        );
+    }
+
+    #[test]
+    fn test_bird_movement_continuity_no_teleportation() {
+        let mut world = WorldState::new(42);
+        // Grow a mature tree with branches, foliage, bird bath
+        world.advance_growth(300.0);
+        assert!(world.branches.len() > 10, "Tree must have mature branches");
+
+        // Seed a nest for testing nest approach
+        world.nests.push(Nest {
+            id: 88,
+            branch_id: world.branches[1].id,
+            t: 0.6,
+            progress: 0.5,
+            eggs_count: 1,
+            chicks_count: 0,
+            age_secs: 10.0,
+        });
+
+        // Drop a snack on a bough to exercise approach feed
+        let snack_pos = world.branches[2].point_at(0.45);
+        world.drop_snack(snack_pos);
+
+        let dt = 0.05; // 20 updates/sec
+        let mut max_observed_jump = 0.0f32;
+
+        // Run 800 ticks (40 seconds of continuous bird flocking simulation)
+        for tick in 0..800 {
+            // Drop occasional snacks
+            if (tick == 200 || tick == 450)
+                && let Some(b) = world.branches.get(3)
+            {
+                world.drop_snack_typed(b.point_at(0.7), SnackType::SweetBerries);
+            }
+
+            // Scatter birds occasionally with user mouse click
+            let pointer = if tick == 300 {
+                Some([500.0, 300.0])
+            } else {
+                None
+            };
+
+            // Record bird positions before update
+            let before_positions: std::collections::HashMap<u32, [f32; 2]> =
+                world.birds.iter().map(|b| (b.id, b.pos)).collect();
+
+            world.update(dt, pointer.is_some(), pointer);
+
+            // Verify position continuity for all birds existing before and after update
+            for bird in &world.birds {
+                if let Some(&prev_pos) = before_positions.get(&bird.id) {
+                    let dx = bird.pos[0] - prev_pos[0];
+                    let dy = bird.pos[1] - prev_pos[1];
+                    let jump = (dx * dx + dy * dy).sqrt();
+                    if jump > max_observed_jump {
+                        max_observed_jump = jump;
+                    }
+                    // Max speed in sim is startled speed (120 units/s) -> 120 * 0.05 = 6.0 units.
+                    // Touchdown threshold is 12.0 units.
+                    // Any jump > 16.0 units indicates a teleportation / pop bug!
+                    assert!(
+                        jump <= 16.0,
+                        "Bird #{} ({:?}) jumped {:.1} units in a single tick (from {:?} to {:?})! Birds must move continuously without popping.",
+                        bird.id,
+                        bird.species,
+                        jump,
+                        prev_pos,
+                        bird.pos
+                    );
+                }
+            }
+        }
+
+        println!(
+            "Maximum single-tick bird movement observed over 800 ticks: {:.2} units",
+            max_observed_jump
+        );
+        assert!(max_observed_jump > 0.0, "Birds must have moved");
+        assert!(
+            max_observed_jump <= 16.0,
+            "Birds must never teleport or pop"
         );
     }
 }
