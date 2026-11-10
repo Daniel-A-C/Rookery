@@ -326,7 +326,7 @@ impl LivingRookeryScene {
             // Viewport culling: only render branches within or near the visible screen area
             let min_x = branch.start[0].min(branch.current_end()[0]);
             let max_x = branch.start[0].max(branch.current_end()[0]);
-            if max_x < offset_x - 150.0 || min_x > offset_x + 1150.0 {
+            if max_x < offset_x - 450.0 || min_x > offset_x + 1450.0 {
                 continue;
             }
 
@@ -373,7 +373,7 @@ impl LivingRookeryScene {
 
                 if branch.depth == 0 {
                     // Wide ANSI trunk with double-line box-drawing edges
-                    let span = trunk_col_span.clamp(1, 3);
+                    let span = trunk_col_span.clamp(1, 4);
                     for dx in -span..=span {
                         let col_idx = cc + dx;
                         if col_idx < 0 || col_idx >= cols {

@@ -1142,21 +1142,22 @@ impl WorldState {
         let tree_branch_ids = self.tree_branch_ids(root_id);
 
         // 1. Stage 1 (Steps 1..18): Progressive Trunk Ascent & Buttress Roots
+        // Heights scaled up significantly to command ~5/6ths of screen height (ground at y=750.0)
         let target_trunk_len = match species {
-            TreeSpecies::AlpinePine => 380.0,
-            TreeSpecies::SilverBirch => 260.0,
-            TreeSpecies::AncientOak => 165.0,
-            TreeSpecies::GreatBaobab => 160.0,
-            TreeSpecies::WeepingWillow => 140.0,
-            TreeSpecies::JapaneseMaple => 120.0,
+            TreeSpecies::AlpinePine => 600.0,
+            TreeSpecies::SilverBirch => 540.0,
+            TreeSpecies::AncientOak => 330.0,
+            TreeSpecies::GreatBaobab => 340.0,
+            TreeSpecies::WeepingWillow => 290.0,
+            TreeSpecies::JapaneseMaple => 260.0,
         };
         let target_thickness = match species {
-            TreeSpecies::GreatBaobab => 28.0,
-            TreeSpecies::AncientOak => 22.0,
-            TreeSpecies::AlpinePine => 16.0,
-            TreeSpecies::WeepingWillow => 14.0,
-            TreeSpecies::JapaneseMaple => 12.0,
-            TreeSpecies::SilverBirch => 10.0,
+            TreeSpecies::GreatBaobab => 54.0,
+            TreeSpecies::AncientOak => 36.0,
+            TreeSpecies::AlpinePine => 22.0,
+            TreeSpecies::WeepingWillow => 24.0,
+            TreeSpecies::JapaneseMaple => 22.0,
+            TreeSpecies::SilverBirch => 18.0,
         };
 
         if step <= 18 {
@@ -1171,10 +1172,19 @@ impl WorldState {
             }
 
             // At step 3 & 5: flare buttress roots at the ground
-            if step == 3 || step == 5 {
-                let flare_dir = if step == 3 { -1.0 } else { 1.0 };
-                let root_angle = flare_dir * self.rng.range(1.2, 1.45);
-                let root_len = self.rng.range(16.0, 28.0);
+            if step == 3 || step == 5 || step == 7 {
+                let flare_dir = if step.is_multiple_of(2) { 1.0 } else { -1.0 };
+                let root_angle = flare_dir * self.rng.range(1.15, 1.45);
+                let root_len = match species {
+                    TreeSpecies::GreatBaobab => self.rng.range(38.0, 68.0),
+                    TreeSpecies::AncientOak => self.rng.range(32.0, 58.0),
+                    _ => self.rng.range(22.0, 42.0),
+                };
+                let root_thick = match species {
+                    TreeSpecies::GreatBaobab => 16.0,
+                    TreeSpecies::AncientOak => 12.0,
+                    _ => 8.0,
+                };
                 self.next_id += 1;
                 self.branches.push(Branch {
                     id: self.next_id,
@@ -1188,7 +1198,7 @@ impl WorldState {
                     angle: root_angle,
                     length: root_len,
                     target_length: root_len,
-                    thickness: 6.0,
+                    thickness: root_thick,
                     growth_progress: 1.0,
                     children_spawned: true,
                     has_nest: false,
@@ -1199,8 +1209,8 @@ impl WorldState {
             }
         }
 
-        // 2. Stage 2 (Steps 6..28): Primary Scaffold Limbs & Species Branching
-        if (6..=28).contains(&step) {
+        // 2. Stage 2 (Steps 6..30): Primary Scaffold Limbs & Species Branching
+        if (6..=30).contains(&step) {
             let mut candidates: Vec<u32> = tree_branch_ids
                 .iter()
                 .copied()
@@ -1224,7 +1234,7 @@ impl WorldState {
                 .filter(|b| b.parent_id == Some(root_id) && !b.is_root)
                 .count();
 
-            let parent_id = if is_pine && primary_pine_whorls < 10 && self.rng.f32() < 0.70 {
+            let parent_id = if is_pine && primary_pine_whorls < 12 && self.rng.f32() < 0.70 {
                 root_id
             } else {
                 candidates[self.rng.range_i32(0, candidates.len() as i32) as usize]
@@ -1251,12 +1261,13 @@ impl WorldState {
                 let attach_pos = if parent_id == root_id {
                     let t = match species {
                         TreeSpecies::AlpinePine => {
-                            let tier_idx = (primary_pine_whorls / 2) % 6;
-                            0.28 + (tier_idx as f32) * 0.13
+                            let tier_idx = (primary_pine_whorls / 2) % 7;
+                            0.20 + (tier_idx as f32) * 0.11
                         }
                         TreeSpecies::AncientOak => self.rng.range(0.40, 0.95),
-                        TreeSpecies::GreatBaobab => self.rng.range(0.70, 0.98),
-                        _ => self.rng.range(0.45, 0.95),
+                        TreeSpecies::GreatBaobab => self.rng.range(0.72, 0.98),
+                        TreeSpecies::SilverBirch => self.rng.range(0.50, 0.95),
+                        _ => self.rng.range(0.40, 0.95),
                     };
                     if let Some(trunk) = self.branches.iter().find(|b| b.id == root_id) {
                         trunk.point_at(t)
@@ -1285,69 +1296,101 @@ impl WorldState {
                                 let a = branch_sign * self.rng.range(1.22, 1.45);
                                 let dist_from_trunk_base = (750.0 - attach_pos[1]).max(10.0);
                                 let h_factor = 1.0
-                                    - (dist_from_trunk_base / target_trunk_len).clamp(0.0, 0.75);
-                                let l = (75.0 * h_factor).clamp(24.0, 75.0);
+                                    - (dist_from_trunk_base / target_trunk_len).clamp(0.0, 0.78);
+                                let l = (210.0 * h_factor).clamp(55.0, 210.0);
                                 (a, l)
                             } else {
-                                let a = (p_angle + branch_sign * self.rng.range(0.20, 0.45))
+                                let a = (p_angle + branch_sign * self.rng.range(0.18, 0.40))
                                     .clamp(-1.50, 1.50);
-                                let l = (p_len * 0.65).clamp(18.0, 42.0);
+                                let l = (p_len * 0.60).clamp(32.0, 85.0);
                                 (a, l)
                             }
                         }
                         TreeSpecies::WeepingWillow => {
                             if depth <= 2 {
                                 let a = if parent_id == root_id {
-                                    branch_sign * self.rng.range(0.35, 0.95)
+                                    branch_sign * self.rng.range(0.30, 0.85)
                                 } else {
                                     (p_angle + branch_sign * self.rng.range(0.15, 0.45))
-                                        .clamp(-1.15, 1.15)
+                                        .clamp(-1.10, 1.10)
                                 };
-                                (a, self.rng.range(40.0, 65.0))
+                                let l = if depth == 1 {
+                                    self.rng.range(160.0, 240.0)
+                                } else {
+                                    self.rng.range(100.0, 160.0)
+                                };
+                                (a, l)
                             } else {
                                 // Downward weeping cascade
-                                let a = branch_sign * self.rng.range(2.1, 2.9);
-                                (a, self.rng.range(35.0, 60.0))
+                                let a = branch_sign * self.rng.range(2.1, 2.8);
+                                let raw_l = self.rng.range(110.0, 180.0);
+                                // Ensure cascading branches never pierce the ground
+                                let max_down_len = (715.0 - attach_pos[1]).max(20.0);
+                                (a, raw_l.min(max_down_len))
                             }
                         }
                         TreeSpecies::JapaneseMaple => {
                             let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.45, 0.95)
+                                branch_sign * self.rng.range(0.42, 0.95)
                             } else {
                                 let zig = if depth % 2 == 0 { 0.55 } else { -0.55 };
                                 (p_angle + zig * branch_sign + self.rng.range(-0.15, 0.15))
                                     .clamp(-1.3, 1.3)
                             };
-                            (a, self.rng.range(28.0, 52.0))
+                            let l = if depth == 1 {
+                                self.rng.range(150.0, 230.0)
+                            } else if depth == 2 {
+                                self.rng.range(100.0, 160.0)
+                            } else {
+                                self.rng.range(65.0, 110.0)
+                            };
+                            (a, l)
                         }
                         TreeSpecies::SilverBirch => {
                             let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.25, 0.65)
+                                branch_sign * self.rng.range(0.22, 0.60)
                             } else {
                                 (p_angle + branch_sign * self.rng.range(0.15, 0.35))
                                     .clamp(-0.85, 0.85)
                             };
-                            (a, self.rng.range(35.0, 60.0))
+                            let l = if depth == 1 {
+                                self.rng.range(130.0, 200.0)
+                            } else {
+                                self.rng.range(75.0, 130.0)
+                            };
+                            (a, l)
                         }
                         TreeSpecies::GreatBaobab => {
                             let a = if parent_id == root_id {
-                                let spread = [-1.1, -0.6, 0.6, 1.1];
+                                let spread = [-1.15, -0.65, 0.65, 1.15];
                                 let base_a = spread[(k as usize).min(spread.len() - 1)];
-                                base_a + self.rng.range(-0.2, 0.2)
+                                base_a + self.rng.range(-0.18, 0.18)
                             } else {
-                                (p_angle + branch_sign * self.rng.range(0.15, 0.4))
+                                (p_angle + branch_sign * self.rng.range(0.15, 0.40))
                                     .clamp(-1.35, 1.35)
                             };
-                            (a, self.rng.range(28.0, 48.0))
+                            let l = if depth == 1 {
+                                self.rng.range(150.0, 240.0)
+                            } else {
+                                self.rng.range(80.0, 140.0)
+                            };
+                            (a, l)
                         }
                         TreeSpecies::AncientOak => {
                             let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.35, 0.85)
+                                branch_sign * self.rng.range(0.35, 0.90)
                             } else {
                                 (p_angle + branch_sign * self.rng.range(0.20, 0.55))
                                     .clamp(-1.25, 1.25)
                             };
-                            (a, self.rng.range(38.0, 72.0))
+                            let l = if depth == 1 {
+                                self.rng.range(170.0, 260.0)
+                            } else if depth == 2 {
+                                self.rng.range(110.0, 180.0)
+                            } else {
+                                self.rng.range(70.0, 120.0)
+                            };
+                            (a, l)
                         }
                     };
 
@@ -1355,7 +1398,11 @@ impl WorldState {
 
                     // Generate species-specific foliage buds
                     let mut foliage = Vec::new();
-                    let leaf_count = self.rng.range_i32(3, 7) as usize;
+                    let leaf_count = match depth {
+                        1 => self.rng.range_i32(4, 8) as usize,
+                        2 => self.rng.range_i32(6, 12) as usize,
+                        _ => self.rng.range_i32(8, 15) as usize,
+                    };
                     let chars: &[u8] = match species {
                         TreeSpecies::AlpinePine => b"^*+^#",
                         TreeSpecies::WeepingWillow => b"|~;:,",
@@ -1378,8 +1425,8 @@ impl WorldState {
                             _ => self.rng.range_i32(0, 3) as u8,
                         };
                         foliage.push(FoliageBud {
-                            offset_along: self.rng.range(0.35, 1.0),
-                            lateral_offset: self.rng.range(-10.0, 10.0),
+                            offset_along: self.rng.range(0.25, 1.0),
+                            lateral_offset: self.rng.range(-16.0, 16.0),
                             char_code,
                             color_idx,
                             scale: self.rng.range(0.9, 1.3),
@@ -1410,17 +1457,17 @@ impl WorldState {
                 }
             }
         }
-        // 3. Stage 3 (Steps 29..max_steps): Foliage Bloom, Densification & Maturation
-        if step > 28 {
+        // 3. Stage 3 (Steps 31..max_steps): Foliage Bloom, Densification & Maturation
+        if step > 30 {
             for bid in &tree_branch_ids {
                 if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid) {
                     for bud in &mut b.foliage {
                         bud.bloom = 1.0;
                     }
-                    if !b.is_root && b.depth >= 2 && b.foliage.len() < 10 {
+                    if !b.is_root && b.depth >= 2 && b.foliage.len() < 16 {
                         b.foliage.push(FoliageBud {
-                            offset_along: 0.8,
-                            lateral_offset: 6.0,
+                            offset_along: self.rng.range(0.35, 0.98),
+                            lateral_offset: self.rng.range(-15.0, 15.0),
                             char_code: b'*',
                             color_idx: 0,
                             scale: 1.1,
@@ -1434,10 +1481,10 @@ impl WorldState {
         // Spawn a subtle wood chip spark from the active growth
         self.chips.push(FallingChip {
             pos: [
-                base_x + self.rng.range(-40.0, 40.0),
-                750.0 - (step as f32 * 12.0).min(550.0),
+                base_x + self.rng.range(-60.0, 60.0),
+                750.0 - (step as f32 * 18.0).min(640.0),
             ],
-            vel: [self.rng.range(-15.0, 15.0), self.rng.range(-20.0, -8.0)],
+            vel: [self.rng.range(-18.0, 18.0), self.rng.range(-22.0, -8.0)],
             rotation: 0.0,
             rot_vel: self.rng.range(-2.0, 2.0),
             glyph: '+',
@@ -1468,6 +1515,13 @@ impl WorldState {
                 let next_x = base_x + 800.0;
                 self.target_viewport_offset_x = base_x + 800.0 - 500.0;
                 self.plant_new_sapling(next_x, next_species);
+                self.next_id += 1;
+                self.bird_baths.push(BirdBath {
+                    id: self.next_id,
+                    pos: [next_x - 160.0, 754.0],
+                    water_level: 1.0,
+                    splash_timer: 0.0,
+                });
             }
         }
 
@@ -1896,6 +1950,27 @@ impl WorldState {
 
                     if dist < 15.0 {
                         // Arrived near target: choose new action
+                        let active_nests: Vec<&Nest> = self
+                            .nests
+                            .iter()
+                            .filter(|n| {
+                                if let Some(b) =
+                                    self.branches.iter().find(|br| br.id == n.branch_id)
+                                {
+                                    let pt = b.point_at(n.t);
+                                    pt[0] >= vp_x - 100.0 && pt[0] <= vp_x + 1100.0
+                                } else {
+                                    false
+                                }
+                            })
+                            .collect();
+                        let active_baths: Vec<u32> = self
+                            .bird_baths
+                            .iter()
+                            .filter(|b| b.pos[0] >= vp_x - 100.0 && b.pos[0] <= vp_x + 1100.0)
+                            .map(|b| b.id)
+                            .collect();
+
                         let roll = self.rng.f32();
                         if roll < 0.40 && branch_count > 1 {
                             // Find suitable mature branch to perch on within visible viewport
@@ -1906,24 +1981,24 @@ impl WorldState {
                                     !b.is_root
                                         && b.growth_progress >= 0.8
                                         && b.depth >= 1
-                                        && (b.start[0] >= vp_x - 150.0
-                                            && b.start[0] <= vp_x + 1150.0)
+                                        && (b.start[0] >= vp_x - 100.0
+                                            && b.start[0] <= vp_x + 1100.0)
                                 })
                                 .map(|b| b.id)
                                 .collect();
                             if !candidates.is_empty() {
                                 let branch_id = candidates
                                     [self.rng.range_i32(0, candidates.len() as i32) as usize];
-                                let t = self.rng.range(0.4, 0.95);
+                                let t = self.rng.range(0.35, 0.95);
                                 next_state = Some(BirdState::Perched {
                                     branch_id,
                                     t,
                                     remaining_secs: self.rng.range(8.0, 22.0),
                                 });
                             }
-                        } else if roll < 0.55 && !self.nests.is_empty() {
-                            let n_idx = self.rng.range_i32(0, self.nests.len() as i32) as usize;
-                            let nest = &self.nests[n_idx];
+                        } else if roll < 0.55 && !active_nests.is_empty() {
+                            let n_idx = self.rng.range_i32(0, active_nests.len() as i32) as usize;
+                            let nest = active_nests[n_idx];
                             if nest.progress < 1.0 {
                                 next_state = Some(BirdState::BuildingNest {
                                     nest_id: nest.id,
@@ -1935,23 +2010,24 @@ impl WorldState {
                                     remaining_secs: 7.0,
                                 });
                             }
-                        } else if roll < 0.68 && !self.bird_baths.is_empty() {
-                            let bath_id = self.bird_baths[0].id;
+                        } else if roll < 0.68 && !active_baths.is_empty() {
+                            let bath_id = active_baths
+                                [self.rng.range_i32(0, active_baths.len() as i32) as usize];
                             next_state = Some(BirdState::Bathing {
                                 bath_id,
                                 remaining_secs: self.rng.range(4.0, 7.0),
                             });
                         } else if roll < 0.82 {
                             next_state = Some(BirdState::Circling {
-                                center: [active_tree_base_x, 320.0],
-                                radius: self.rng.range(140.0, 300.0),
+                                center: [active_tree_base_x, 300.0],
+                                radius: self.rng.range(160.0, 360.0),
                                 angle: self.rng.range(0.0, std::f32::consts::TAU),
                                 speed: self.rng.range(0.4, 0.8)
                                     * if self.rng.f32() > 0.5 { 1.0 } else { -1.0 },
                             });
                         } else {
-                            let tx = vp_x + self.rng.range(150.0, 850.0);
-                            let ty = self.rng.range(100.0, 480.0);
+                            let tx = vp_x + self.rng.range(120.0, 880.0);
+                            let ty = self.rng.range(80.0, 480.0);
                             let sp = self.rng.range(40.0, 80.0);
                             next_state = Some(BirdState::Flying {
                                 target: [tx, ty],
@@ -2229,7 +2305,7 @@ impl WorldState {
             }
 
             // Redirect stranded birds (e.g. from camera panning or succession) back toward active flock
-            if (bird.pos[0] - (vp_x + 500.0)).abs() > 1300.0 {
+            if (bird.pos[0] - (vp_x + 500.0)).abs() > 620.0 {
                 next_state = Some(BirdState::Flying {
                     target: [
                         vp_x + self.rng.range(250.0, 750.0),
