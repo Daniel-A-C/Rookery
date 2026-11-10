@@ -88,6 +88,13 @@ pub struct RookeryStatus {
     pub forest_trees_count: u32,
     pub active_tree_growth_steps: u32,
     pub active_tree_target_steps: u32,
+    pub debug_mode: bool,
+    pub sim_speed: f32,
+    pub active_tree_id: u32,
+    pub active_tree_is_mature: bool,
+    pub active_tree_seed: u64,
+    pub viewport_offset_x: f32,
+    pub trees: Vec<rookery_core::world::TreeSummary>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -173,6 +180,7 @@ pub struct SettingsPatch {
     pub audio_direct_mode_only: Option<bool>,
     pub update_auto_check: Option<bool>,
     pub update_auto_download: Option<bool>,
+    pub debug_mode: Option<bool>,
 }
 
 impl HostState {
@@ -225,39 +233,43 @@ impl HostState {
     /// Snapshot current status for the popover UI.
     pub fn status(&self) -> HostStatus {
         let stats = self.with_renderer(|r| r.stats()).unwrap_or_default();
-        let rookery = self.world.lock().ok().map(|w| RookeryStatus {
-            seed: w.seed,
-            total_age_secs: w.total_age_secs,
-            total_offline_caught_up_secs: w.total_offline_caught_up_secs,
-            total_branches: w.stats.total_branches,
-            total_foliage: w.stats.total_foliage,
-            birds_active: w.stats.birds_active,
-            birds_perched: w.stats.birds_perched,
-            pruned_branches: w.stats.pruned_branches,
-            seeds_planted: w.stats.seeds_planted,
-            snacks_eaten: w.stats.snacks_eaten,
-            nests_built: w.stats.nests_built + w.stats.houses_built,
-            aesthetic_style: w.aesthetic_style,
-            aesthetic_style_name: w.aesthetic_style_name().to_string(),
-            active_species: w
-                .trees
-                .iter()
-                .find(|t| t.id == w.active_tree_id)
+        let rookery = self.world.lock().ok().map(|w| {
+            let active_tree = w.trees.iter().find(|t| t.id == w.active_tree_id);
+            let active_species = active_tree
                 .map(|t| t.species.display_name().to_string())
-                .unwrap_or_else(|| "Ancient Oak".to_string()),
-            forest_trees_count: w.trees.len() as u32,
-            active_tree_growth_steps: w
-                .trees
-                .iter()
-                .find(|t| t.id == w.active_tree_id)
-                .map(|t| t.growth_steps_completed)
-                .unwrap_or(0),
-            active_tree_target_steps: w
-                .trees
-                .iter()
-                .find(|t| t.id == w.active_tree_id)
-                .map(|t| t.target_growth_steps)
-                .unwrap_or(42),
+                .unwrap_or_else(|| "Ancient Oak".to_string());
+            let active_growth = active_tree.map(|t| t.growth_steps_completed).unwrap_or(0);
+            let active_target = active_tree.map(|t| t.target_growth_steps).unwrap_or(42);
+            let active_is_mature = active_tree.map(|t| t.is_mature).unwrap_or(false);
+            let active_seed = active_tree.map(|t| t.seed).unwrap_or(w.seed);
+            let tree_summaries = w.tree_summary_list();
+
+            RookeryStatus {
+                seed: w.seed,
+                total_age_secs: w.total_age_secs,
+                total_offline_caught_up_secs: w.total_offline_caught_up_secs,
+                total_branches: w.stats.total_branches,
+                total_foliage: w.stats.total_foliage,
+                birds_active: w.stats.birds_active,
+                birds_perched: w.stats.birds_perched,
+                pruned_branches: w.stats.pruned_branches,
+                seeds_planted: w.stats.seeds_planted,
+                snacks_eaten: w.stats.snacks_eaten,
+                nests_built: w.stats.nests_built + w.stats.houses_built,
+                aesthetic_style: w.aesthetic_style,
+                aesthetic_style_name: w.aesthetic_style_name().to_string(),
+                active_species,
+                forest_trees_count: w.trees.len() as u32,
+                active_tree_growth_steps: active_growth,
+                active_tree_target_steps: active_target,
+                debug_mode: w.debug_mode,
+                sim_speed: w.sim_speed,
+                active_tree_id: w.active_tree_id,
+                active_tree_is_mature: active_is_mature,
+                active_tree_seed: active_seed,
+                viewport_offset_x: w.viewport_offset_x,
+                trees: tree_summaries,
+            }
         });
 
         let koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {

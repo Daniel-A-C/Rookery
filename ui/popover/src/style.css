@@ -1361,4 +1361,181 @@
   .settings-toggle-btn:hover:not(:disabled) rk-icon .rk-duo {
     --icon-secondary-opacity: 0.56;
   }
+
+  /* ================================================================= */
+  /* Debug Mode & Living Rookery Tree Inspector Styles                 */
+  /* ================================================================= */
+  .card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .badge-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .badge-pill.active {
+    background: rgba(52, 211, 153, 0.18);
+    color: var(--accent);
+    border-color: rgba(52, 211, 153, 0.45);
+  }
+
+  .control-row-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 8px 0;
+  }
+
+  .input-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-label {
+    font-size: 11px;
+    font-family: var(--font-display);
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .seed-input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .number-input {
+    width: 100%;
+    text-align: center;
+    font-family: var(--font-mono, monospace);
+  }
+
+  .btn.icon-only {
+    padding: 6px 8px;
+    flex-shrink: 0;
+  }
+
+  .debug-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .debug-actions-grid .span-2 {
+    grid-column: span 2;
+  }
+
+  .forest-nav-box {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .forest-nav-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .flex-1 {
+    flex: 1;
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .telemetry-item {
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .telemetry-label {
+    font-size: 10px;
+    font-family: var(--font-display);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .telemetry-value {
+    font-size: 12px;
+    font-family: var(--font-display);
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .growth-scrubber-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .speed-buttons-row {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .speed-buttons-row .btn {
+    flex: 1;
+    padding: 4px 6px;
+    font-size: 11px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .btn-speed-select.active {
+    background: var(--accent);
+    color: #0c1912;
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+
+  .bird-spawn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .btn.danger {
+    background: rgba(251, 113, 133, 0.12);
+    border-color: rgba(251, 113, 133, 0.4);
+    color: var(--danger);
+  }
+
+  .btn.danger:hover:not(:disabled) {
+    background: rgba(251, 113, 133, 0.25);
+    border-color: var(--danger);
+  }
 }

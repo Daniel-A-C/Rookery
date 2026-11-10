@@ -46,6 +46,7 @@ const settingsPanels: Record<string, HTMLElement> = {
   general: el<HTMLElement>("settings-panel-general"),
   controls: el<HTMLElement>("settings-panel-controls"),
   share: el<HTMLElement>("settings-panel-share"),
+  debug: el<HTMLElement>("settings-panel-debug"),
 };
 const settingsNavBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav-btn");
 
@@ -393,6 +394,41 @@ const btnDownloadUpdate = el<HTMLButtonElement>("btn-download-update");
 const btnRestartUpdate = el<HTMLButtonElement>("btn-restart-update");
 const chkAutoCheckUpdates = el<HTMLInputElement>("chk-auto-check-updates");
 const chkAutoDownloadUpdates = el<HTMLInputElement>("chk-auto-download-updates");
+
+// Debug Mode Elements
+const badgeDebugStatus = el<HTMLSpanElement>("badge-debug-status");
+const chkDebugMode = el<HTMLInputElement>("chk-debug-mode");
+const selectDebugSpecies = el<HTMLSelectElement>("select-debug-species");
+const inputDebugSeed = el<HTMLInputElement>("input-debug-seed");
+const btnDebugRerollSeed = el<HTMLButtonElement>("btn-debug-reroll-seed");
+const btnDebugViewMature = el<HTMLButtonElement>("btn-debug-view-mature");
+const btnDebugNextVariation = el<HTMLButtonElement>("btn-debug-next-variation");
+const btnDebugShowcaseAll = el<HTMLButtonElement>("btn-debug-showcase-all");
+const btnDebugVarietyGrove = el<HTMLButtonElement>("btn-debug-variety-grove");
+const btnDebugPrevTree = el<HTMLButtonElement>("btn-debug-prev-tree");
+const selectDebugForestTree = el<HTMLSelectElement>("select-debug-forest-tree");
+const btnDebugNextTree = el<HTMLButtonElement>("btn-debug-next-tree");
+
+const debugTelSpecies = el<HTMLElement>("debug-tel-species");
+const debugTelStatus = el<HTMLElement>("debug-tel-status");
+const debugTelBranches = el<HTMLElement>("debug-tel-branches");
+const debugTelFoliage = el<HTMLElement>("debug-tel-foliage");
+const debugTelCamX = el<HTMLElement>("debug-tel-cam-x");
+const debugTelSeed = el<HTMLElement>("debug-tel-seed");
+
+const btnDebugMatureActive = el<HTMLButtonElement>("btn-debug-mature-active");
+const btnDebugStep1 = el<HTMLButtonElement>("btn-debug-step-1");
+const btnDebugStep10 = el<HTMLButtonElement>("btn-debug-step-10");
+const btnDebugRewind = el<HTMLButtonElement>("btn-debug-rewind");
+const valDebugSpeed = el<HTMLElement>("val-debug-speed");
+const speedButtons = document.querySelectorAll<HTMLButtonElement>(".btn-speed-select");
+
+const selectDebugPalette = el<HTMLSelectElement>("select-debug-palette");
+const selectDebugBirdStyle = el<HTMLSelectElement>("select-debug-bird-style");
+const btnSpawnRaven = el<HTMLButtonElement>("btn-spawn-raven");
+const btnSpawnTanager = el<HTMLButtonElement>("btn-spawn-tanager");
+const btnSpawnOwl = el<HTMLButtonElement>("btn-spawn-owl");
+const btnDebugResetWorld = el<HTMLButtonElement>("btn-debug-reset-world");
 
 let currentStatus: HostStatus | null = null;
 let recordingInteractionHotkey = false;
@@ -903,6 +939,58 @@ function renderStatus(s: HostStatus): void {
     ) {
       selectRookeryStyle.value = String(s.rookery.aesthetic_style);
     }
+
+    // Debug Mode Telemetry & Sync
+    if (typeof s.rookery.debug_mode === "boolean") {
+      chkDebugMode.checked = s.rookery.debug_mode;
+      badgeDebugStatus.textContent = s.rookery.debug_mode ? "Active" : "Passive";
+      badgeDebugStatus.classList.toggle("active", s.rookery.debug_mode);
+    }
+
+    debugTelSpecies.textContent = s.rookery.active_species || "Ancient Oak";
+    const curStep = s.rookery.active_tree_growth_steps ?? 0;
+    const tgtStep = s.rookery.active_tree_target_steps ?? 42;
+    const isMature = s.rookery.active_tree_is_mature ?? curStep >= tgtStep;
+    debugTelStatus.textContent = `Step ${curStep} / ${tgtStep} (${isMature ? "Mature" : "Growing"})`;
+    debugTelBranches.textContent = String(s.rookery.total_branches);
+    debugTelFoliage.textContent = String(s.rookery.total_foliage);
+    debugTelCamX.textContent = `${(s.rookery.viewport_offset_x ?? 0).toFixed(0)} px`;
+    debugTelSeed.textContent = `#${s.rookery.active_tree_seed ?? s.rookery.seed}`;
+
+    if (typeof s.rookery.sim_speed === "number") {
+      valDebugSpeed.textContent = `${s.rookery.sim_speed.toFixed(1)}x`;
+      for (const btn of speedButtons) {
+        const spd = parseFloat(btn.getAttribute("data-speed") || "1.0");
+        btn.classList.toggle("active", Math.abs(spd - s.rookery.sim_speed) < 0.05);
+      }
+    }
+
+    // Populate Forest Tree Dropdown if tree list available
+    if (Array.isArray(s.rookery.trees) && s.rookery.trees.length > 0) {
+      const activeId = s.rookery.active_tree_id;
+      const optCount = selectDebugForestTree.options.length;
+      if (
+        optCount !== s.rookery.trees.length ||
+        document.activeElement !== selectDebugForestTree
+      ) {
+        selectDebugForestTree.innerHTML = "";
+        for (const t of s.rookery.trees) {
+          const opt = document.createElement("option");
+          opt.value = String(t.id);
+          const statusLabel = t.is_mature
+            ? "Mature"
+            : `Step ${t.growth_steps}/${t.target_steps}`;
+          opt.textContent = `Tree #${t.id}: ${t.species} (${statusLabel}, Seed #${t.seed})`;
+          if (t.id === activeId) {
+            opt.selected = true;
+          }
+          selectDebugForestTree.appendChild(opt);
+        }
+      }
+      if (activeId && document.activeElement !== selectDebugForestTree) {
+        selectDebugForestTree.value = String(activeId);
+      }
+    }
   }
 
   // Koi Pond Stats
@@ -1078,6 +1166,12 @@ function renderSettings(st: Settings): void {
   if (st.update) {
     chkAutoCheckUpdates.checked = st.update.auto_check;
     chkAutoDownloadUpdates.checked = st.update.auto_download;
+  }
+
+  if (typeof st.debug_mode === "boolean") {
+    chkDebugMode.checked = st.debug_mode;
+    badgeDebugStatus.textContent = st.debug_mode ? "Active" : "Passive";
+    badgeDebugStatus.classList.toggle("active", st.debug_mode);
   }
 }
 
@@ -1727,6 +1821,285 @@ updater.subscribe((state) => {
     updateDetailText.textContent = import.meta.env.DEV
       ? "Development build"
       : "Up to date";
+  }
+});
+
+// =================================================================
+// Debug Mode & Tree Inspector Action Listeners
+// =================================================================
+chkDebugMode.addEventListener("change", async () => {
+  const enabled = chkDebugMode.checked;
+  badgeDebugStatus.textContent = enabled ? "Active" : "Passive";
+  badgeDebugStatus.classList.toggle("active", enabled);
+  try {
+    await api.updateSettings({ debug_mode: enabled });
+    const s = await api.executeAppAction("living-rookery", "set_debug_mode", {
+      enabled,
+    });
+    renderStatus(s);
+    showNotification(
+      "code",
+      enabled ? "Debug Mode & in-scene telemetry active" : "Debug Mode disabled",
+    );
+  } catch (err) {
+    console.error("set debug mode error:", err);
+  }
+});
+
+btnDebugRerollSeed.addEventListener("click", () => {
+  const newSeed = Math.floor(Math.random() * 9000000) + 1000;
+  inputDebugSeed.value = String(newSeed);
+  showNotification("arrow-clockwise", `New seed: #${newSeed}`);
+});
+
+btnDebugViewMature.addEventListener("click", async () => {
+  const species = selectDebugSpecies.value;
+  const seed = parseInt(inputDebugSeed.value, 10) || 42;
+  try {
+    const s = await api.executeAppAction("living-rookery", "view_mature_tree", {
+      species,
+      seed,
+    });
+    renderStatus(s);
+    showNotification("tree-evergreen", `Spawned mature ${species} (Seed #${seed})`);
+  } catch (err) {
+    console.error("view mature tree error:", err);
+  }
+});
+
+btnDebugNextVariation.addEventListener("click", async () => {
+  const species = selectDebugSpecies.value;
+  const newSeed = Math.floor(Math.random() * 9000000) + 1000;
+  inputDebugSeed.value = String(newSeed);
+  try {
+    const s = await api.executeAppAction("living-rookery", "view_mature_tree", {
+      species,
+      seed: newSeed,
+    });
+    renderStatus(s);
+    showNotification("sparkle", `New mature ${species} variation (Seed #${newSeed})`);
+  } catch (err) {
+    console.error("next variation error:", err);
+  }
+});
+
+btnDebugShowcaseAll.addEventListener("click", async () => {
+  const seed = parseInt(inputDebugSeed.value, 10) || 42;
+  try {
+    const s = await api.executeAppAction(
+      "living-rookery",
+      "showcase_all_mature",
+      { seed },
+    );
+    renderStatus(s);
+    showNotification("plant", "Showcase of all 6 mature species generated!");
+  } catch (err) {
+    console.error("showcase all error:", err);
+  }
+});
+
+btnDebugVarietyGrove.addEventListener("click", async () => {
+  const species = selectDebugSpecies.value;
+  const seed = parseInt(inputDebugSeed.value, 10) || 42;
+  try {
+    const s = await api.executeAppAction("living-rookery", "variety_grove", {
+      species,
+      seed,
+    });
+    renderStatus(s);
+    showNotification(
+      "branch",
+      `Grove of 4 mature ${species} variations generated!`,
+    );
+  } catch (err) {
+    console.error("variety grove error:", err);
+  }
+});
+
+btnDebugPrevTree.addEventListener("click", async () => {
+  const currentIndex = selectDebugForestTree.selectedIndex;
+  if (currentIndex > 0) {
+    selectDebugForestTree.selectedIndex = currentIndex - 1;
+    const tid = parseInt(selectDebugForestTree.value, 10);
+    try {
+      const s = await api.executeAppAction("living-rookery", "focus_tree", {
+        tree_id: tid,
+      });
+      renderStatus(s);
+    } catch (err) {
+      console.error("focus tree error:", err);
+    }
+  }
+});
+
+btnDebugNextTree.addEventListener("click", async () => {
+  const currentIndex = selectDebugForestTree.selectedIndex;
+  if (
+    currentIndex >= 0 &&
+    currentIndex < selectDebugForestTree.options.length - 1
+  ) {
+    selectDebugForestTree.selectedIndex = currentIndex + 1;
+    const tid = parseInt(selectDebugForestTree.value, 10);
+    try {
+      const s = await api.executeAppAction("living-rookery", "focus_tree", {
+        tree_id: tid,
+      });
+      renderStatus(s);
+    } catch (err) {
+      console.error("focus tree error:", err);
+    }
+  }
+});
+
+selectDebugForestTree.addEventListener("change", async () => {
+  const tid = parseInt(selectDebugForestTree.value, 10);
+  if (!isNaN(tid)) {
+    try {
+      const s = await api.executeAppAction("living-rookery", "focus_tree", {
+        tree_id: tid,
+      });
+      renderStatus(s);
+    } catch (err) {
+      console.error("focus tree error:", err);
+    }
+  }
+});
+
+btnDebugMatureActive.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction(
+      "living-rookery",
+      "mature_active_tree",
+    );
+    renderStatus(s);
+    showNotification("tree-evergreen", "Active tree fully matured!");
+  } catch (err) {
+    console.error("mature active tree error:", err);
+  }
+});
+
+btnDebugStep1.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "growth_step", {
+      count: 1,
+    });
+    renderStatus(s);
+  } catch (err) {
+    console.error("growth step error:", err);
+  }
+});
+
+btnDebugStep10.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "growth_step", {
+      count: 10,
+    });
+    renderStatus(s);
+    showNotification("plant", "Fast-forwarded 10 growth steps!");
+  } catch (err) {
+    console.error("growth step error:", err);
+  }
+});
+
+btnDebugRewind.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "rewind_sapling");
+    renderStatus(s);
+    showNotification("arrow-clockwise", "Active tree rewound to sapling!");
+  } catch (err) {
+    console.error("rewind sapling error:", err);
+  }
+});
+
+for (const btn of speedButtons) {
+  btn.addEventListener("click", async () => {
+    const speed = parseFloat(btn.getAttribute("data-speed") || "1.0");
+    for (const b of speedButtons) {
+      b.classList.toggle("active", b === btn);
+    }
+    valDebugSpeed.textContent = `${speed.toFixed(1)}x`;
+    try {
+      const s = await api.executeAppAction("living-rookery", "set_sim_speed", {
+        speed,
+      });
+      renderStatus(s);
+    } catch (err) {
+      console.error("set sim speed error:", err);
+    }
+  });
+}
+
+selectDebugPalette.addEventListener("change", async () => {
+  const paletteIdx = parseInt(selectDebugPalette.value, 10);
+  try {
+    const s = await api.executeAppAction("living-rookery", "set_palette", {
+      value: paletteIdx,
+    });
+    renderStatus(s);
+  } catch (err) {
+    console.error("set palette error:", err);
+  }
+});
+
+selectDebugBirdStyle.addEventListener("change", async () => {
+  const style = selectDebugBirdStyle.value;
+  try {
+    const s = await api.executeAppAction("living-rookery", "set_bird_style", {
+      style,
+    });
+    renderStatus(s);
+  } catch (err) {
+    console.error("set bird style error:", err);
+  }
+});
+
+btnSpawnRaven.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
+      species: "CelestialRaven",
+    });
+    renderStatus(s);
+    showNotification("bird", "Celestial Raven summoned into canopy!");
+  } catch (err) {
+    console.error("spawn raven error:", err);
+  }
+});
+
+btnSpawnTanager.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
+      species: "RubyTanager",
+    });
+    renderStatus(s);
+    showNotification("bird", "Ruby Tanager arrived in forest!");
+  } catch (err) {
+    console.error("spawn tanager error:", err);
+  }
+});
+
+btnSpawnOwl.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
+      species: "SnowyOwl",
+    });
+    renderStatus(s);
+    showNotification("bird", "Snowy Owl guardian appeared!");
+  } catch (err) {
+    console.error("spawn owl error:", err);
+  }
+});
+
+btnDebugResetWorld.addEventListener("click", async () => {
+  if (confirm("Reset Living Rookery forest back to clean default state?")) {
+    try {
+      const s = await api.executeAppAction("living-rookery", "reset_world", {
+        seed: 42,
+      });
+      renderStatus(s);
+      showNotification("arrow-clockwise", "World reset to default seed #42");
+    } catch (err) {
+      console.error("reset world error:", err);
+    }
   }
 });
 

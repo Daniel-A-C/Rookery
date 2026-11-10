@@ -716,6 +716,44 @@ impl LivingRookeryScene {
             [0.95, 0.92, 0.72, 0.98],
             0.0,
         );
+
+        if world_guard.debug_mode {
+            let active_tree = world_guard
+                .trees
+                .iter()
+                .find(|t| t.id == world_guard.active_tree_id);
+            let active_species_name = active_tree
+                .map(|t| t.species.display_name())
+                .unwrap_or("Ancient Oak");
+            let step = active_tree.map(|t| t.growth_steps_completed).unwrap_or(0);
+            let target_step = active_tree.map(|t| t.target_growth_steps).unwrap_or(42);
+            let is_mature = active_tree.map(|t| t.is_mature).unwrap_or(false);
+            let tree_seed = active_tree.map(|t| t.seed).unwrap_or(world_guard.seed);
+
+            let debug_banner = format!(
+                "DEBUG MODE · CAM X:{:.0} · TREE #{}: {} [SEED #{}] · STEP {}/{} ({}) · BOUGHS:{} · BUDS:{} · SIM:{:.1}x",
+                offset_x,
+                world_guard.active_tree_id,
+                active_species_name,
+                tree_seed,
+                step,
+                target_step,
+                if is_mature { "MATURE" } else { "GROWING" },
+                world_guard.stats.total_branches,
+                world_guard.stats.total_foliage,
+                world_guard.sim_speed,
+            );
+
+            self.push_text(
+                &debug_banner,
+                cell_pos(2, 1),
+                [cell_w * 0.85, cell_h * 0.85],
+                cell_w,
+                0.90,
+                [0.98, 0.45, 0.25, 0.98],
+                0.0,
+            );
+        }
     }
 }
 

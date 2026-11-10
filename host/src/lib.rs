@@ -107,7 +107,8 @@ pub fn run() {
             );
 
             let world_path = config_dir.join(WORLD_STATE_FILE_NAME);
-            let world = WorldState::load_or_init(&world_path, 42);
+            let mut world = WorldState::load_or_init(&world_path, 42);
+            world.debug_mode = settings.debug_mode;
             let orbital_path = config_dir.join(ORBITAL_STATE_FILE_NAME);
             let orbital = OrbitalHavenState::load_or_init(&orbital_path, world.seed);
 

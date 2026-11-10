@@ -25,6 +25,19 @@ export interface DisplayStatus {
   uncovered?: boolean;
 }
 
+export interface TreeSummary {
+  id: number;
+  species: string;
+  species_code: string;
+  is_mature: boolean;
+  growth_steps: number;
+  target_steps: number;
+  base_x: number;
+  seed: number;
+  branch_count: number;
+  foliage_count: number;
+}
+
 export interface RookeryStatus {
   seed: number;
   total_age_secs: number;
@@ -43,6 +56,13 @@ export interface RookeryStatus {
   forest_trees_count?: number;
   active_tree_growth_steps?: number;
   active_tree_target_steps?: number;
+  debug_mode?: boolean;
+  sim_speed?: number;
+  active_tree_id?: number;
+  active_tree_is_mature?: boolean;
+  active_tree_seed?: number;
+  viewport_offset_x?: number;
+  trees?: TreeSummary[];
 }
 
 export interface KoiStatus {
@@ -183,6 +203,7 @@ export interface Settings {
   favorite_apps?: string[];
   schedule_mode: ScheduleMode;
   schedule_interval_mins: number;
+  debug_mode?: boolean;
 }
 
 export interface SettingsPatch {
@@ -203,6 +224,7 @@ export interface SettingsPatch {
   audio_direct_mode_only?: boolean;
   update_auto_check?: boolean;
   update_auto_download?: boolean;
+  debug_mode?: boolean;
 }
 
 export const api = {

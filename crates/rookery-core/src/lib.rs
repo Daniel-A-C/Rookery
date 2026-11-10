@@ -39,7 +39,8 @@ pub use orbital::{
 pub use settings::{AudioSettings, Settings};
 pub use world::{
     Bird, BirdBath, BirdHouse, BirdSpecies, BirdState, Branch, FoliageBud, Lantern, Nest, Perch,
-    PlantSign, Snack, SnackType, WORLD_STATE_FILE_NAME, WorldRng, WorldState, WorldStats,
+    PlantSign, Snack, SnackType, TreeRecord, TreeSpecies, TreeSummary, WORLD_STATE_FILE_NAME,
+    WorldRng, WorldState, WorldStats,
 };
 
 /// A scene's hint to the governor about how much motion it currently has.

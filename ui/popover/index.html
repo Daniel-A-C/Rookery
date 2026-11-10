@@ -431,6 +431,13 @@
           >
             <rk-icon name="camera"></rk-icon><span>Capture &amp; Data</span>
           </button>
+          <button
+            type="button"
+            class="settings-nav-btn"
+            data-settings-tab="debug"
+          >
+            <rk-icon name="code"></rk-icon><span>Debug</span>
+          </button>
         </nav>
 
         <!-- Settings Tab 1: General (Appearance, Schedule, Audio, Displays) -->
@@ -700,6 +707,261 @@
               <input id="chk-auto-download-updates" type="checkbox" checked />
               <span>Auto-download updates in background</span>
             </label>
+          </section>
+        </div>
+
+        <!-- Settings Tab 4: Debug Mode & Living Rookery Tree Inspector -->
+        <div id="settings-panel-debug" class="settings-panel" hidden>
+          <!-- Master Debug Toggle -->
+          <section class="card">
+            <div class="card-header-row">
+              <div class="section-title">Debug Mode &amp; In-Scene Telemetry</div>
+              <span id="badge-debug-status" class="badge-pill">Passive</span>
+            </div>
+            <label class="checkbox-row">
+              <input id="chk-debug-mode" type="checkbox" />
+              <span>Enable Living Rookery Debug Mode &amp; On-Screen Diagnostics</span>
+            </label>
+            <p class="field-hint">
+              Unlocks mature tree generation, variety exploration, growth scrubbers, roguelike visual inspectors, and on-screen telemetry.
+            </p>
+          </section>
+
+          <!-- Mature Tree Generator & Variety Inspector -->
+          <section class="card">
+            <div class="section-title">Mature Tree Generator &amp; Variety Explorer</div>
+            <p class="field-hint">
+              Select any tree archetype to view its fully mature architectural design and explore procedural variety across different seeds.
+            </p>
+
+            <div class="control-row-grid">
+              <div class="input-col">
+                <label for="select-debug-species" class="control-label">Tree Species</label>
+                <select id="select-debug-species" class="select-input">
+                  <option value="AncientOak">Ancient Oak (Spreading Boughs)</option>
+                  <option value="WeepingWillow">Weeping Willow (Cascading Canopy)</option>
+                  <option value="AlpinePine">Alpine Pine (Whorled Pagoda Tiers)</option>
+                  <option value="JapaneseMaple">Japanese Maple (Angular Zig-Zag)</option>
+                  <option value="SilverBirch">Silver Birch (Slender Shimmering)</option>
+                  <option value="GreatBaobab">Great Baobab (Massive Columnar)</option>
+                </select>
+              </div>
+
+              <div class="input-col">
+                <label for="input-debug-seed" class="control-label">Variation Seed</label>
+                <div class="seed-input-row">
+                  <input
+                    id="input-debug-seed"
+                    type="number"
+                    class="select-input number-input"
+                    value="42"
+                    min="1"
+                    max="9999999"
+                  />
+                  <button
+                    id="btn-debug-reroll-seed"
+                    class="btn small icon-only"
+                    type="button"
+                    title="Reroll Seed"
+                  >
+                    <rk-icon name="arrow-clockwise"></rk-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="debug-actions-grid">
+              <button
+                id="btn-debug-view-mature"
+                class="btn small primary game-cmd-btn"
+                type="button"
+                title="Generate and center camera on this mature tree"
+              >
+                <rk-icon name="tree-evergreen"></rk-icon><span>View Mature Tree</span>
+              </button>
+
+              <button
+                id="btn-debug-next-variation"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Randomize seed and instantly regenerate to explore variety"
+              >
+                <rk-icon name="sparkle"></rk-icon><span>Next Variation</span>
+              </button>
+
+              <button
+                id="btn-debug-showcase-all"
+                class="btn small game-cmd-btn span-2"
+                type="button"
+                title="Generate all 6 tree species fully mature in a grand panorama"
+              >
+                <rk-icon name="plant"></rk-icon><span>Showcase All 6 Mature Species</span>
+              </button>
+
+              <button
+                id="btn-debug-variety-grove"
+                class="btn small game-cmd-btn span-2"
+                type="button"
+                title="Generate 4 mature variations of this species side-by-side to compare"
+              >
+                <rk-icon name="branch"></rk-icon><span>Grove of 4 Variations (Side-by-Side)</span>
+              </button>
+            </div>
+
+            <!-- Forest Navigator -->
+            <div class="forest-nav-box">
+              <label for="select-debug-forest-tree" class="control-label">Focus Forest Tree</label>
+              <div class="forest-nav-row">
+                <button
+                  id="btn-debug-prev-tree"
+                  class="btn small icon-only"
+                  type="button"
+                  title="Focus Previous Tree"
+                >
+                  <rk-icon name="caret-left"></rk-icon>
+                </button>
+                <select id="select-debug-forest-tree" class="select-input flex-1">
+                  <option value="1">Tree #1: Ancient Oak (Loading...)</option>
+                </select>
+                <button
+                  id="btn-debug-next-tree"
+                  class="btn small icon-only"
+                  type="button"
+                  title="Focus Next Tree"
+                >
+                  <rk-icon name="caret-right"></rk-icon>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tree Telemetry & Diagnostics -->
+          <section class="card">
+            <div class="section-title">Active Tree Telemetry</div>
+            <div class="telemetry-grid">
+              <div class="telemetry-item">
+                <span class="telemetry-label">Active Specimen</span>
+                <strong id="debug-tel-species" class="telemetry-value">Ancient Oak</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Maturity Status</span>
+                <strong id="debug-tel-status" class="telemetry-value">Step 0 / 42</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Canopy Boughs</span>
+                <strong id="debug-tel-branches" class="telemetry-value">0</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Foliage Buds</span>
+                <strong id="debug-tel-foliage" class="telemetry-value">0</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Camera Offset X</span>
+                <strong id="debug-tel-cam-x" class="telemetry-value">0.0 px</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">Variation Seed</span>
+                <strong id="debug-tel-seed" class="telemetry-value">#42</strong>
+              </div>
+            </div>
+          </section>
+
+          <!-- Growth Scrubber & Sim Speed -->
+          <section class="card">
+            <div class="section-title">Growth Progression &amp; Simulation Speed</div>
+            <div class="growth-scrubber-row">
+              <button
+                id="btn-debug-mature-active"
+                class="btn small primary game-cmd-btn"
+                type="button"
+                title="Instantly grow currently active tree to 100% maturity"
+              >
+                <rk-icon name="tree-evergreen"></rk-icon><span>Mature Active Tree</span>
+              </button>
+              <button
+                id="btn-debug-step-1"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Advance active tree growth by 1 step"
+              >
+                <span>+1 Step</span>
+              </button>
+              <button
+                id="btn-debug-step-10"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Advance active tree growth by 10 steps"
+              >
+                <span>+10 Steps</span>
+              </button>
+              <button
+                id="btn-debug-rewind"
+                class="btn small game-cmd-btn"
+                type="button"
+                title="Reset active tree back to initial sapling"
+              >
+                <rk-icon name="arrow-clockwise"></rk-icon><span>Rewind</span>
+              </button>
+            </div>
+
+            <div class="control-row" style="margin-top: 10px;">
+              <span>Simulation Speed</span>
+              <strong id="val-debug-speed">1.0x (Normal)</strong>
+            </div>
+            <div class="speed-buttons-row">
+              <button class="btn small btn-speed-select active" data-speed="1.0" type="button">1x</button>
+              <button class="btn small btn-speed-select" data-speed="5.0" type="button">5x</button>
+              <button class="btn small btn-speed-select" data-speed="20.0" type="button">20x</button>
+              <button class="btn small btn-speed-select" data-speed="50.0" type="button">Hyper</button>
+              <button class="btn small btn-speed-select" data-speed="0.0" type="button">Pause</button>
+            </div>
+          </section>
+
+          <!-- Atmosphere, Bird Styles & Fauna Testing -->
+          <section class="card">
+            <div class="section-title">Aesthetics &amp; Autonomous Fauna</div>
+            <div class="control-row-grid">
+              <div class="input-col">
+                <label for="select-debug-palette" class="control-label">Roguelike Palette</label>
+                <select id="select-debug-palette" class="select-input">
+                  <option value="0">Earth &amp; Sylvan (Caves of Qud)</option>
+                  <option value="1">Midnight Starlight</option>
+                  <option value="2">Autumn Hearth</option>
+                  <option value="3">Verdant Rainforest</option>
+                  <option value="4">Amber Phosphor CRT</option>
+                  <option value="5">Emerald Matrix</option>
+                </select>
+              </div>
+
+              <div class="input-col">
+                <label for="select-debug-bird-style" class="control-label">Bird Style</label>
+                <select id="select-debug-bird-style" class="select-input">
+                  <option value="classic">3-Cell Classic CP437</option>
+                  <option value="streamlined">2-Cell Streamlined</option>
+                  <option value="ornate">Ornate Silhouettes</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="control-label" style="margin-top: 10px;">Spawn Rare Avians</label>
+            <div class="bird-spawn-row">
+              <button id="btn-spawn-raven" class="btn small game-cmd-btn" type="button" title="Spawn Celestial Raven">
+                <rk-icon name="bird"></rk-icon><span>Celestial Raven</span>
+              </button>
+              <button id="btn-spawn-tanager" class="btn small game-cmd-btn" type="button" title="Spawn Ruby Tanager">
+                <rk-icon name="bird"></rk-icon><span>Ruby Tanager</span>
+              </button>
+              <button id="btn-spawn-owl" class="btn small game-cmd-btn" type="button" title="Spawn Snowy Owl">
+                <rk-icon name="bird"></rk-icon><span>Snowy Owl</span>
+              </button>
+            </div>
+
+            <div class="world-reset-row" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;">
+              <button id="btn-debug-reset-world" class="btn small danger game-cmd-btn" type="button" title="Reset forest world to initial state">
+                <rk-icon name="arrow-clockwise"></rk-icon><span>Reset World to Default</span>
+              </button>
+              <span id="debug-msg-status" class="notification-text" hidden></span>
+            </div>
           </section>
         </div>
 

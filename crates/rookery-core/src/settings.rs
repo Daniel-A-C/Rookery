@@ -108,6 +108,9 @@ pub struct Settings {
     pub frame: FrameSettings,
     pub audio: AudioSettings,
     pub update: UpdateSettings,
+    /// Enable debug mode tools and in-scene telemetry.
+    #[serde(default)]
+    pub debug_mode: bool,
     /// Last time the host was known to be running (startup, heartbeat, clean shutdown).
     /// Groundwork for Milestone 2's offline time-delta engine.
     pub last_run_utc: Option<DateTime<Utc>>,
@@ -134,6 +137,7 @@ impl Default for Settings {
             frame: FrameSettings::default(),
             audio: AudioSettings::default(),
             update: UpdateSettings::default(),
+            debug_mode: false,
             last_run_utc: None,
             last_shutdown_clean: true,
             app_controls: BTreeMap::new(),

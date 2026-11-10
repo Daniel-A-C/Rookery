@@ -143,6 +143,9 @@ pub fn update_settings(
         if let Some(v) = patch.update_auto_download {
             inner.settings.update.auto_download = v;
         }
+        if let Some(dbg) = patch.debug_mode {
+            inner.settings.debug_mode = dbg;
+        }
         inner.settings.frame = inner.settings.frame.clamped();
         inner.settings.audio = inner.settings.audio.clamped();
         state.audio.update_settings(inner.settings.audio);
@@ -152,6 +155,12 @@ pub fn update_settings(
             .map_err(|e| e.to_string())?;
         inner.settings.clone()
     };
+
+    if let Some(dbg) = patch.debug_mode
+        && let Ok(mut w) = state.world.lock()
+    {
+        w.debug_mode = dbg;
+    }
 
     if let Some(blur) = patch.popover_blur {
         apply_popover_blur_on_main_thread(&app, blur);
@@ -415,6 +424,151 @@ pub fn execute_app_action(
                         w.cycle_palette();
                         state.audio.play_sfx(SoundEffect::PaletteCycle);
                     }
+                }
+                "set_debug_mode" => {
+                    let enabled = payload
+                        .as_ref()
+                        .and_then(|p| p.get("enabled"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+                    w.debug_mode = enabled;
+                    if let Ok(mut inner) = state.inner.lock() {
+                        inner.settings.debug_mode = enabled;
+                    }
+                }
+                "view_mature_tree" => {
+                    let species_str = payload
+                        .as_ref()
+                        .and_then(|p| p.get("species"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("AncientOak");
+                    let species = rookery_core::world::TreeSpecies::from_id(species_str)
+                        .unwrap_or(rookery_core::world::TreeSpecies::AncientOak);
+                    let seed = payload
+                        .as_ref()
+                        .and_then(|p| p.get("seed"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_else(|| w.rng.next_u64());
+                    w.view_mature_tree(species, seed);
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
+                }
+                "showcase_all_mature" => {
+                    let seed = payload
+                        .as_ref()
+                        .and_then(|p| p.get("seed"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(42);
+                    w.generate_mature_showcase(seed);
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "variety_grove" => {
+                    let species_str = payload
+                        .as_ref()
+                        .and_then(|p| p.get("species"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("AncientOak");
+                    let species = rookery_core::world::TreeSpecies::from_id(species_str)
+                        .unwrap_or(rookery_core::world::TreeSpecies::AncientOak);
+                    let seed = payload
+                        .as_ref()
+                        .and_then(|p| p.get("seed"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_else(|| w.rng.next_u64());
+                    w.generate_species_variety_grove(species, seed);
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "mature_active_tree" => {
+                    let active_id = w.active_tree_id;
+                    w.mature_tree_by_id(active_id, false);
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "growth_step" => {
+                    let count = payload
+                        .as_ref()
+                        .and_then(|p| p.get("count"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32;
+                    let active_id = w.active_tree_id;
+                    let active_idx = w.trees.iter().position(|t| t.id == active_id);
+                    if let Some(idx) = active_idx {
+                        for _ in 0..count {
+                            w.execute_growth_step_for(idx, false);
+                        }
+                    } else {
+                        w.execute_growth_step();
+                    }
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
+                }
+                "rewind_sapling" => {
+                    let active_id = w.active_tree_id;
+                    w.rewind_tree_to_sapling(active_id);
+                    state.audio.play_sfx(SoundEffect::Prune);
+                }
+                "focus_tree" => {
+                    if let Some(tid) = payload
+                        .as_ref()
+                        .and_then(|p| p.get("tree_id"))
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u32)
+                    {
+                        w.focus_tree(tid);
+                    }
+                }
+                "set_sim_speed" => {
+                    if let Some(spd) = payload
+                        .as_ref()
+                        .and_then(|p| p.get("speed"))
+                        .and_then(|v| v.as_f64())
+                    {
+                        w.sim_speed = (spd as f32).clamp(0.0, 100.0);
+                    }
+                }
+                "set_bird_style" => {
+                    if let Some(style_str) = payload
+                        .as_ref()
+                        .and_then(|p| p.get("style"))
+                        .and_then(|v| v.as_str())
+                    {
+                        w.bird_style = match style_str.to_lowercase().as_str() {
+                            "streamlined" | "2cell" => {
+                                rookery_core::world::BirdStyle::Streamlined2Cell
+                            }
+                            "ornate" | "flock" => rookery_core::world::BirdStyle::OrnateFlock,
+                            _ => rookery_core::world::BirdStyle::Classic3Cell,
+                        };
+                        state.audio.play_sfx(SoundEffect::BirdChirp);
+                    }
+                }
+                "spawn_bird" => {
+                    let sp_str = payload
+                        .as_ref()
+                        .and_then(|p| p.get("species"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("SnowyOwl");
+                    let species = match sp_str.to_lowercase().replace(['-', '_', ' '], "").as_str()
+                    {
+                        "celestialraven" | "raven" => {
+                            rookery_core::world::BirdSpecies::CelestialRaven
+                        }
+                        "rubytanager" | "tanager" => rookery_core::world::BirdSpecies::RubyTanager,
+                        "snowyowl" | "owl" => rookery_core::world::BirdSpecies::SnowyOwl,
+                        "azurejay" | "jay" => rookery_core::world::BirdSpecies::AzureJay,
+                        "goldfinch" | "finch" => rookery_core::world::BirdSpecies::Goldfinch,
+                        "robin" => rookery_core::world::BirdSpecies::Robin,
+                        "emeralddove" | "dove" => rookery_core::world::BirdSpecies::EmeraldDove,
+                        _ => rookery_core::world::BirdSpecies::Rook,
+                    };
+                    w.spawn_bird_of_species(species);
+                    state.audio.play_sfx(SoundEffect::BirdChirp);
+                }
+                "reset_world" => {
+                    let seed = payload
+                        .as_ref()
+                        .and_then(|p| p.get("seed"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(42);
+                    *w = rookery_core::world::WorldState::new(seed);
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
                 }
                 other => return Err(format!("Unknown rookery action '{other}'")),
             }
