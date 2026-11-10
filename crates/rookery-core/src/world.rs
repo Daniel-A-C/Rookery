@@ -14,6 +14,12 @@ use crate::Activity;
 pub const WORLD_STATE_VERSION: u32 = 1;
 pub const WORLD_STATE_FILE_NAME: &str = "rookery_world.json";
 
+/// Standard horizontal distance between successive trees in the living forest.
+/// Tuned so that after camera succession pans to the new tree, approximately ~35% of the
+/// previous mature tree's eastern canopy and boughs remain gracefully visible framing the left viewport,
+/// forming an unbroken, continuous woodland canopy.
+pub const FOREST_TREE_SPACING: f32 = 580.0;
+
 /// Deterministic 64-bit XorShift PRNG for reproducible world generation and growth.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldRng {
@@ -1112,9 +1118,9 @@ impl WorldState {
             None => {
                 // If all trees are mature, check if we need to pan and plant the next tree
                 if let Some(last) = self.trees.last() {
-                    let next_x = last.base_pos[0] + 800.0;
+                    let next_x = last.base_pos[0] + FOREST_TREE_SPACING;
                     let next_species = last.species.next();
-                    self.target_viewport_offset_x = last.base_pos[0] + 800.0 - 500.0;
+                    self.target_viewport_offset_x = next_x - 500.0;
                     self.plant_new_sapling(next_x, next_species);
                 }
                 return;
@@ -1512,8 +1518,8 @@ impl WorldState {
             if auto_succession {
                 // Forest Succession: smoothly pan camera left and plant next tree in center!
                 let next_species = species.next();
-                let next_x = base_x + 800.0;
-                self.target_viewport_offset_x = base_x + 800.0 - 500.0;
+                let next_x = base_x + FOREST_TREE_SPACING;
+                self.target_viewport_offset_x = next_x - 500.0;
                 self.plant_new_sapling(next_x, next_species);
                 self.next_id += 1;
                 self.bird_baths.push(BirdBath {
@@ -1609,7 +1615,7 @@ impl WorldState {
         self.next_id = 0;
 
         let all_species = TreeSpecies::all();
-        let spacing = 800.0;
+        let spacing = FOREST_TREE_SPACING;
         let mut first_id = 0;
 
         for (i, &species) in all_species.iter().enumerate() {
@@ -1639,7 +1645,7 @@ impl WorldState {
         self.notes.clear();
         self.next_id = 0;
 
-        let spacing = 800.0;
+        let spacing = FOREST_TREE_SPACING;
         let mut first_id = 0;
 
         for i in 0..4 {
@@ -1981,15 +1987,36 @@ impl WorldState {
                                     !b.is_root
                                         && b.growth_progress >= 0.8
                                         && b.depth >= 1
-                                        && (b.start[0] >= vp_x - 100.0
-                                            && b.start[0] <= vp_x + 1100.0)
+                                        && (b.start[0].max(b.current_end()[0]) >= vp_x
+                                            && b.start[0].min(b.current_end()[0]) <= vp_x + 1000.0)
                                 })
                                 .map(|b| b.id)
                                 .collect();
                             if !candidates.is_empty() {
                                 let branch_id = candidates
                                     [self.rng.range_i32(0, candidates.len() as i32) as usize];
-                                let t = self.rng.range(0.35, 0.95);
+                                let branch = self.branches.iter().find(|b| b.id == branch_id);
+                                let t = if let Some(b) = branch {
+                                    let x0 = b.start[0];
+                                    let x1 = b.current_end()[0];
+                                    if (x1 - x0).abs() > 1.0 {
+                                        let t_min_vp =
+                                            ((vp_x + 10.0 - x0) / (x1 - x0)).clamp(0.0, 1.0);
+                                        let t_max_vp =
+                                            ((vp_x + 990.0 - x0) / (x1 - x0)).clamp(0.0, 1.0);
+                                        let t_low = t_min_vp.min(t_max_vp).max(0.35);
+                                        let t_high = t_min_vp.max(t_max_vp).min(0.95);
+                                        if t_low < t_high {
+                                            self.rng.range(t_low, t_high)
+                                        } else {
+                                            self.rng.range(0.35, 0.95)
+                                        }
+                                    } else {
+                                        self.rng.range(0.35, 0.95)
+                                    }
+                                } else {
+                                    self.rng.range(0.35, 0.95)
+                                };
                                 next_state = Some(BirdState::Perched {
                                     branch_id,
                                     t,
@@ -2563,7 +2590,7 @@ impl WorldState {
 
     /// User interaction: pan forest horizontally.
     pub fn pan_forest(&mut self, delta_x: f32) {
-        let max_offset = (self.trees.len() as f32 * 800.0 + 1000.0).max(3000.0);
+        let max_offset = (self.trees.len() as f32 * FOREST_TREE_SPACING + 1000.0).max(3000.0);
         self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(-1000.0, max_offset);
         self.target_viewport_offset_x = self.viewport_offset_x;
     }
@@ -3491,7 +3518,7 @@ mod tests {
             let tree = &world.trees[i];
             assert_eq!(tree.species, species);
             assert!(tree.is_mature);
-            assert_eq!(tree.base_pos[0], 500.0 + (i as f32) * 800.0);
+            assert_eq!(tree.base_pos[0], 500.0 + (i as f32) * FOREST_TREE_SPACING);
         }
 
         let summaries = world.tree_summary_list();
@@ -3544,5 +3571,91 @@ mod tests {
         assert_eq!(world.birds.len(), initial_birds + 1);
         let last_bird = world.birds.last().unwrap();
         assert_eq!(last_bird.species, BirdSpecies::SnowyOwl);
+    }
+
+    #[test]
+    fn test_succession_tree_spacing_and_elder_tree_visibility() {
+        let mut world = WorldState::new(42);
+
+        // Advance growth until succession occurs
+        world.advance_growth(350.0);
+        assert!(
+            world.trees.len() >= 2,
+            "Succession must plant the next tree"
+        );
+        assert!(world.trees[0].is_mature, "First tree must be mature");
+
+        // Verify tree spacing
+        let elder_tree = &world.trees[0];
+        let new_tree = &world.trees[1];
+        let spacing = new_tree.base_pos[0] - elder_tree.base_pos[0];
+        assert_eq!(
+            spacing, FOREST_TREE_SPACING,
+            "Trees must be spaced exactly by FOREST_TREE_SPACING"
+        );
+
+        // Camera target viewport should center on the new tree
+        let expected_target_vp = new_tree.base_pos[0] - 500.0;
+        assert_eq!(
+            world.target_viewport_offset_x, expected_target_vp,
+            "Camera target viewport must center new tree at 500.0"
+        );
+
+        // Calculate elder tree horizontal canopy bounds
+        let elder_bids = world.tree_branch_ids(elder_tree.root_branch_id);
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        for bid in &elder_bids {
+            if let Some(b) = world.branches.iter().find(|br| br.id == *bid) {
+                min_x = min_x.min(b.start[0]).min(b.current_end()[0]);
+                max_x = max_x.max(b.start[0]).max(b.current_end()[0]);
+                for bud in &b.foliage {
+                    let pt = b.point_at(bud.offset_along);
+                    min_x = min_x.min(pt[0] - bud.lateral_offset.abs());
+                    max_x = max_x.max(pt[0] + bud.lateral_offset.abs());
+                }
+            }
+        }
+
+        let total_elder_width = max_x - min_x;
+        let visible_elder_width = (max_x - world.target_viewport_offset_x).max(0.0);
+        let visible_fraction = visible_elder_width / total_elder_width;
+
+        println!(
+            "Elder tree bounds: [{min_x:.1} .. {max_x:.1}], total width: {total_elder_width:.1}"
+        );
+        println!(
+            "Target viewport offset: {:.1}, visible elder width: {visible_elder_width:.1} ({:.1}%)",
+            world.target_viewport_offset_x,
+            visible_fraction * 100.0
+        );
+
+        // Verify approximately ~35% (allow natural generative variation between 28% and 45%)
+        assert!(
+            (0.28..=0.45).contains(&visible_fraction),
+            "Expected ~35% of elder tree to be visible in viewport, got {:.1}%",
+            visible_fraction * 100.0
+        );
+
+        // Pan viewport to target and ensure ASCII art renders elder boughs framing left side
+        world.viewport_offset_x = world.target_viewport_offset_x;
+        let ascii = world.render_ascii_art(80, 24);
+        println!("\n=== ASCII Viewport with Elder Tree Visible on Left ===");
+        println!("{ascii}");
+
+        // Leftmost character columns of the ASCII grid should contain branches/foliage
+        let lines: Vec<&str> = ascii.lines().collect();
+        let mut has_left_foliage_or_branch = false;
+        for line in &lines[2..18] {
+            let left_slice = line.chars().take(20).collect::<String>();
+            if left_slice.chars().any(|c| c != ' ' && c != '─') {
+                has_left_foliage_or_branch = true;
+                break;
+            }
+        }
+        assert!(
+            has_left_foliage_or_branch,
+            "Elder tree boughs must be visible in the left portion of the rendered ASCII viewport"
+        );
     }
 }

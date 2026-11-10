@@ -326,7 +326,7 @@ impl LivingRookeryScene {
             // Viewport culling: only render branches within or near the visible screen area
             let min_x = branch.start[0].min(branch.current_end()[0]);
             let max_x = branch.start[0].max(branch.current_end()[0]);
-            if max_x < offset_x - 450.0 || min_x > offset_x + 1450.0 {
+            if max_x < offset_x - 500.0 || min_x > offset_x + 1500.0 {
                 continue;
             }
 
@@ -936,14 +936,14 @@ mod tests {
         let mut world = WorldState::new(42);
         // Simulate succession with 15 trees and hundreds of branches
         for i in 1..=15 {
-            let next_x = 500.0 + i as f32 * 800.0;
+            let next_x = 500.0 + i as f32 * rookery_core::world::FOREST_TREE_SPACING;
             world.plant_new_sapling(next_x, TreeSpecies::AncientOak);
             for _ in 0..20 {
                 world.execute_growth_step();
             }
         }
         // Pan camera to the last tree
-        world.viewport_offset_x = 500.0 + 15.0 * 800.0 - 500.0;
+        world.viewport_offset_x = 500.0 + 15.0 * rookery_core::world::FOREST_TREE_SPACING - 500.0;
         let total_branches = world.branches.len();
         assert!(
             total_branches > 150,
