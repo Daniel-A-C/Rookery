@@ -139,6 +139,31 @@ impl WorldState {
                         }
                     }
 
+                    // Migration: Ensure mature worlds have default woodland fauna roaming the meadow
+                    if state.fauna.is_empty() {
+                        state.seed_default_fauna();
+                        log::info!(
+                            "migrated empty fauna: seeded default woodland creatures for {}",
+                            path.display()
+                        );
+                    } else {
+                        // Reposition any fauna stranded far from active tree & clamp to 2D meadow bounds
+                        for f in &mut state.fauna {
+                            f.pos[1] = f.pos[1].clamp(746.0, 835.0);
+                            if (f.pos[0] - active_x).abs() > 1400.0 {
+                                let rx = state.rng.range(active_x - 220.0, active_x + 220.0);
+                                let ry = state.rng.range(750.0, 830.0);
+                                let tx = state.rng.range(active_x - 200.0, active_x + 200.0);
+                                let ty = state.rng.range(750.0, 830.0);
+                                f.pos = [rx, ry];
+                                f.state = FaunaState::Trotting {
+                                    target: [tx, ty],
+                                    speed: f.species.base_speed(),
+                                };
+                            }
+                        }
+                    }
+
                     state.recompute_stats();
                     log::info!(
                         "loaded world state from {} (age {:.1}h, {} branches)",

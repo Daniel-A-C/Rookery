@@ -253,6 +253,8 @@ pub enum FaunaSpecies {
     Badger,
     /// Gentle prickly Hedgehog snuffling among fallen leaves.
     Hedgehog,
+    /// Gentle wild Cottontail Rabbit hopping across the clover meadow.
+    Rabbit,
 }
 
 impl FaunaSpecies {
@@ -262,6 +264,7 @@ impl FaunaSpecies {
             Self::Squirrel => "Squirrel",
             Self::Badger => "Badger",
             Self::Hedgehog => "Hedgehog",
+            Self::Rabbit => "Cottontail Rabbit",
         }
     }
 
@@ -271,6 +274,7 @@ impl FaunaSpecies {
             Self::Squirrel => 44.0,
             Self::Badger => 24.0,
             Self::Hedgehog => 16.0,
+            Self::Rabbit => 32.0,
         }
     }
 }
@@ -278,14 +282,14 @@ impl FaunaSpecies {
 /// Autonomous behavioral states for forest floor fauna.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FaunaState {
-    /// Trotting smoothly along the ground toward a horizontal target.
-    Trotting { target_x: f32, speed: f32 },
+    /// Trotting smoothly across the meadow ground plane toward a 2D destination.
+    Trotting { target: [f32; 2], speed: f32 },
     /// Pausing to sniff the soil, clovers, or mushroom caps.
     Sniffing { remaining_secs: f32 },
-    /// Foraging for fallen snacks or acorns near buttress roots.
+    /// Foraging for fallen snacks or acorns near buttress roots or across grass.
     Foraging {
         remaining_secs: f32,
-        target_snack_x: Option<f32>,
+        target_snack: Option<[f32; 2]>,
     },
     /// Resting peacefully under branch shelter.
     Resting { remaining_secs: f32 },
@@ -294,7 +298,7 @@ pub enum FaunaState {
     /// Alert posture upon sensing motion or sounds.
     Alert { remaining_secs: f32 },
     /// Startled flee when direct mode cursor clicks nearby.
-    Startled { remaining_secs: f32, dir: f32 },
+    Startled { remaining_secs: f32, dir: [f32; 2] },
     /// Scampering vertically up or down the lower trunk (Squirrel).
     ClimbingTrunk {
         branch_id: u32,

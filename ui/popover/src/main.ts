@@ -428,6 +428,12 @@ const selectDebugBirdStyle = el<HTMLSelectElement>("select-debug-bird-style");
 const btnSpawnRaven = el<HTMLButtonElement>("btn-spawn-raven");
 const btnSpawnTanager = el<HTMLButtonElement>("btn-spawn-tanager");
 const btnSpawnOwl = el<HTMLButtonElement>("btn-spawn-owl");
+const btnSpawnFox = el<HTMLButtonElement>("btn-spawn-fox");
+const btnSpawnSquirrel = el<HTMLButtonElement>("btn-spawn-squirrel");
+const btnSpawnBadger = el<HTMLButtonElement>("btn-spawn-badger");
+const btnSpawnHedgehog = el<HTMLButtonElement>("btn-spawn-hedgehog");
+const btnSpawnRabbit = el<HTMLButtonElement>("btn-spawn-rabbit");
+const btnScatterSnacks = el<HTMLButtonElement>("btn-scatter-snacks");
 const btnDebugResetWorld = el<HTMLButtonElement>("btn-debug-reset-world");
 
 let currentStatus: HostStatus | null = null;
@@ -2086,6 +2092,66 @@ btnSpawnOwl.addEventListener("click", async () => {
     showNotification("bird", "Snowy Owl guardian appeared!");
   } catch (err) {
     console.error("spawn owl error:", err);
+  }
+});
+
+btnSpawnFox.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Fox" });
+    renderStatus(s);
+    showNotification("sparkle", "Red Fox trotting across the meadow!");
+  } catch (err) {
+    console.error("spawn fox error:", err);
+  }
+});
+
+btnSpawnSquirrel.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Squirrel" });
+    renderStatus(s);
+    showNotification("sparkle", "Squirrel scampering through the clovers!");
+  } catch (err) {
+    console.error("spawn squirrel error:", err);
+  }
+});
+
+btnSpawnBadger.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Badger" });
+    renderStatus(s);
+    showNotification("sparkle", "Badger exploring near the roots!");
+  } catch (err) {
+    console.error("spawn badger error:", err);
+  }
+});
+
+btnSpawnHedgehog.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Hedgehog" });
+    renderStatus(s);
+    showNotification("sparkle", "Prickly Hedgehog snuffling in the grass!");
+  } catch (err) {
+    console.error("spawn hedgehog error:", err);
+  }
+});
+
+btnSpawnRabbit.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Rabbit" });
+    renderStatus(s);
+    showNotification("sparkle", "Cottontail Rabbit hopped into the meadow!");
+  } catch (err) {
+    console.error("spawn rabbit error:", err);
+  }
+});
+
+btnScatterSnacks.addEventListener("click", async () => {
+  try {
+    const s = await api.executeAppAction("living-rookery", "scatter_snacks");
+    renderStatus(s);
+    showNotification("grains", "Sweet berries & acorns scattered on the grass!");
+  } catch (err) {
+    console.error("scatter snacks error:", err);
   }
 });
 

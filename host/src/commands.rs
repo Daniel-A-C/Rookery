@@ -561,6 +561,46 @@ pub fn execute_app_action(
                     w.spawn_bird_of_species(species);
                     state.audio.play_sfx(SoundEffect::BirdChirp);
                 }
+                "spawn_fauna" => {
+                    let sp_str = payload
+                        .as_ref()
+                        .and_then(|p| p.get("species"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Fox");
+                    let species = match sp_str.to_lowercase().replace(['-', '_', ' '], "").as_str()
+                    {
+                        "squirrel" => rookery_core::world::FaunaSpecies::Squirrel,
+                        "badger" => rookery_core::world::FaunaSpecies::Badger,
+                        "hedgehog" => rookery_core::world::FaunaSpecies::Hedgehog,
+                        "rabbit" | "cottontail" => rookery_core::world::FaunaSpecies::Rabbit,
+                        _ => rookery_core::world::FaunaSpecies::Fox,
+                    };
+                    w.spawn_fauna_of_species(species);
+                    state.audio.play_sfx(SoundEffect::Prune);
+                }
+                "scatter_snacks" => {
+                    let trunk_base_x = w
+                        .trees
+                        .iter()
+                        .find(|t| t.id == w.active_tree_id)
+                        .map(|t| t.base_pos[0])
+                        .unwrap_or(500.0);
+                    let rx = w.rng.range(trunk_base_x - 180.0, trunk_base_x + 180.0);
+                    let ry = w.rng.range(755.0, 825.0);
+                    for f in &mut w.fauna {
+                        if matches!(
+                            f.state,
+                            rookery_core::world::FaunaState::Trotting { .. }
+                                | rookery_core::world::FaunaState::Sniffing { .. }
+                        ) {
+                            f.state = rookery_core::world::FaunaState::Foraging {
+                                remaining_secs: 5.5,
+                                target_snack: Some([rx, ry]),
+                            };
+                        }
+                    }
+                    state.audio.play_sfx(SoundEffect::PlantSeed);
+                }
                 "reset_world" => {
                     let seed = payload
                         .as_ref()

@@ -193,60 +193,6 @@ impl WorldState {
             light_intensity: 1.0,
         }];
 
-        let fauna = vec![
-            WoodlandFauna {
-                id: 1,
-                species: FaunaSpecies::Fox,
-                pos: [trunk_base[0] - 120.0, 746.0],
-                vel: [0.0, 0.0],
-                facing_left: false,
-                state: FaunaState::Trotting {
-                    target_x: trunk_base[0] + 180.0,
-                    speed: FaunaSpecies::Fox.base_speed(),
-                },
-                anim_phase: 0.0,
-                size_scale: 1.0,
-            },
-            WoodlandFauna {
-                id: 2,
-                species: FaunaSpecies::Squirrel,
-                pos: [trunk_base[0] + 45.0, 746.0],
-                vel: [0.0, 0.0],
-                facing_left: true,
-                state: FaunaState::Foraging {
-                    remaining_secs: 4.0,
-                    target_snack_x: None,
-                },
-                anim_phase: 1.2,
-                size_scale: 0.95,
-            },
-            WoodlandFauna {
-                id: 3,
-                species: FaunaSpecies::Badger,
-                pos: [trunk_base[0] + 210.0, 746.0],
-                vel: [0.0, 0.0],
-                facing_left: true,
-                state: FaunaState::Sniffing {
-                    remaining_secs: 3.5,
-                },
-                anim_phase: 2.4,
-                size_scale: 1.05,
-            },
-            WoodlandFauna {
-                id: 4,
-                species: FaunaSpecies::Hedgehog,
-                pos: [trunk_base[0] - 220.0, 746.0],
-                vel: [0.0, 0.0],
-                facing_left: false,
-                state: FaunaState::Trotting {
-                    target_x: trunk_base[0] - 80.0,
-                    speed: FaunaSpecies::Hedgehog.base_speed(),
-                },
-                anim_phase: 0.8,
-                size_scale: 0.9,
-            },
-        ];
-
         let mut world = Self {
             version: WORLD_STATE_VERSION,
             seed,
@@ -256,7 +202,7 @@ impl WorldState {
             branches,
             birds,
             snacks: Vec::new(),
-            fauna,
+            fauna: Vec::new(),
             signs,
             houses: Vec::new(),
             nests: Vec::new(),
@@ -280,6 +226,7 @@ impl WorldState {
             sim_speed: 1.0,
         };
 
+        world.seed_default_fauna();
         world.recompute_stats();
         world
     }
@@ -407,8 +354,36 @@ impl WorldState {
 
     /// User interaction: pan forest horizontally.
     pub fn pan_forest(&mut self, delta_x: f32) {
-        let max_offset = (self.trees.len() as f32 * FOREST_TREE_SPACING + 1000.0).max(3000.0);
-        self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(-1000.0, max_offset);
+        let max_tree_x = self
+            .trees
+            .iter()
+            .map(|t| t.base_pos[0])
+            .fold(500.0f32, f32::max);
+        let max_branch_x = self
+            .branches
+            .iter()
+            .map(|b| b.start[0].max(b.end[0]))
+            .fold(500.0f32, f32::max);
+        let rightmost_x = max_tree_x.max(max_branch_x);
+
+        let min_tree_x = self
+            .trees
+            .iter()
+            .map(|t| t.base_pos[0])
+            .fold(500.0f32, f32::min);
+        let min_branch_x = self
+            .branches
+            .iter()
+            .map(|b| b.start[0].min(b.end[0]))
+            .fold(500.0f32, f32::min);
+        let leftmost_x = min_tree_x.min(min_branch_x);
+
+        // When a tree at rightmost_x is centered, viewport_offset_x = rightmost_x - 500.0.
+        // We add a generous margin (+800.0) so the entire canopy and east meadow horizon are comfortably visible.
+        let max_offset = (rightmost_x - 500.0 + 800.0).max(3000.0);
+        let min_offset = (leftmost_x - 500.0 - 800.0).min(-1000.0);
+
+        self.viewport_offset_x = (self.viewport_offset_x + delta_x).clamp(min_offset, max_offset);
         self.target_viewport_offset_x = self.viewport_offset_x;
     }
 }

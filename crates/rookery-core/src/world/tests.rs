@@ -983,7 +983,7 @@ fn test_trunk_cell_by_cell_ascent_and_ring_expansion() {
 #[test]
 fn test_woodland_fauna_initialization_and_movement() {
     let mut world = WorldState::new(42);
-    assert_eq!(world.fauna.len(), 4);
+    assert_eq!(world.fauna.len(), 5);
     assert!(world.fauna.iter().any(|f| f.species == FaunaSpecies::Fox));
     assert!(
         world
@@ -1003,13 +1003,21 @@ fn test_woodland_fauna_initialization_and_movement() {
             .iter()
             .any(|f| f.species == FaunaSpecies::Hedgehog)
     );
+    assert!(
+        world
+            .fauna
+            .iter()
+            .any(|f| f.species == FaunaSpecies::Rabbit)
+    );
 
-    let initial_pos_x = world.fauna[0].pos[0];
+    let initial_pos = world.fauna[0].pos;
     for _ in 0..60 {
         world.update(0.1, false, None);
     }
-    // Creatures move along the forest floor
-    assert!((world.fauna[0].pos[0] - initial_pos_x).abs() > 1.0);
+    // Creatures move along the 2D meadow floor
+    let diff_x = (world.fauna[0].pos[0] - initial_pos[0]).abs();
+    let diff_y = (world.fauna[0].pos[1] - initial_pos[1]).abs();
+    assert!(diff_x > 1.0 || diff_y > 1.0);
 }
 
 #[test]
@@ -1062,7 +1070,7 @@ fn test_woodland_fauna_inter_species_bird_startling() {
         .expect("must have fox");
     world.fauna[fox_idx].pos = [510.0, 746.0];
     world.fauna[fox_idx].state = FaunaState::Trotting {
-        target_x: 600.0,
+        target: [600.0, 750.0],
         speed: 30.0,
     };
 
@@ -1070,5 +1078,55 @@ fn test_woodland_fauna_inter_species_bird_startling() {
     assert!(
         matches!(world.birds[0].state, BirdState::Startled { .. }),
         "Bird perched near ground must startle when fox trots underneath"
+    );
+}
+
+#[test]
+fn test_woodland_fauna_migration_and_spawning() {
+    let mut world = WorldState::new(42);
+    world.fauna.clear();
+    assert_eq!(world.fauna.len(), 0);
+
+    let temp = tempfile::NamedTempFile::new().expect("temp file");
+    world
+        .save_atomic(temp.path())
+        .expect("save empty fauna world");
+
+    let loaded = WorldState::load_or_init(temp.path(), 42);
+    assert_eq!(
+        loaded.fauna.len(),
+        5,
+        "Load must auto-seed 5 default creatures if fauna was empty"
+    );
+
+    let mut loaded = loaded;
+    let new_id = loaded.spawn_fauna_of_species(FaunaSpecies::Rabbit);
+    assert_eq!(loaded.fauna.len(), 6);
+    assert!(loaded.fauna.iter().any(|f| f.id == new_id));
+}
+
+#[test]
+fn test_pan_forest_all_the_way_to_rightmost_tree() {
+    let mut world = WorldState::new(42);
+    // Simulate a grove of trees spaced far to the east (e.g. 51,900.0)
+    world.trees.push(TreeRecord {
+        id: 99,
+        species: TreeSpecies::SilverBirch,
+        base_pos: [51900.0, 750.0],
+        root_branch_id: 99,
+        is_mature: false,
+        growth_steps_completed: 0,
+        target_growth_steps: 30,
+        planted_age_secs: 0.0,
+        seed: 42,
+    });
+
+    // Pan east by large increments
+    world.pan_forest(60000.0);
+    // Viewport must be able to pan to or past the rightmost tree (51900.0 - 500.0 = 51400.0)
+    assert!(
+        world.viewport_offset_x >= 51400.0,
+        "Viewport offset {:.1} should reach at least 51400.0 to view the latest tree",
+        world.viewport_offset_x
     );
 }

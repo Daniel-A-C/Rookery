@@ -41,43 +41,43 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var zenith = vec3<f32>(0.016, 0.024, 0.038);
     var horizon = vec3<f32>(0.042, 0.056, 0.078);
-    var soil = vec3<f32>(0.045, 0.035, 0.028);
+    var meadow = vec3<f32>(0.016, 0.052, 0.024);
     var grid_glow = vec3<f32>(0.014, 0.020, 0.028);
 
     switch palette {
         case 1: {
-            // Midnight Starlight: obsidian sky, frosted sapphire horizon
+            // Midnight Starlight: obsidian sky, frosted sapphire horizon, luminescent teal glade
             zenith = vec3<f32>(0.008, 0.010, 0.018);
             horizon = vec3<f32>(0.022, 0.034, 0.054);
-            soil = vec3<f32>(0.022, 0.028, 0.038);
+            meadow = vec3<f32>(0.010, 0.038, 0.042);
             grid_glow = vec3<f32>(0.012, 0.018, 0.028);
         }
         case 2: {
-            // Autumn Hearth: warm dusky sky, amber horizon
+            // Autumn Hearth: warm dusky sky, amber horizon, golden-olive meadow
             zenith = vec3<f32>(0.028, 0.016, 0.022);
             horizon = vec3<f32>(0.068, 0.038, 0.030);
-            soil = vec3<f32>(0.055, 0.032, 0.020);
+            meadow = vec3<f32>(0.042, 0.038, 0.015);
             grid_glow = vec3<f32>(0.022, 0.015, 0.012);
         }
         case 3: {
-            // Verdant Rainforest: deep forest night
+            // Verdant Rainforest: deep forest night, vivid emerald floor
             zenith = vec3<f32>(0.010, 0.026, 0.018);
             horizon = vec3<f32>(0.026, 0.062, 0.038);
-            soil = vec3<f32>(0.032, 0.042, 0.024);
+            meadow = vec3<f32>(0.012, 0.065, 0.028);
             grid_glow = vec3<f32>(0.012, 0.025, 0.016);
         }
         case 4: {
             // Amber Phosphor CRT: warm monochrome amber terminal
             zenith = vec3<f32>(0.020, 0.012, 0.002);
             horizon = vec3<f32>(0.055, 0.034, 0.006);
-            soil = vec3<f32>(0.042, 0.024, 0.004);
+            meadow = vec3<f32>(0.035, 0.022, 0.005);
             grid_glow = vec3<f32>(0.025, 0.015, 0.003);
         }
         case 5: {
             // Emerald Matrix: hacker green phosphor terminal
             zenith = vec3<f32>(0.004, 0.022, 0.008);
             horizon = vec3<f32>(0.012, 0.055, 0.018);
-            soil = vec3<f32>(0.008, 0.035, 0.012);
+            meadow = vec3<f32>(0.006, 0.040, 0.014);
             grid_glow = vec3<f32>(0.006, 0.025, 0.010);
         }
         default: {
@@ -85,17 +85,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    var col = mix(zenith, horizon, smoothstep(0.0, 0.88, uv.y));
+    var col = mix(zenith, horizon, smoothstep(0.0, 0.72, uv.y));
 
     if (is_grid_line) {
         col += grid_glow;
     }
 
-    // Subterranean soil strata below ground row
-    if (uv.y > 0.88) {
-        col = mix(col, soil, smoothstep(0.88, 0.89, uv.y));
+    // Verdant meadow & forest floor ground plane below horizon (0.72)
+    if (uv.y > 0.72) {
+        let depth_factor = smoothstep(0.72, 1.0, uv.y);
+        let deep_meadow = meadow * mix(0.85, 1.25, depth_factor);
+        col = mix(col, deep_meadow, smoothstep(0.72, 0.735, uv.y));
         if (is_grid_line) {
-            col += grid_glow * 0.7;
+            col += grid_glow * 0.8;
         }
     }
 

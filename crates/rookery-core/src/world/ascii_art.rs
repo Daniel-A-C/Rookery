@@ -145,6 +145,7 @@ impl WorldState {
                     FaunaSpecies::Squirrel => 's',
                     FaunaSpecies::Badger => 'b',
                     FaunaSpecies::Hedgehog => 'h',
+                    FaunaSpecies::Rabbit => 'r',
                 };
                 grid[r][c] = ch;
             }
