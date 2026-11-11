@@ -1147,7 +1147,7 @@ impl LivingRookeryScene {
             }
         }
 
-        // 5b. Multi-Cell Forest Floor Woodland Fauna (Milestone 10 & 2.5D Meadow)
+        // 5b. Multi-Row Forest Floor Woodland Fauna (3x4 and 2x3 Proportions)
         for fauna in &world_guard.fauna {
             let sp = self.world_to_screen(fauna.pos, offset_x);
             let center_c = (sp[0] / cell_w).round() as i32;
@@ -1159,20 +1159,30 @@ impl LivingRookeryScene {
             let shadow_r = center_r.clamp(0, rows - 1);
             let z_base = (0.20 + (center_r as f32 / rows.max(1) as f32) * 0.12).clamp(0.18, 0.35);
 
+            let (width_cols, height_rows) = match fauna.species {
+                FaunaSpecies::Fox | FaunaSpecies::Badger => (4, 3),
+                FaunaSpecies::Rabbit | FaunaSpecies::Squirrel | FaunaSpecies::Hedgehog => (3, 2),
+            };
+
             // Directional cast shadow on ground turf away from celestial moon
             if fauna.pos[1] >= 740.0 {
-                for sk in 1..=2 {
-                    let sc = center_c + shadow_dir * sk;
-                    if sc >= 0 && sc < cols {
-                        self.push_glyph(
-                            '░',
-                            cell_pos(sc, shadow_r),
-                            cell_size,
-                            0.0,
-                            0.052,
-                            shadow_color,
-                            0.0,
-                        );
+                let col_offset_start = -1;
+                let col_offset_end = col_offset_start + width_cols;
+                for c_off in col_offset_start..col_offset_end {
+                    let base_c = center_c + c_off;
+                    for sk in 1..=2 {
+                        let sc = base_c + shadow_dir * sk;
+                        if sc >= 0 && sc < cols {
+                            self.push_glyph(
+                                '░',
+                                cell_pos(sc, shadow_r),
+                                cell_size,
+                                0.0,
+                                0.052,
+                                shadow_color,
+                                0.0,
+                            );
+                        }
                     }
                 }
             }
@@ -1181,11 +1191,12 @@ impl LivingRookeryScene {
             let is_sleeping = matches!(fauna.state, FaunaState::Sleeping { .. });
             let is_sniffing = matches!(fauna.state, FaunaState::Sniffing { .. });
 
-            // Exclamation indicator when startled
-            if is_startled && center_r >= 1 {
+            // Exclamation indicator when startled (positioned directly above creature head)
+            let indicator_r = center_r - height_rows;
+            if is_startled && indicator_r >= 0 {
                 self.push_glyph(
                     '!',
-                    cell_pos(center_c, center_r - 1),
+                    cell_pos(center_c, indicator_r),
                     [cell_w * 0.85, cell_h * 0.85],
                     0.0,
                     z_base + 0.05,
@@ -1195,10 +1206,10 @@ impl LivingRookeryScene {
             }
 
             // Sleep indicator notes
-            if is_sleeping && center_r >= 1 && (self.time as f32 * 1.5).sin() > 0.0 {
+            if is_sleeping && indicator_r >= 0 && (self.time as f32 * 1.5).sin() > 0.0 {
                 self.push_glyph(
                     'z',
-                    cell_pos(center_c, center_r - 1),
+                    cell_pos(center_c, indicator_r),
                     [cell_w * 0.75, cell_h * 0.75],
                     0.0,
                     z_base + 0.04,
@@ -1207,25 +1218,50 @@ impl LivingRookeryScene {
                 );
             }
 
+            let mut draw_cell = |cc: i32, rr: i32, ch: char, fg: [f32; 4], bg: [f32; 4]| {
+                if cc >= 0 && cc < cols && rr >= 0 && rr < rows && ch != ' ' {
+                    let p = cell_pos(cc, rr);
+                    self.push_glyph('█', p, cell_size, 0.0, z_base, bg, 0.0);
+                    self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, fg, 0.0);
+                }
+            };
+
             match fauna.species {
                 FaunaSpecies::Fox => {
                     let coat_col = [0.94, 0.46, 0.16, 0.98];
                     let white_col = [0.98, 0.95, 0.88, 0.98];
+                    let dark_col = [0.32, 0.16, 0.08, 0.98];
                     let bg_col = [0.14, 0.06, 0.02, 0.88];
 
+                    let c0 = center_c - 1;
+                    let c1 = center_c;
+                    let c2 = center_c + 1;
+                    let c3 = center_c + 2;
+
                     if is_sleeping {
-                        // Curled ball: ~ o ~
-                        let cells = [('~', coat_col), ('o', coat_col), ('~', white_col)];
-                        for (i, &(ch, col)) in cells.iter().enumerate() {
-                            let cc = center_c - 1 + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, center_r);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
-                            }
-                        }
+                        // Cozy curled 3x4 sleeping fox ball
+                        draw_cell(c0, center_r - 2, ' ', coat_col, bg_col);
+                        draw_cell(c1, center_r - 2, '/', coat_col, bg_col);
+                        draw_cell(c2, center_r - 2, '\\', coat_col, bg_col);
+                        draw_cell(c3, center_r - 2, ' ', coat_col, bg_col);
+
+                        draw_cell(c0, center_r - 1, '/', coat_col, bg_col);
+                        draw_cell(c1, center_r - 1, '~', white_col, bg_col);
+                        draw_cell(c2, center_r - 1, '~', coat_col, bg_col);
+                        draw_cell(c3, center_r - 1, '\\', coat_col, bg_col);
+
+                        draw_cell(c0, center_r, '\\', coat_col, bg_col);
+                        draw_cell(c1, center_r, 'o', coat_col, bg_col);
+                        draw_cell(c2, center_r, '█', coat_col, bg_col);
+                        draw_cell(c3, center_r, '/', white_col, bg_col);
                     } else {
-                        // 4-cell sleek fox: Tail, Body, Head, Snout
+                        // 3x4 Sleek Fox: Ears (top), Body & Tail (mid), Animated Legs (bottom)
+                        let step_fwd = fauna.anim_phase.sin() > 0.0;
+                        let tail_ch = if fauna.anim_phase.cos() > 0.0 {
+                            '~'
+                        } else {
+                            '-'
+                        };
                         let head_ch = if is_sniffing { '.' } else { 'o' };
                         let snout_ch = if is_sniffing {
                             'v'
@@ -1234,34 +1270,48 @@ impl LivingRookeryScene {
                         } else {
                             '>'
                         };
-                        let tail_ch = if fauna.anim_phase.sin() > 0.0 {
-                            '~'
-                        } else {
-                            '≈'
-                        };
 
-                        let sprite_chars = if fauna.facing_left {
-                            [
-                                (snout_ch, white_col),
-                                (head_ch, coat_col),
-                                ('▄', coat_col),
-                                (tail_ch, white_col),
-                            ]
-                        } else {
-                            [
-                                (tail_ch, white_col),
-                                ('▄', coat_col),
-                                (head_ch, coat_col),
-                                (snout_ch, white_col),
-                            ]
-                        };
+                        if fauna.facing_left {
+                            // Row -2: Ears
+                            draw_cell(c0, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c1, center_r - 2, '^', coat_col, bg_col);
 
-                        for (i, &(ch, col)) in sprite_chars.iter().enumerate() {
-                            let cc = center_c - 1 + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, center_r);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
+                            // Row -1: Snout, Head, Body, Tail
+                            draw_cell(c0, center_r - 1, snout_ch, white_col, bg_col);
+                            draw_cell(c1, center_r - 1, head_ch, coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, tail_ch, white_col, bg_col);
+
+                            // Row 0: Legs / Paws
+                            if step_fwd {
+                                draw_cell(c0, center_r, '/', dark_col, bg_col);
+                                draw_cell(c2, center_r, '\\', dark_col, bg_col);
+                                draw_cell(c3, center_r, '/', white_col, bg_col);
+                            } else {
+                                draw_cell(c0, center_r, '\\', dark_col, bg_col);
+                                draw_cell(c2, center_r, '|', dark_col, bg_col);
+                                draw_cell(c3, center_r, '/', white_col, bg_col);
+                            }
+                        } else {
+                            // Row -2: Ears
+                            draw_cell(c2, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c3, center_r - 2, '^', coat_col, bg_col);
+
+                            // Row -1: Tail, Body, Head, Snout
+                            draw_cell(c0, center_r - 1, tail_ch, white_col, bg_col);
+                            draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, head_ch, coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, snout_ch, white_col, bg_col);
+
+                            // Row 0: Legs / Paws
+                            if step_fwd {
+                                draw_cell(c0, center_r, '\\', white_col, bg_col);
+                                draw_cell(c1, center_r, '/', dark_col, bg_col);
+                                draw_cell(c3, center_r, '\\', dark_col, bg_col);
+                            } else {
+                                draw_cell(c0, center_r, '\\', white_col, bg_col);
+                                draw_cell(c1, center_r, '|', dark_col, bg_col);
+                                draw_cell(c3, center_r, '/', dark_col, bg_col);
                             }
                         }
                     }
@@ -1269,91 +1319,127 @@ impl LivingRookeryScene {
                 FaunaSpecies::Squirrel => {
                     let coat_col = [0.78, 0.48, 0.22, 0.98];
                     let chest_col = [0.96, 0.90, 0.82, 0.98];
+                    let nut_col = [0.98, 0.82, 0.25, 0.98];
                     let bg_col = [0.12, 0.08, 0.04, 0.88];
 
                     if matches!(fauna.state, FaunaState::ClimbingTrunk { .. }) {
-                        // Vertical climbing sprite
-                        let p_head = cell_pos(center_c, center_r);
-                        self.push_glyph('█', p_head, cell_size, 0.0, z_base, bg_col, 0.0);
-                        self.push_glyph('^', p_head, cell_size, 0.0, z_base + 0.03, chest_col, 0.0);
+                        // 3x2 Vertical trunk climbing posture
+                        let c_l = center_c;
+                        let c_r = center_c + 1;
+                        draw_cell(c_l, center_r - 2, '^', chest_col, bg_col);
+                        draw_cell(c_r, center_r - 2, '^', chest_col, bg_col);
 
-                        if center_r + 1 < rows {
-                            let p_body = cell_pos(center_c, center_r + 1);
-                            self.push_glyph('█', p_body, cell_size, 0.0, z_base, bg_col, 0.0);
-                            self.push_glyph(
-                                '"',
-                                p_body,
-                                cell_size,
-                                0.0,
-                                z_base + 0.02,
-                                coat_col,
-                                0.0,
-                            );
-                        }
-                    } else if matches!(fauna.state, FaunaState::Foraging { .. }) {
-                        // Upright foraging with nut: ? o *
-                        let sprite = if fauna.facing_left {
-                            [
-                                ('*', [0.98, 0.82, 0.25, 0.98]),
-                                ('o', chest_col),
-                                ('c', coat_col),
-                            ]
-                        } else {
-                            [
-                                ('?', coat_col),
-                                ('o', chest_col),
-                                ('*', [0.98, 0.82, 0.25, 0.98]),
-                            ]
-                        };
-                        for (i, &(ch, col)) in sprite.iter().enumerate() {
-                            let cc = center_c - 1 + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, center_r);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
-                            }
-                        }
+                        draw_cell(c_l, center_r - 1, '(', coat_col, bg_col);
+                        draw_cell(c_r, center_r - 1, ')', coat_col, bg_col);
+
+                        draw_cell(c_l, center_r, '"', coat_col, bg_col);
+                        draw_cell(c_r, center_r, '"', coat_col, bg_col);
                     } else {
-                        // Trotting 3 cells: Tail, Body, Nose
-                        let sprite = if fauna.facing_left {
-                            [('<', chest_col), ('o', coat_col), ('c', coat_col)]
+                        // 2x3 Bushy-tailed Meadow Squirrel (Bushy tail, body, hands/nut)
+                        let c0 = center_c - 1;
+                        let c1 = center_c;
+                        let c2 = center_c + 1;
+                        let is_foraging = matches!(fauna.state, FaunaState::Foraging { .. });
+
+                        if fauna.facing_left {
+                            // Row -1: Ears, Tail curve
+                            draw_cell(c0, center_r - 1, '^', chest_col, bg_col);
+                            draw_cell(c2, center_r - 1, '?', coat_col, bg_col);
+
+                            // Row 0: Nose/Nut, Body, Tail base
+                            let front_ch = if is_foraging { '*' } else { '<' };
+                            let front_col = if is_foraging { nut_col } else { chest_col };
+                            draw_cell(c0, center_r, front_ch, front_col, bg_col);
+                            draw_cell(c1, center_r, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r, '\\', coat_col, bg_col);
                         } else {
-                            [('?', coat_col), ('o', coat_col), ('>', chest_col)]
-                        };
-                        for (i, &(ch, col)) in sprite.iter().enumerate() {
-                            let cc = center_c - 1 + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, center_r);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
-                            }
+                            // Row -1: Tail curve, Ears
+                            draw_cell(c0, center_r - 1, '?', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '^', chest_col, bg_col);
+
+                            // Row 0: Tail base, Body, Nose/Nut
+                            let front_ch = if is_foraging { '*' } else { '>' };
+                            let front_col = if is_foraging { nut_col } else { chest_col };
+                            draw_cell(c0, center_r, '/', coat_col, bg_col);
+                            draw_cell(c1, center_r, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r, front_ch, front_col, bg_col);
                         }
                     }
                 }
                 FaunaSpecies::Badger => {
                     let coat_col = [0.34, 0.36, 0.40, 0.98];
                     let stripe_col = [0.98, 0.98, 1.0, 0.98];
+                    let snout_col = [0.92, 0.82, 0.80, 0.98];
+                    let dark_col = [0.15, 0.15, 0.18, 0.98];
                     let bg_col = [0.08, 0.08, 0.10, 0.88];
 
-                    let muzzle_ch = if is_sniffing {
-                        '.'
-                    } else if fauna.facing_left {
-                        '<'
-                    } else {
-                        '>'
-                    };
-                    let sprite = if fauna.facing_left {
-                        [(muzzle_ch, stripe_col), ('≡', coat_col), ('~', coat_col)]
-                    } else {
-                        [('~', coat_col), ('≡', coat_col), (muzzle_ch, stripe_col)]
-                    };
+                    let c0 = center_c - 1;
+                    let c1 = center_c;
+                    let c2 = center_c + 1;
+                    let c3 = center_c + 2;
 
-                    for (i, &(ch, col)) in sprite.iter().enumerate() {
-                        let cc = center_c - 1 + i as i32;
-                        if cc >= 0 && cc < cols {
-                            let p = cell_pos(cc, center_r);
-                            self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                            self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
+                    if is_sleeping {
+                        draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
+                        draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
+
+                        draw_cell(c0, center_r - 1, '/', coat_col, bg_col);
+                        draw_cell(c1, center_r - 1, '═', stripe_col, bg_col);
+                        draw_cell(c2, center_r - 1, '═', stripe_col, bg_col);
+                        draw_cell(c3, center_r - 1, '\\', coat_col, bg_col);
+
+                        draw_cell(c0, center_r, '\\', coat_col, bg_col);
+                        draw_cell(c1, center_r, '█', coat_col, bg_col);
+                        draw_cell(c2, center_r, 'o', snout_col, bg_col);
+                        draw_cell(c3, center_r, '/', dark_col, bg_col);
+                    } else {
+                        // 3x4 Stocky Badger: Arched Back (top), Facial Stripes (mid), Digging Claws (bottom)
+                        let step_fwd = fauna.anim_phase.sin() > 0.0;
+                        let muzzle_ch = if is_sniffing {
+                            '.'
+                        } else if fauna.facing_left {
+                            '<'
+                        } else {
+                            '>'
+                        };
+
+                        if fauna.facing_left {
+                            // Row -2: Back
+                            draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
+
+                            // Row -1: Snout, Stripe, Body, Tail
+                            draw_cell(c0, center_r - 1, muzzle_ch, snout_col, bg_col);
+                            draw_cell(c1, center_r - 1, '═', stripe_col, bg_col);
+                            draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '~', coat_col, bg_col);
+
+                            // Row 0: Claws / Legs
+                            if step_fwd {
+                                draw_cell(c0, center_r, '/', dark_col, bg_col);
+                                draw_cell(c2, center_r, '\\', dark_col, bg_col);
+                            } else {
+                                draw_cell(c0, center_r, '|', dark_col, bg_col);
+                                draw_cell(c2, center_r, '|', dark_col, bg_col);
+                            }
+                        } else {
+                            // Row -2: Back
+                            draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
+
+                            // Row -1: Tail, Body, Stripe, Snout
+                            draw_cell(c0, center_r - 1, '~', coat_col, bg_col);
+                            draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '═', stripe_col, bg_col);
+                            draw_cell(c3, center_r - 1, muzzle_ch, snout_col, bg_col);
+
+                            // Row 0: Claws / Legs
+                            if step_fwd {
+                                draw_cell(c1, center_r, '/', dark_col, bg_col);
+                                draw_cell(c3, center_r, '\\', dark_col, bg_col);
+                            } else {
+                                draw_cell(c1, center_r, '|', dark_col, bg_col);
+                                draw_cell(c3, center_r, '|', dark_col, bg_col);
+                            }
                         }
                     }
                 }
@@ -1362,24 +1448,49 @@ impl LivingRookeryScene {
                     let snout_col = [0.92, 0.82, 0.72, 0.98];
                     let bg_col = [0.10, 0.08, 0.06, 0.88];
 
+                    let c0 = center_c - 1;
+                    let c1 = center_c;
+                    let c2 = center_c + 1;
+
                     if is_sleeping || (is_startled && fauna.anim_phase.sin() > 0.0) {
-                        // Curled prickly ball: ○
-                        let p = cell_pos(center_c, center_r);
-                        self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                        self.push_glyph('○', p, cell_size, 0.0, z_base + 0.02, quill_col, 0.0);
+                        // 2x3 Prickly defensive curled ball
+                        draw_cell(c0, center_r - 1, '○', quill_col, bg_col);
+                        draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
+                        draw_cell(c2, center_r - 1, '○', quill_col, bg_col);
+
+                        draw_cell(c0, center_r, '*', quill_col, bg_col);
+                        draw_cell(c1, center_r, '●', quill_col, bg_col);
+                        draw_cell(c2, center_r, '*', quill_col, bg_col);
                     } else {
-                        let sprite = if fauna.facing_left {
-                            [('<', snout_col), ('*', quill_col)]
+                        // 2x3 Prickly Snuffling Hedgehog: Quill crown (top), Snout & Body (bottom)
+                        let nose_ch = if is_sniffing {
+                            '.'
+                        } else if fauna.facing_left {
+                            '<'
                         } else {
-                            [('*', quill_col), ('>', snout_col)]
+                            '>'
                         };
-                        for (i, &(ch, col)) in sprite.iter().enumerate() {
-                            let cc = center_c + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, center_r);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
-                            }
+
+                        if fauna.facing_left {
+                            // Row -1: Spines
+                            draw_cell(c0, center_r - 1, '^', quill_col, bg_col);
+                            draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
+                            draw_cell(c2, center_r - 1, '*', quill_col, bg_col);
+
+                            // Row 0: Snout, Spiny Body, Tail tuft
+                            draw_cell(c0, center_r, nose_ch, snout_col, bg_col);
+                            draw_cell(c1, center_r, '*', quill_col, bg_col);
+                            draw_cell(c2, center_r, '~', quill_col, bg_col);
+                        } else {
+                            // Row -1: Spines
+                            draw_cell(c0, center_r - 1, '*', quill_col, bg_col);
+                            draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
+                            draw_cell(c2, center_r - 1, '^', quill_col, bg_col);
+
+                            // Row 0: Tail tuft, Spiny Body, Snout
+                            draw_cell(c0, center_r, '~', quill_col, bg_col);
+                            draw_cell(c1, center_r, '*', quill_col, bg_col);
+                            draw_cell(c2, center_r, nose_ch, snout_col, bg_col);
                         }
                     }
                 }
@@ -1389,22 +1500,26 @@ impl LivingRookeryScene {
                     let tail_col = [1.0, 1.0, 1.0, 0.98];
                     let bg_col = [0.10, 0.08, 0.06, 0.88];
 
-                    if is_sleeping {
-                        // Soft fur ball: ~ o
-                        let p1 = cell_pos(center_c, center_r);
-                        self.push_glyph('█', p1, cell_size, 0.0, z_base, bg_col, 0.0);
-                        self.push_glyph('~', p1, cell_size, 0.0, z_base + 0.02, fur_col, 0.0);
-                        if center_c + 1 < cols {
-                            let p2 = cell_pos(center_c + 1, center_r);
-                            self.push_glyph('█', p2, cell_size, 0.0, z_base, bg_col, 0.0);
-                            self.push_glyph('o', p2, cell_size, 0.0, z_base + 0.02, tail_col, 0.0);
-                        }
-                    } else {
-                        // 3-cell hopping rabbit with animated hop offset
-                        let hop_dy = if fauna.anim_phase.sin() > 0.45 { -1 } else { 0 };
-                        let r_eff = (center_r + hop_dy).clamp(0, rows - 1);
+                    let c0 = center_c - 1;
+                    let c1 = center_c;
+                    let c2 = center_c + 1;
 
-                        let head_ch = if is_sniffing {
+                    if is_sleeping {
+                        // Soft 2x3 sleeping rabbit
+                        draw_cell(c0, center_r - 1, '(', fur_col, bg_col);
+                        draw_cell(c1, center_r - 1, '"', pink_col, bg_col);
+                        draw_cell(c2, center_r - 1, ')', fur_col, bg_col);
+
+                        draw_cell(c0, center_r, '~', fur_col, bg_col);
+                        draw_cell(c1, center_r, 'o', tail_col, bg_col);
+                        draw_cell(c2, center_r, '~', fur_col, bg_col);
+                    } else {
+                        // 2x3 Hopping Cottontail: Tall Ears (top), Plump Body & Tail (bottom)
+                        let is_hop = fauna.anim_phase.sin() > 0.40;
+                        let hop_dy = if is_hop { -1 } else { 0 };
+                        let r_top = center_r - 1 + hop_dy;
+                        let r_mid = center_r + hop_dy;
+                        let nose_ch = if is_sniffing {
                             '.'
                         } else if fauna.facing_left {
                             '<'
@@ -1412,18 +1527,29 @@ impl LivingRookeryScene {
                             '>'
                         };
 
-                        let sprite = if fauna.facing_left {
-                            [(head_ch, pink_col), ('8', fur_col), ('o', tail_col)]
-                        } else {
-                            [('o', tail_col), ('8', fur_col), (head_ch, pink_col)]
-                        };
+                        if fauna.facing_left {
+                            let ear_ch = if is_hop { '\\' } else { '/' };
+                            draw_cell(c0, r_top, ear_ch, pink_col, bg_col);
+                            draw_cell(c1, r_top, '|', fur_col, bg_col);
 
-                        for (i, &(ch, col)) in sprite.iter().enumerate() {
-                            let cc = center_c - 1 + i as i32;
-                            if cc >= 0 && cc < cols {
-                                let p = cell_pos(cc, r_eff);
-                                self.push_glyph('█', p, cell_size, 0.0, z_base, bg_col, 0.0);
-                                self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, col, 0.0);
+                            draw_cell(c0, r_mid, nose_ch, pink_col, bg_col);
+                            draw_cell(c1, r_mid, '8', fur_col, bg_col);
+                            draw_cell(c2, r_mid, 'o', tail_col, bg_col);
+
+                            if is_hop {
+                                draw_cell(c1, center_r, '\\', fur_col, bg_col);
+                            }
+                        } else {
+                            let ear_ch = if is_hop { '/' } else { '\\' };
+                            draw_cell(c1, r_top, '|', fur_col, bg_col);
+                            draw_cell(c2, r_top, ear_ch, pink_col, bg_col);
+
+                            draw_cell(c0, r_mid, 'o', tail_col, bg_col);
+                            draw_cell(c1, r_mid, '8', fur_col, bg_col);
+                            draw_cell(c2, r_mid, nose_ch, pink_col, bg_col);
+
+                            if is_hop {
+                                draw_cell(c1, center_r, '/', fur_col, bg_col);
                             }
                         }
                     }

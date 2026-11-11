@@ -6,8 +6,13 @@
 
 use super::*;
 
+/// Maximum number of terrestrial woodland creatures roaming the floor simultaneously.
+/// Keeps the floor uncluttered so the main focus remains on tree growth and birds.
+pub const MAX_FLOOR_FAUNA: usize = 2;
+
 impl WorldState {
     /// Populate default starter woodland creatures roaming the 2D verdant meadow.
+    /// Strictly limits floor population to 1 or 2 quiet woodland creatures at a time.
     pub fn seed_default_fauna(&mut self) {
         let trunk_base_x = self
             .trees
@@ -44,49 +49,16 @@ impl WorldState {
                 anim_phase: 1.2,
                 size_scale: 0.95,
             },
-            WoodlandFauna {
-                id: 3,
-                species: FaunaSpecies::Badger,
-                pos: [trunk_base_x + 220.0, 785.0],
-                vel: [0.0, 0.0],
-                facing_left: true,
-                state: FaunaState::Sniffing {
-                    remaining_secs: 3.5,
-                },
-                anim_phase: 2.4,
-                size_scale: 1.05,
-            },
-            WoodlandFauna {
-                id: 4,
-                species: FaunaSpecies::Hedgehog,
-                pos: [trunk_base_x - 220.0, 805.0],
-                vel: [0.0, 0.0],
-                facing_left: false,
-                state: FaunaState::Trotting {
-                    target: [trunk_base_x - 70.0, 815.0],
-                    speed: FaunaSpecies::Hedgehog.base_speed(),
-                },
-                anim_phase: 0.8,
-                size_scale: 0.9,
-            },
-            WoodlandFauna {
-                id: 5,
-                species: FaunaSpecies::Rabbit,
-                pos: [trunk_base_x + 90.0, 825.0],
-                vel: [0.0, 0.0],
-                facing_left: true,
-                state: FaunaState::Trotting {
-                    target: [trunk_base_x - 40.0, 795.0],
-                    speed: FaunaSpecies::Rabbit.base_speed(),
-                },
-                anim_phase: 1.6,
-                size_scale: 0.95,
-            },
         ];
     }
 
-    /// Spawn a new woodland creature of the given species roaming the 2D ground meadow.
+    /// Spawn a new woodland creature of the given species roaming the 2D ground meadow,
+    /// strictly enforcing that at most 1 or 2 creatures roam the floor at a time.
     pub fn spawn_fauna_of_species(&mut self, species: FaunaSpecies) -> u32 {
+        while self.fauna.len() >= MAX_FLOOR_FAUNA {
+            self.fauna.remove(0);
+        }
+
         let id = self.next_id;
         self.next_id += 1;
 
@@ -125,8 +97,13 @@ impl WorldState {
 
     /// Advance woodland fauna simulation by `dt_secs`.
     pub fn update_fauna(&mut self, dt_secs: f32, interactive: bool, pointer: Option<[f32; 2]>) {
-        if dt_secs <= 0.0 || self.fauna.is_empty() {
+        if dt_secs <= 0.0 {
             return;
+        }
+
+        // Strictly enforce at most MAX_FLOOR_FAUNA (1 or 2 creatures) on the floor
+        if self.fauna.len() > MAX_FLOOR_FAUNA {
+            self.fauna.truncate(MAX_FLOOR_FAUNA);
         }
 
         let ground_min_y = 746.0f32;
@@ -141,6 +118,53 @@ impl WorldState {
         let vp_x = self.viewport_offset_x;
         let grove_min_x = vp_x - 280.0;
         let grove_max_x = vp_x + 1280.0;
+
+        // Ambient visitor arrival: if fewer than MAX_FLOOR_FAUNA creatures are present,
+        // a peaceful woodland creature from an unrepresented species occasionally enters from the deep woods.
+        if self.fauna.len() < MAX_FLOOR_FAUNA && self.rng.f32() < (dt_secs * 0.012) {
+            let current_species: Vec<_> = self.fauna.iter().map(|f| f.species).collect();
+            let all_species = [
+                FaunaSpecies::Fox,
+                FaunaSpecies::Squirrel,
+                FaunaSpecies::Badger,
+                FaunaSpecies::Hedgehog,
+                FaunaSpecies::Rabbit,
+            ];
+            let species = all_species
+                .iter()
+                .copied()
+                .find(|s| !current_species.contains(s))
+                .unwrap_or(FaunaSpecies::Fox);
+
+            let from_left = self.rng.bool_with_prob(0.5);
+            let start_x = if from_left {
+                grove_min_x - 20.0
+            } else {
+                grove_max_x + 20.0
+            };
+            let start_y = self.rng.range(ground_min_y, ground_max_y);
+            let target_x = self.rng.range(trunk_base_x - 180.0, trunk_base_x + 180.0);
+            let target_y = self.rng.range(ground_min_y, ground_max_y);
+            let id = self.next_id;
+            self.next_id += 1;
+            self.fauna.push(WoodlandFauna {
+                id,
+                species,
+                pos: [start_x, start_y],
+                vel: [0.0, 0.0],
+                facing_left: start_x > target_x,
+                state: FaunaState::Trotting {
+                    target: [target_x, target_y],
+                    speed: species.base_speed() * self.rng.range(0.9, 1.15),
+                },
+                anim_phase: self.rng.range(0.0, std::f32::consts::TAU),
+                size_scale: self.rng.range(0.95, 1.05),
+            });
+        }
+
+        if self.fauna.is_empty() {
+            return;
+        }
 
         // Check for ground-level snacks that can attract hungry foragers
         let ground_snack = self.snacks.first().and_then(|snack| {
@@ -230,13 +254,23 @@ impl WorldState {
                             fauna.state = FaunaState::Sleeping {
                                 remaining_secs: self.rng.range(6.0, 14.0),
                             };
-                        } else {
+                        } else if roll < 0.96 {
                             // Pick a new 2D target along the verdant meadow
                             let new_x = self.rng.range(trunk_base_x - 300.0, trunk_base_x + 300.0);
                             let new_y = self.rng.range(ground_min_y, ground_max_y);
                             let new_speed = fauna.species.base_speed() * self.rng.range(0.85, 1.20);
                             *target = [new_x.clamp(grove_min_x, grove_max_x), new_y];
                             *speed = new_speed;
+                        } else {
+                            // Occasionally wander off into the deep surrounding woods to let another creature visit
+                            let exit_x = if self.rng.bool_with_prob(0.5) {
+                                grove_min_x - 65.0
+                            } else {
+                                grove_max_x + 65.0
+                            };
+                            let exit_y = self.rng.range(ground_min_y, ground_max_y);
+                            *target = [exit_x, exit_y];
+                            *speed = fauna.species.base_speed() * 0.9;
                         }
                         fauna.vel = [0.0, 0.0];
                     } else {
@@ -400,6 +434,11 @@ impl WorldState {
                 fox_positions.push(fauna.pos);
             }
         }
+
+        // Retain creatures that are within the meadow and grove bounds;
+        // any creature that has wandered off into deep woods retires gracefully.
+        self.fauna
+            .retain(|f| f.pos[0] >= grove_min_x - 50.0 && f.pos[0] <= grove_max_x + 50.0);
 
         // Inter-species interaction: foxes trotting beneath low perched birds startle them
         for fox_pos in fox_positions {

@@ -983,7 +983,8 @@ fn test_trunk_cell_by_cell_ascent_and_ring_expansion() {
 #[test]
 fn test_woodland_fauna_initialization_and_movement() {
     let mut world = WorldState::new(42);
-    assert_eq!(world.fauna.len(), 5);
+    // Floor fauna is strictly limited to at most 1 or 2 creatures to keep focus on tree and birds
+    assert_eq!(world.fauna.len(), 2);
     assert!(world.fauna.iter().any(|f| f.species == FaunaSpecies::Fox));
     assert!(
         world
@@ -991,24 +992,11 @@ fn test_woodland_fauna_initialization_and_movement() {
             .iter()
             .any(|f| f.species == FaunaSpecies::Squirrel)
     );
-    assert!(
-        world
-            .fauna
-            .iter()
-            .any(|f| f.species == FaunaSpecies::Badger)
-    );
-    assert!(
-        world
-            .fauna
-            .iter()
-            .any(|f| f.species == FaunaSpecies::Hedgehog)
-    );
-    assert!(
-        world
-            .fauna
-            .iter()
-            .any(|f| f.species == FaunaSpecies::Rabbit)
-    );
+
+    // Spawning additional species enforces the maximum 2 floor fauna limit
+    let badger_id = world.spawn_fauna_of_species(FaunaSpecies::Badger);
+    assert_eq!(world.fauna.len(), 2);
+    assert!(world.fauna.iter().any(|f| f.id == badger_id));
 
     let initial_pos = world.fauna[0].pos;
     for _ in 0..60 {
@@ -1095,13 +1083,14 @@ fn test_woodland_fauna_migration_and_spawning() {
     let loaded = WorldState::load_or_init(temp.path(), 42);
     assert_eq!(
         loaded.fauna.len(),
-        5,
-        "Load must auto-seed 5 default creatures if fauna was empty"
+        2,
+        "Load must auto-seed 2 default creatures if fauna was empty"
     );
 
     let mut loaded = loaded;
     let new_id = loaded.spawn_fauna_of_species(FaunaSpecies::Rabbit);
-    assert_eq!(loaded.fauna.len(), 6);
+    // Spawning keeps floor count capped at at most 2 creatures
+    assert_eq!(loaded.fauna.len(), 2);
     assert!(loaded.fauna.iter().any(|f| f.id == new_id));
 }
 

@@ -139,7 +139,8 @@ impl WorldState {
                         }
                     }
 
-                    // Migration: Ensure mature worlds have default woodland fauna roaming the meadow
+                    // Migration: Ensure mature worlds have default woodland fauna roaming the meadow,
+                    // strictly capped at at most 1 or 2 creatures.
                     if state.fauna.is_empty() {
                         state.seed_default_fauna();
                         log::info!(
@@ -147,6 +148,9 @@ impl WorldState {
                             path.display()
                         );
                     } else {
+                        if state.fauna.len() > fauna::MAX_FLOOR_FAUNA {
+                            state.fauna.truncate(fauna::MAX_FLOOR_FAUNA);
+                        }
                         // Reposition any fauna stranded far from active tree & clamp to 2D meadow bounds
                         for f in &mut state.fauna {
                             f.pos[1] = f.pos[1].clamp(746.0, 835.0);

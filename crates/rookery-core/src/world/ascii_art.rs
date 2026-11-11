@@ -135,19 +135,65 @@ impl WorldState {
             }
         }
 
-        // 5. Draw woodland fauna on the ground
+        // 5. Draw woodland fauna on the ground (3x4 and 2x3 sprites)
         for f in &self.fauna {
             if let Some((c, r)) = world_to_grid(f.pos)
                 && r < h
             {
-                let ch = match f.species {
-                    FaunaSpecies::Fox => 'f',
-                    FaunaSpecies::Squirrel => 's',
-                    FaunaSpecies::Badger => 'b',
-                    FaunaSpecies::Hedgehog => 'h',
-                    FaunaSpecies::Rabbit => 'r',
+                let sprites: &[&str] = match f.species {
+                    FaunaSpecies::Fox => {
+                        if f.facing_left {
+                            &["^^  ", "<o█~", "/ \\ "]
+                        } else {
+                            &["  ^^", "~█o>", " / \\"]
+                        }
+                    }
+                    FaunaSpecies::Badger => {
+                        if f.facing_left {
+                            &[" -- ", "<=█~", "/ \\ "]
+                        } else {
+                            &[" -- ", "~█=>", " / \\"]
+                        }
+                    }
+                    FaunaSpecies::Rabbit => {
+                        if f.facing_left {
+                            &["\\| ", "<8o"]
+                        } else {
+                            &[" |/", "o8>"]
+                        }
+                    }
+                    FaunaSpecies::Squirrel => {
+                        if f.facing_left {
+                            &["^ ?", "<o\\"]
+                        } else {
+                            &["? ^", "/o>"]
+                        }
+                    }
+                    FaunaSpecies::Hedgehog => {
+                        if f.facing_left {
+                            &["^**", "<*~"]
+                        } else {
+                            &["**^", "~*>"]
+                        }
+                    }
                 };
-                grid[r][c] = ch;
+
+                let rows_cnt = sprites.len();
+                for (row_idx, row_str) in sprites.iter().enumerate() {
+                    let target_r = r as isize - (rows_cnt - 1 - row_idx) as isize;
+                    if target_r >= 0 && (target_r as usize) < h {
+                        let tr = target_r as usize;
+                        let half_w = (row_str.len() / 2) as isize;
+                        for (col_idx, ch) in row_str.chars().enumerate() {
+                            if ch != ' ' {
+                                let tc = c as isize - half_w + col_idx as isize;
+                                if tc >= 0 && (tc as usize) < w {
+                                    grid[tr][tc as usize] = ch;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
