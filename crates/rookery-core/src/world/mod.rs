@@ -315,7 +315,17 @@ impl WorldState {
         let active_items =
             !self.snacks.is_empty() || !self.notes.is_empty() || !self.chips.is_empty();
 
-        if interactive || any_active_birds || active_items {
+        let any_growth_animating = self.branches.iter().any(|b| b.growth_progress < 0.999)
+            || self
+                .branches
+                .iter()
+                .any(|b| b.depth == 0 && b.length < b.target_length - 0.5)
+            || self
+                .branches
+                .iter()
+                .any(|b| b.foliage.iter().any(|f| f.bloom > 0.0 && f.bloom < 0.999));
+
+        if interactive || any_active_birds || active_items || any_growth_animating {
             Activity::Animating
         } else {
             Activity::Idle

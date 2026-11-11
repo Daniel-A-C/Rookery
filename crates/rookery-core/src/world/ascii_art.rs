@@ -70,6 +70,8 @@ impl WorldState {
                 {
                     let ch = if b.depth == 0 {
                         '║'
+                    } else if s == steps && b.growth_progress < 0.95 {
+                        '·'
                     } else if b.angle.abs() < 0.25 {
                         '│'
                     } else if b.angle < -1.1 || b.angle > 1.1 {
@@ -85,12 +87,20 @@ impl WorldState {
 
             // 3. Draw foliage
             for bud in &b.foliage {
-                if bud.bloom > 0.1
+                if bud.offset_along <= b.growth_progress
+                    && bud.bloom > 0.05
                     && let Some((c, r)) = world_to_grid(b.point_at(bud.offset_along))
                     && r < ground_row
                     && grid[r][c] == ' '
                 {
-                    grid[r][c] = '*';
+                    let ch = if bud.bloom < 0.30 {
+                        '·'
+                    } else if bud.bloom < 0.65 {
+                        '*'
+                    } else {
+                        '#'
+                    };
+                    grid[r][c] = ch;
                 }
             }
         }

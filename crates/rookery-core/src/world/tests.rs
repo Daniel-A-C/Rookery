@@ -834,3 +834,147 @@ fn test_bird_movement_continuity_no_teleportation() {
         "Birds must never teleport or pop"
     );
 }
+
+#[test]
+fn test_continuous_branch_extension_and_bud_swelling() {
+    let mut world = WorldState::new(101);
+
+    // Initial sapling state
+    assert_eq!(world.branches.len(), 1);
+    let trunk_id = world.branches[0].id;
+    let initial_trunk_len = world.branches[0].length;
+    let initial_trunk_thick = world.branches[0].thickness;
+
+    assert!(initial_trunk_len <= 20.0);
+    assert_eq!(initial_trunk_thick, 4.0);
+
+    // Advance 40 seconds in fine-grained 0.1s ticks
+    let mut observed_growing_branch = false;
+    let mut observed_growing_bud = false;
+    let mut max_single_tick_branch_growth = 0.0f32;
+
+    for _ in 0..400 {
+        let prev_states: Vec<(u32, f32, Vec<f32>)> = world
+            .branches
+            .iter()
+            .map(|b| {
+                (
+                    b.id,
+                    b.growth_progress,
+                    b.foliage.iter().map(|f| f.bloom).collect(),
+                )
+            })
+            .collect();
+
+        world.advance_growth(0.1);
+
+        for (bid, prev_prog, prev_blooms) in prev_states {
+            if let Some(b) = world.branches.iter().find(|b| b.id == bid) {
+                if b.id != trunk_id && prev_prog < 1.0 {
+                    observed_growing_branch = true;
+                    let diff = b.growth_progress - prev_prog;
+                    assert!(
+                        diff >= 0.0,
+                        "branch growth progress must be monotonic: prev={}, now={}",
+                        prev_prog,
+                        b.growth_progress
+                    );
+                    if diff > max_single_tick_branch_growth {
+                        max_single_tick_branch_growth = diff;
+                    }
+                    // In a 0.1s tick, growth delta must be fine-grained (< 0.15 of total length),
+                    // never jumping the entire branch length at once!
+                    assert!(
+                        diff <= 0.15,
+                        "branch #{} jumped by {:.2} in 0.1s tick! Must grow cell-by-cell.",
+                        bid,
+                        diff
+                    );
+                }
+
+                for (idx, &prev_bloom) in prev_blooms.iter().enumerate() {
+                    if idx < b.foliage.len() {
+                        let now_bloom = b.foliage[idx].bloom;
+                        if prev_bloom < 1.0 && now_bloom > prev_bloom {
+                            observed_growing_bud = true;
+                            // Buds must not bloom until branch reaches them
+                            assert!(
+                                b.growth_progress >= b.foliage[idx].offset_along * 0.95,
+                                "bud blossomed before branch reached its location!"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        observed_growing_branch,
+        "simulation must observe gradual continuous branch extension"
+    );
+    assert!(
+        observed_growing_bud,
+        "simulation must observe gradual bud swelling"
+    );
+    println!(
+        "Max 0.1s tick branch progress increment: {:.4}",
+        max_single_tick_branch_growth
+    );
+}
+
+#[test]
+fn test_trunk_cell_by_cell_ascent_and_ring_expansion() {
+    let mut world = WorldState::new(303);
+    let trunk_id = world.branches[0].id;
+
+    let mut prev_len = world.branches[0].length;
+    let mut prev_thick = world.branches[0].thickness;
+    let mut height_growth_ticks = 0;
+    let mut thickness_growth_ticks = 0;
+
+    // Run 300 ticks of 0.2s = 60 seconds
+    for _ in 0..300 {
+        world.advance_growth(0.2);
+
+        let trunk = world
+            .branches
+            .iter()
+            .find(|b| b.id == trunk_id)
+            .expect("trunk must exist");
+        if trunk.length > prev_len {
+            height_growth_ticks += 1;
+            let len_delta = trunk.length - prev_len;
+            // Never jump by more than 10 units in a 0.2s tick
+            assert!(
+                len_delta <= 10.0,
+                "Trunk length jumped by {:.1} in 0.2s! Must rise cell-by-cell.",
+                len_delta
+            );
+            prev_len = trunk.length;
+        }
+
+        if trunk.thickness > prev_thick {
+            thickness_growth_ticks += 1;
+            let thick_delta = trunk.thickness - prev_thick;
+            // Radial ring expansion is subtle (< 1.5 units in 0.2s)
+            assert!(
+                thick_delta <= 1.5,
+                "Trunk thickness jumped by {:.1} in 0.2s! Must expand rings cell-by-cell.",
+                thick_delta
+            );
+            prev_thick = trunk.thickness;
+        }
+    }
+
+    assert!(
+        height_growth_ticks > 15,
+        "Trunk must ascend across multiple fine-grained growth ticks: observed {}",
+        height_growth_ticks
+    );
+    assert!(
+        thickness_growth_ticks > 10,
+        "Trunk rings must expand across multiple fine-grained growth ticks: observed {}",
+        thickness_growth_ticks
+    );
+}

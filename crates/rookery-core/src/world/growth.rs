@@ -136,14 +136,17 @@ impl WorldState {
         };
 
         if step <= 18 {
+            let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
+            let target_step_len = 18.0 + (target_trunk_len - 18.0) * frac;
+            let target_step_thick = 4.0 + (target_thickness - 4.0) * frac;
+
             if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
-                let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
-                let new_len = 18.0 + (target_trunk_len - 18.0) * frac;
-                let new_thick = 4.0 + (target_thickness - 4.0) * frac;
-                trunk.length = new_len;
-                trunk.target_length = new_len;
-                trunk.thickness = new_thick;
-                trunk.end = trunk.current_end();
+                trunk.target_length = target_step_len;
+                if !auto_succession || is_now_mature {
+                    trunk.length = target_step_len;
+                    trunk.thickness = target_step_thick;
+                    trunk.end = trunk.current_end();
+                }
             }
 
             // At step 3 & 5: flare buttress roots at the ground
@@ -161,6 +164,11 @@ impl WorldState {
                     _ => 8.0,
                 };
                 self.next_id += 1;
+                let init_progress = if !auto_succession || is_now_mature {
+                    1.0
+                } else {
+                    0.05
+                };
                 self.branches.push(Branch {
                     id: self.next_id,
                     parent_id: Some(root_id),
@@ -174,7 +182,7 @@ impl WorldState {
                     length: root_len,
                     target_length: root_len,
                     thickness: root_thick,
-                    growth_progress: 1.0,
+                    growth_progress: init_progress,
                     children_spawned: true,
                     has_nest: false,
                     sway_factor: 0.0,
@@ -252,6 +260,10 @@ impl WorldState {
                 } else {
                     p_end
                 };
+
+                if let Some(parent) = self.branches.iter_mut().find(|b| b.id == parent_id) {
+                    parent.children_spawned = true;
+                }
 
                 for k in 0..count {
                     self.next_id += 1;
@@ -399,15 +411,36 @@ impl WorldState {
                             }
                             _ => self.rng.range_i32(0, 3) as u8,
                         };
+                        let init_bloom = if !auto_succession || is_now_mature {
+                            0.85
+                        } else {
+                            0.0
+                        };
                         foliage.push(FoliageBud {
                             offset_along: self.rng.range(0.25, 1.0),
                             lateral_offset: self.rng.range(-16.0, 16.0),
                             char_code,
                             color_idx,
                             scale: self.rng.range(0.9, 1.3),
-                            bloom: 0.85,
+                            bloom: init_bloom,
                         });
                     }
+
+                    // Advance previous branches of this tree so discrete step calls progress
+                    for bid in &tree_branch_ids {
+                        if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid)
+                            && !b.is_root
+                            && b.id != root_id
+                        {
+                            b.growth_progress = (b.growth_progress + 0.35).min(1.0);
+                        }
+                    }
+
+                    let init_progress = if !auto_succession || is_now_mature {
+                        1.0
+                    } else {
+                        0.02
+                    };
 
                     self.branches.push(Branch {
                         id,
@@ -422,7 +455,7 @@ impl WorldState {
                         length: target_len,
                         target_length: target_len,
                         thickness,
-                        growth_progress: 1.0,
+                        growth_progress: init_progress,
                         children_spawned: false,
                         has_nest: false,
                         sway_factor: (depth as f32 * 0.12).min(0.65),
@@ -436,17 +469,24 @@ impl WorldState {
         if step > 30 {
             for bid in &tree_branch_ids {
                 if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid) {
-                    for bud in &mut b.foliage {
-                        bud.bloom = 1.0;
+                    if !auto_succession || is_now_mature {
+                        for bud in &mut b.foliage {
+                            bud.bloom = 1.0;
+                        }
                     }
                     if !b.is_root && b.depth >= 2 && b.foliage.len() < 16 {
+                        let init_bloom = if !auto_succession || is_now_mature {
+                            1.0
+                        } else {
+                            0.15
+                        };
                         b.foliage.push(FoliageBud {
                             offset_along: self.rng.range(0.35, 0.98),
                             lateral_offset: self.rng.range(-15.0, 15.0),
                             char_code: b'*',
                             color_idx: 0,
                             scale: 1.1,
-                            bloom: 1.0,
+                            bloom: init_bloom,
                         });
                     }
                 }
@@ -758,16 +798,56 @@ impl WorldState {
             self.growth_step_timer = self.rng.range(5.0, 8.0);
         }
 
-        // 3. Smooth continuous branch & foliage interpolation
-        let base_rate = 0.015 * effective_dt;
+        // 3. Fine-Grained Cell-by-Cell Procedural Growth Simulation
+        // A. Trunk upward ascent & radial thickening
+        for tree in &self.trees {
+            if tree.is_mature {
+                continue;
+            }
+            let root_id = tree.root_branch_id;
+            let target_thickness = match tree.species {
+                TreeSpecies::GreatBaobab => 54.0,
+                TreeSpecies::AncientOak => 36.0,
+                TreeSpecies::AlpinePine => 22.0,
+                TreeSpecies::WeepingWillow => 24.0,
+                TreeSpecies::JapaneseMaple => 22.0,
+                TreeSpecies::SilverBirch => 18.0,
+            };
+            let step = tree.growth_steps_completed;
+            let target_thick =
+                4.0 + (target_thickness - 4.0) * (step as f32 / 18.0).clamp(0.0, 1.0);
+
+            if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
+                // Smooth trunk height extension
+                if trunk.length < trunk.target_length {
+                    let len_diff = trunk.target_length - trunk.length;
+                    let grow_step = (len_diff * 0.45).max(4.0) * effective_dt;
+                    trunk.length = (trunk.length + grow_step).min(trunk.target_length);
+                    trunk.end = trunk.current_end();
+                }
+                // Smooth trunk radial thickening
+                if trunk.thickness < target_thick {
+                    let thick_diff = target_thick - trunk.thickness;
+                    let thick_step = (thick_diff * 0.35).max(0.6) * effective_dt;
+                    trunk.thickness = (trunk.thickness + thick_step).min(target_thick);
+                }
+            }
+        }
+
+        // B. Continuous glyph-by-glyph branch extension & bud swelling
+        let branch_grow_rate = 0.22 * effective_dt;
+        let bud_swell_rate = 0.16 * effective_dt;
+
         for b in &mut self.branches {
             if b.growth_progress < 1.0 {
-                b.growth_progress = (b.growth_progress + base_rate).min(1.0);
+                b.growth_progress = (b.growth_progress + branch_grow_rate).min(1.0);
                 b.end = b.current_end();
             }
+
+            // Buds swell from single dot -> young star -> expanding cluster -> mature canopy
             for f in &mut b.foliage {
-                if f.bloom < 1.0 {
-                    f.bloom = (f.bloom + base_rate * 2.0).min(1.0);
+                if b.growth_progress >= f.offset_along && f.bloom < 1.0 {
+                    f.bloom = (f.bloom + bud_swell_rate).min(1.0);
                 }
             }
         }

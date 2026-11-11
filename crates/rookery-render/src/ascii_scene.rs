@@ -519,11 +519,6 @@ impl LivingRookeryScene {
             };
 
             let steps = (c1 - c0).abs().max((r1 - r0).abs()).max(1);
-            let trunk_col_span = if branch.depth == 0 {
-                (branch.thickness / 6.0).round() as i32
-            } else {
-                0
-            };
 
             for s in 0..=steps {
                 let t = s as f32 / steps as f32;
@@ -535,7 +530,18 @@ impl LivingRookeryScene {
 
                 if branch.depth == 0 {
                     // Wide ANSI trunk with double-line box-drawing edges and organic bark knots
-                    let span = trunk_col_span.clamp(1, 4);
+                    // Subtle trunk ring expansion and bark widening happening cell-by-cell
+                    let span = if branch.thickness < 8.0 {
+                        0 // Sapling single-column stem: 1 cell wide (║)
+                    } else if branch.thickness < 18.0 {
+                        1 // Young tree: 3 cells wide (├ ║ ┤)
+                    } else if branch.thickness < 32.0 {
+                        2 // Developing tree: 5 cells wide (├ █ ║ █ ┤)
+                    } else if branch.thickness < 44.0 {
+                        3 // Grand mature tree: 7 cells wide
+                    } else {
+                        4 // Massive ancient trunk: 9 cells wide
+                    };
 
                     // Noticeable cast shadow on the ground turf at the base of the trunk
                     if rr == ground_row {
@@ -560,6 +566,10 @@ impl LivingRookeryScene {
                         }
                     }
 
+                    let is_trunk_apical_tip = rr == r1
+                        && (branch.growth_progress < 0.99
+                            || branch.length < branch.target_length - 2.0);
+
                     for dx in -span..=span {
                         let col_idx = cc + dx;
                         if col_idx < 0 || col_idx >= cols {
@@ -567,9 +577,23 @@ impl LivingRookeryScene {
                         }
                         let tp = cell_pos(col_idx, rr);
                         self.push_glyph('█', tp, cell_size, 0.0, 0.08, bark_bg, 0.0);
+
+                        // Apical shoot at the actively growing top of the trunk
+                        if is_trunk_apical_tip && dx == 0 {
+                            let shoot_fg = match palette {
+                                RookeryPalette::AutumnHearth => [0.98, 0.78, 0.28, 0.98],
+                                RookeryPalette::MidnightStarlight => [0.45, 0.92, 0.98, 0.98],
+                                _ => [0.48, 0.95, 0.42, 0.98],
+                            };
+                            self.push_glyph('▲', tp, cell_size, 0.0, 0.12, shoot_fg, 0.0);
+                            continue;
+                        }
+
                         let knot_hash = (col_idx as u32).wrapping_mul(2654435761)
                             ^ (rr as u32).wrapping_mul(2246822519);
-                        let ch = if dx == 0 {
+                        let ch = if span == 0 {
+                            '║'
+                        } else if dx == 0 {
                             if knot_hash.is_multiple_of(29) {
                                 'O' // Weathered knot
                             } else if knot_hash.is_multiple_of(41) {
@@ -603,33 +627,72 @@ impl LivingRookeryScene {
 
                     let dc = (c1 - c0).abs();
                     let dr = (r1 - r0).abs();
-                    let box_ch = if s == steps {
-                        '┼'
-                    } else if dc > dr * 2 {
-                        '═'
-                    } else if dr > dc * 2 {
-                        '║'
-                    } else if (c1 - c0) * (r1 - r0) < 0 {
-                        '┌'
-                    } else {
-                        '┐'
-                    };
-                    let pos = cell_pos(cc, rr);
-                    self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
-                    self.push_glyph(box_ch, pos, cell_size, 0.0, 0.11, branch_fg, 0.0);
+                    let is_tip = s == steps;
+                    let is_actively_growing = branch.growth_progress < 0.96;
 
-                    // Moss & lichen on shaded lower contours of older branches
-                    if branch.depth <= 2 && (s as u32).is_multiple_of(4) && rr < ground_row - 1 {
-                        let moss_col = [0.28, 0.72, 0.36, 0.75];
-                        let moss_pos = cell_pos(cc, (rr + 1).min(rows - 1));
-                        self.push_glyph('░', moss_pos, cell_size, 0.0, 0.095, moss_col, 0.0);
+                    if is_tip && is_actively_growing {
+                        // Tender growing shoot / bud at the extending branch front
+                        let tip_fg = match palette {
+                            RookeryPalette::AutumnHearth => [0.98, 0.78, 0.28, 0.98],
+                            RookeryPalette::MidnightStarlight => [0.45, 0.92, 0.98, 0.98],
+                            RookeryPalette::AmberPhosphor => [0.98, 0.82, 0.25, 0.98],
+                            RookeryPalette::MatrixGreen => [0.35, 0.98, 0.45, 0.98],
+                            _ => [0.48, 0.95, 0.42, 0.98],
+                        };
+                        let tip_ch = if steps <= 1 {
+                            '·'
+                        } else if dc > dr * 2 {
+                            '─'
+                        } else if dr > dc * 2 {
+                            '│'
+                        } else if (c1 - c0) * (r1 - r0) < 0 {
+                            '/'
+                        } else {
+                            '\\'
+                        };
+                        let pos = cell_pos(cc, rr);
+                        self.push_glyph(tip_ch, pos, cell_size, 0.0, 0.12, tip_fg, 0.0);
+                    } else {
+                        let box_ch = if is_tip {
+                            if branch.children_spawned {
+                                '┼'
+                            } else if dc > dr * 2 {
+                                '═'
+                            } else if dr > dc * 2 {
+                                '║'
+                            } else if (c1 - c0) * (r1 - r0) < 0 {
+                                '┌'
+                            } else {
+                                '┐'
+                            }
+                        } else if dc > dr * 2 {
+                            '═'
+                        } else if dr > dc * 2 {
+                            '║'
+                        } else if (c1 - c0) * (r1 - r0) < 0 {
+                            '┌'
+                        } else {
+                            '┐'
+                        };
+                        let pos = cell_pos(cc, rr);
+                        self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
+                        self.push_glyph(box_ch, pos, cell_size, 0.0, 0.11, branch_fg, 0.0);
+
+                        // Moss & lichen on shaded lower contours of older branches
+                        if branch.depth <= 2 && (s as u32).is_multiple_of(4) && rr < ground_row - 1
+                        {
+                            let moss_col = [0.28, 0.72, 0.36, 0.75];
+                            let moss_pos = cell_pos(cc, (rr + 1).min(rows - 1));
+                            self.push_glyph('░', moss_pos, cell_size, 0.0, 0.095, moss_col, 0.0);
+                        }
                     }
                 }
             }
 
-            // 4. Roguelike Canopy Foliage Clusters
+            // 4. Roguelike Canopy Foliage Clusters & Cellular Bud Swelling
             for (idx, bud) in branch.foliage.iter().enumerate() {
-                if bud.bloom <= 0.05 {
+                // Dormant bud: branch has not reached it yet, or barely sprouted
+                if bud.offset_along > branch.growth_progress || bud.bloom <= 0.03 {
                     continue;
                 }
                 let mut pt = self.world_to_screen(branch.point_at(bud.offset_along), offset_x);
@@ -637,6 +700,42 @@ impl LivingRookeryScene {
                 let center_c = (pt[0] / cell_w).floor() as i32;
                 let center_r = (pt[1] / cell_h).floor() as i32;
                 if center_c < -1 || center_c > cols || center_r < 0 || center_r >= rows {
+                    continue;
+                }
+
+                // Stage 1: Single-cell tiny bud dot (· / •)
+                if bud.bloom < 0.28 {
+                    let bud_col = match palette {
+                        RookeryPalette::AutumnHearth => [0.98, 0.72, 0.25, 0.95],
+                        RookeryPalette::MidnightStarlight => [0.55, 0.92, 0.98, 0.95],
+                        RookeryPalette::AmberPhosphor => [0.98, 0.75, 0.20, 0.95],
+                        RookeryPalette::MatrixGreen => [0.35, 0.98, 0.45, 0.95],
+                        _ => [0.45, 0.92, 0.40, 0.95],
+                    };
+                    let ch = if idx % 2 == 0 { '·' } else { '•' };
+                    let cp = cell_pos(center_c, center_r);
+                    self.push_glyph(ch, cp, cell_size, 0.0, 0.15, bud_col, 0.0);
+                    continue;
+                }
+
+                // Stage 2: Single-cell young flower star / leaflet (* / + / ✦)
+                if bud.bloom < 0.62 {
+                    let star_fg = match palette {
+                        RookeryPalette::AutumnHearth => [0.98, 0.58, 0.20, 0.98],
+                        RookeryPalette::MidnightStarlight => [0.72, 0.88, 1.0, 0.98],
+                        RookeryPalette::AmberPhosphor => [1.0, 0.78, 0.22, 0.98],
+                        RookeryPalette::MatrixGreen => [0.28, 0.98, 0.40, 0.98],
+                        _ => [0.38, 0.96, 0.52, 0.98],
+                    };
+                    let star_bg = match palette {
+                        RookeryPalette::MidnightStarlight => [0.06, 0.14, 0.22, 0.75],
+                        RookeryPalette::AutumnHearth => [0.24, 0.10, 0.04, 0.75],
+                        _ => [0.05, 0.20, 0.10, 0.75],
+                    };
+                    let ch = if idx % 2 == 0 { '*' } else { '+' };
+                    let cp = cell_pos(center_c, center_r);
+                    self.push_glyph('█', cp, cell_size, 0.0, 0.13, star_bg, 0.0);
+                    self.push_glyph(ch, cp, cell_size, 0.0, 0.15, star_fg, 0.0);
                     continue;
                 }
 
@@ -696,9 +795,17 @@ impl LivingRookeryScene {
                     },
                 };
 
-                let offsets = [(0, 0), (-1, 0), (1, 0), (0, -1)];
+                // Stage 3 (0.62 <= bloom < 0.88): 2-cell expanding cluster
+                // Stage 4 (bloom >= 0.88): 4-cell mature canopy cross
+                let is_expanding = bud.bloom < 0.88;
+                let offsets: &[(i32, i32)] = if is_expanding {
+                    &[(0, 0), (0, -1)]
+                } else {
+                    &[(0, 0), (-1, 0), (1, 0), (0, -1)]
+                };
+
                 for (oi, &(dc, dr)) in offsets.iter().enumerate() {
-                    if oi > 0 && idx % 2 != 0 {
+                    if oi > 0 && idx % 2 != 0 && !is_expanding {
                         continue;
                     }
                     let (cc, rr) = (center_c + dc, center_r + dr);
@@ -706,7 +813,11 @@ impl LivingRookeryScene {
                         continue;
                     }
                     let cp = cell_pos(cc, rr);
-                    let ch = if oi == 0 { tile_char } else { '░' };
+                    let ch = if oi == 0 {
+                        if is_expanding { '▒' } else { tile_char }
+                    } else {
+                        '░'
+                    };
                     self.push_glyph('█', cp, cell_size, 0.0, 0.14, bg_col, 0.0);
                     self.push_glyph(ch, cp, cell_size, 0.0, 0.16, fg_col, 0.0);
                 }
