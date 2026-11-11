@@ -96,6 +96,7 @@ fn serialization_round_trip() {
     assert_eq!(loaded.bird_baths.len(), world.bird_baths.len());
     assert_eq!(loaded.lanterns.len(), world.lanterns.len());
     assert_eq!(loaded.perches.len(), world.perches.len());
+    assert_eq!(loaded.fauna.len(), world.fauna.len());
 }
 
 #[test]
@@ -976,5 +977,98 @@ fn test_trunk_cell_by_cell_ascent_and_ring_expansion() {
         thickness_growth_ticks > 10,
         "Trunk rings must expand across multiple fine-grained growth ticks: observed {}",
         thickness_growth_ticks
+    );
+}
+
+#[test]
+fn test_woodland_fauna_initialization_and_movement() {
+    let mut world = WorldState::new(42);
+    assert_eq!(world.fauna.len(), 4);
+    assert!(world.fauna.iter().any(|f| f.species == FaunaSpecies::Fox));
+    assert!(
+        world
+            .fauna
+            .iter()
+            .any(|f| f.species == FaunaSpecies::Squirrel)
+    );
+    assert!(
+        world
+            .fauna
+            .iter()
+            .any(|f| f.species == FaunaSpecies::Badger)
+    );
+    assert!(
+        world
+            .fauna
+            .iter()
+            .any(|f| f.species == FaunaSpecies::Hedgehog)
+    );
+
+    let initial_pos_x = world.fauna[0].pos[0];
+    for _ in 0..60 {
+        world.update(0.1, false, None);
+    }
+    // Creatures move along the forest floor
+    assert!((world.fauna[0].pos[0] - initial_pos_x).abs() > 1.0);
+}
+
+#[test]
+fn test_woodland_fauna_squirrel_climbing_and_flee() {
+    let mut world = WorldState::new(100);
+    let squirrel_idx = world
+        .fauna
+        .iter()
+        .position(|f| f.species == FaunaSpecies::Squirrel)
+        .expect("must have squirrel");
+
+    // Force squirrel into climbing state
+    world.fauna[squirrel_idx].state = FaunaState::ClimbingTrunk {
+        branch_id: 1,
+        height: 10.0,
+        speed: 40.0,
+        ascending: true,
+    };
+    world.update_fauna(0.5, false, None);
+    assert!(
+        world.fauna[squirrel_idx].pos[1] < 740.0,
+        "Squirrel should climb upward"
+    );
+
+    // Direct mode pointer startling
+    let f_pos = world.fauna[0].pos;
+    world.update_fauna(0.1, true, Some([f_pos[0] + 10.0, f_pos[1]]));
+    assert!(
+        matches!(world.fauna[0].state, FaunaState::Startled { .. }),
+        "Pointer click near fauna should trigger Startled state"
+    );
+}
+
+#[test]
+fn test_woodland_fauna_inter_species_bird_startling() {
+    let mut world = WorldState::new(202);
+    // Position a bird perched near the ground
+    world.birds[0].pos = [500.0, 710.0];
+    world.birds[0].state = BirdState::Perched {
+        branch_id: 1,
+        t: 0.1,
+        remaining_secs: 10.0,
+    };
+
+    // Position a fox trotting directly underneath the bird
+    let fox_idx = world
+        .fauna
+        .iter()
+        .position(|f| f.species == FaunaSpecies::Fox)
+        .expect("must have fox");
+    world.fauna[fox_idx].pos = [510.0, 746.0];
+    world.fauna[fox_idx].state = FaunaState::Trotting {
+        target_x: 600.0,
+        speed: 30.0,
+    };
+
+    world.update_fauna(0.1, false, None);
+    assert!(
+        matches!(world.birds[0].state, BirdState::Startled { .. }),
+        "Bird perched near ground must startle when fox trots underneath"
     );
 }

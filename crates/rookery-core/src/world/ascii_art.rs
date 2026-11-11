@@ -20,6 +20,13 @@ impl WorldState {
                 bird.species, bird.state
             ));
         }
+        dump.push_str(&format!("Fauna: {}\n", self.fauna.len()));
+        for f in &self.fauna {
+            dump.push_str(&format!(
+                "  Fauna Species: {:?}, State: {:?}, Pos: ({:.0}, {:.0})\n",
+                f.species, f.state, f.pos[0], f.pos[1]
+            ));
+        }
         dump
     }
 
@@ -128,7 +135,22 @@ impl WorldState {
             }
         }
 
-        // 5. Build boxed string output
+        // 5. Draw woodland fauna on the ground
+        for f in &self.fauna {
+            if let Some((c, r)) = world_to_grid(f.pos)
+                && r < h
+            {
+                let ch = match f.species {
+                    FaunaSpecies::Fox => 'f',
+                    FaunaSpecies::Squirrel => 's',
+                    FaunaSpecies::Badger => 'b',
+                    FaunaSpecies::Hedgehog => 'h',
+                };
+                grid[r][c] = ch;
+            }
+        }
+
+        // 6. Build boxed string output
         let mut out = String::new();
         out.push('┌');
         for _ in 0..w {

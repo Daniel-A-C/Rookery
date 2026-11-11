@@ -242,6 +242,81 @@ pub struct Bird {
     pub size_scale: f32,
 }
 
+/// Woodland fauna species roaming the forest floor and lower boughs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaunaSpecies {
+    /// Curious Red Fox roaming the forest floor.
+    Fox,
+    /// Nimble Squirrel foraging on ground and scampering up the lower trunk.
+    Squirrel,
+    /// Sturdy European Badger foraging around root buttresses.
+    Badger,
+    /// Gentle prickly Hedgehog snuffling among fallen leaves.
+    Hedgehog,
+}
+
+impl FaunaSpecies {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Fox => "Red Fox",
+            Self::Squirrel => "Squirrel",
+            Self::Badger => "Badger",
+            Self::Hedgehog => "Hedgehog",
+        }
+    }
+
+    pub fn base_speed(&self) -> f32 {
+        match self {
+            Self::Fox => 36.0,
+            Self::Squirrel => 44.0,
+            Self::Badger => 24.0,
+            Self::Hedgehog => 16.0,
+        }
+    }
+}
+
+/// Autonomous behavioral states for forest floor fauna.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FaunaState {
+    /// Trotting smoothly along the ground toward a horizontal target.
+    Trotting { target_x: f32, speed: f32 },
+    /// Pausing to sniff the soil, clovers, or mushroom caps.
+    Sniffing { remaining_secs: f32 },
+    /// Foraging for fallen snacks or acorns near buttress roots.
+    Foraging {
+        remaining_secs: f32,
+        target_snack_x: Option<f32>,
+    },
+    /// Resting peacefully under branch shelter.
+    Resting { remaining_secs: f32 },
+    /// Deep sleep curled up near tree trunk.
+    Sleeping { remaining_secs: f32 },
+    /// Alert posture upon sensing motion or sounds.
+    Alert { remaining_secs: f32 },
+    /// Startled flee when direct mode cursor clicks nearby.
+    Startled { remaining_secs: f32, dir: f32 },
+    /// Scampering vertically up or down the lower trunk (Squirrel).
+    ClimbingTrunk {
+        branch_id: u32,
+        height: f32,
+        speed: f32,
+        ascending: bool,
+    },
+}
+
+/// Autonomous procedural woodland creature in the world.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WoodlandFauna {
+    pub id: u32,
+    pub species: FaunaSpecies,
+    pub pos: [f32; 2],
+    pub vel: [f32; 2],
+    pub facing_left: bool,
+    pub state: FaunaState,
+    pub anim_phase: f32,
+    pub size_scale: f32,
+}
+
 /// Snack variety dropped to feed birds and attract rare species.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SnackType {

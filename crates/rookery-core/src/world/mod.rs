@@ -13,6 +13,7 @@ pub use types::*;
 
 pub mod ascii_art;
 pub mod birds;
+pub mod fauna;
 pub mod growth;
 pub mod persistence;
 
@@ -30,6 +31,8 @@ pub struct WorldState {
     pub branches: Vec<Branch>,
     pub birds: Vec<Bird>,
     pub snacks: Vec<Snack>,
+    #[serde(default)]
+    pub fauna: Vec<WoodlandFauna>,
     #[serde(default)]
     pub signs: Vec<PlantSign>,
     #[serde(default)]
@@ -190,6 +193,60 @@ impl WorldState {
             light_intensity: 1.0,
         }];
 
+        let fauna = vec![
+            WoodlandFauna {
+                id: 1,
+                species: FaunaSpecies::Fox,
+                pos: [trunk_base[0] - 120.0, 746.0],
+                vel: [0.0, 0.0],
+                facing_left: false,
+                state: FaunaState::Trotting {
+                    target_x: trunk_base[0] + 180.0,
+                    speed: FaunaSpecies::Fox.base_speed(),
+                },
+                anim_phase: 0.0,
+                size_scale: 1.0,
+            },
+            WoodlandFauna {
+                id: 2,
+                species: FaunaSpecies::Squirrel,
+                pos: [trunk_base[0] + 45.0, 746.0],
+                vel: [0.0, 0.0],
+                facing_left: true,
+                state: FaunaState::Foraging {
+                    remaining_secs: 4.0,
+                    target_snack_x: None,
+                },
+                anim_phase: 1.2,
+                size_scale: 0.95,
+            },
+            WoodlandFauna {
+                id: 3,
+                species: FaunaSpecies::Badger,
+                pos: [trunk_base[0] + 210.0, 746.0],
+                vel: [0.0, 0.0],
+                facing_left: true,
+                state: FaunaState::Sniffing {
+                    remaining_secs: 3.5,
+                },
+                anim_phase: 2.4,
+                size_scale: 1.05,
+            },
+            WoodlandFauna {
+                id: 4,
+                species: FaunaSpecies::Hedgehog,
+                pos: [trunk_base[0] - 220.0, 746.0],
+                vel: [0.0, 0.0],
+                facing_left: false,
+                state: FaunaState::Trotting {
+                    target_x: trunk_base[0] - 80.0,
+                    speed: FaunaSpecies::Hedgehog.base_speed(),
+                },
+                anim_phase: 0.8,
+                size_scale: 0.9,
+            },
+        ];
+
         let mut world = Self {
             version: WORLD_STATE_VERSION,
             seed,
@@ -199,6 +256,7 @@ impl WorldState {
             branches,
             birds,
             snacks: Vec::new(),
+            fauna,
             signs,
             houses: Vec::new(),
             nests: Vec::new(),
@@ -287,6 +345,7 @@ impl WorldState {
         self.total_age_secs += dt_secs as f64;
         self.advance_growth(dt_secs);
         self.update_birds(dt_secs, interactive, pointer);
+        self.update_fauna(dt_secs, interactive, pointer);
         self.update_notes_and_chips(dt_secs);
 
         // Interactive mouse effects (gust / scatter birds)
@@ -325,7 +384,21 @@ impl WorldState {
                 .iter()
                 .any(|b| b.foliage.iter().any(|f| f.bloom > 0.0 && f.bloom < 0.999));
 
-        if interactive || any_active_birds || active_items || any_growth_animating {
+        let any_active_fauna = self.fauna.iter().any(|f| {
+            matches!(
+                f.state,
+                FaunaState::Trotting { .. }
+                    | FaunaState::Startled { .. }
+                    | FaunaState::ClimbingTrunk { .. }
+            )
+        });
+
+        if interactive
+            || any_active_birds
+            || any_active_fauna
+            || active_items
+            || any_growth_animating
+        {
             Activity::Animating
         } else {
             Activity::Idle

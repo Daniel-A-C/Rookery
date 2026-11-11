@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
-use rookery_core::world::{BirdSpecies, BirdState, RookeryPalette, SnackType, WorldState};
+use rookery_core::world::{
+    BirdSpecies, BirdState, FaunaSpecies, FaunaState, RookeryPalette, SnackType, WorldState,
+};
 
 pub use crate::atlas::{GlyphInstance, GlyphPass};
 use crate::fullscreen;
@@ -353,6 +355,154 @@ impl LivingRookeryScene {
                     [1.0, 1.0, 1.0, 0.98],
                     0.0,
                 );
+            }
+        }
+
+        // 1b. Atmospheric Woodland Backdrop & Midground Forest Canopy (Milestone 9)
+        let (backdrop_color, midground_color) = match palette {
+            RookeryPalette::MidnightStarlight => {
+                ([0.10, 0.16, 0.26, 0.38], [0.16, 0.24, 0.36, 0.58])
+            }
+            RookeryPalette::AutumnHearth => ([0.26, 0.14, 0.08, 0.40], [0.38, 0.20, 0.12, 0.60]),
+            RookeryPalette::VerdantRainforest => {
+                ([0.10, 0.24, 0.14, 0.40], [0.16, 0.38, 0.20, 0.62])
+            }
+            RookeryPalette::AmberPhosphor => ([0.28, 0.18, 0.05, 0.38], [0.48, 0.30, 0.08, 0.58]),
+            RookeryPalette::MatrixGreen => ([0.05, 0.22, 0.08, 0.38], [0.10, 0.35, 0.14, 0.58]),
+            RookeryPalette::EarthAndSylvan => ([0.12, 0.20, 0.15, 0.38], [0.20, 0.34, 0.24, 0.60]),
+        };
+
+        // Layer 1: Distant Woodland Backdrop (Far Ridge / Canopy) with 0.25x Parallax (~1.5x scale)
+        let backdrop_c_offset = (offset_x * 0.25) / cell_w;
+        for c in 1..cols.saturating_sub(1) {
+            let world_c = (c as f32) + backdrop_c_offset;
+            // 1.5x broader and taller rolling mountain / pine ridge
+            let ridge_wave = (world_c * 0.028).sin() * 5.4
+                + (world_c * 0.058 + 1.3).sin() * 3.0
+                + (world_c * 0.113 + 2.7).sin() * 1.6;
+            let ridge_height = (11.0 + ridge_wave).round() as i32;
+            let top_r = (ground_row - ridge_height).clamp(2, ground_row - 2);
+
+            for r in top_r..ground_row {
+                let p = cell_pos(c, r);
+                if r == top_r {
+                    let is_pine_peak = (world_c * 0.21).sin() > 0.55;
+                    let peak_ch = if is_pine_peak { '▲' } else { '░' };
+                    self.push_glyph(peak_ch, p, cell_size, 0.0, 0.032, backdrop_color, 0.0);
+                } else if r == top_r + 1 {
+                    self.push_glyph('░', p, cell_size, 0.0, 0.032, backdrop_color, 0.0);
+                } else {
+                    let fill_hash =
+                        (c as u32).wrapping_mul(314_159) ^ (r as u32).wrapping_mul(271_828);
+                    if fill_hash.is_multiple_of(6) {
+                        self.push_glyph('░', p, cell_size, 0.0, 0.032, backdrop_color, 0.0);
+                    } else if fill_hash.is_multiple_of(9) {
+                        self.push_glyph('·', p, cell_size, 0.0, 0.032, backdrop_color, 0.0);
+                    }
+                }
+            }
+        }
+
+        // Layer 2: Midground Evergreen Forest Canopy Stands with 0.55x Parallax (~1.5x scale)
+        let mid_c_offset = (offset_x * 0.55) / cell_w;
+        let stand_spacing = 32;
+        let min_stand = ((mid_c_offset - 20.0) / stand_spacing as f32).floor() as i32;
+        let max_stand = ((mid_c_offset + cols as f32 + 20.0) / stand_spacing as f32).ceil() as i32;
+
+        let render_evergreen =
+            |scene: &mut Self, root_c: i32, height_rows: i32, trunk_color: [f32; 4]| {
+                let crown_top_r = (ground_row - height_rows).clamp(2, ground_row - 5);
+                let canopy_len = (height_rows - 4).max(6);
+
+                // Tiered conical evergreen boughs
+                for dr in 0..=canopy_len {
+                    let rr = crown_top_r + dr;
+                    if rr >= ground_row {
+                        break;
+                    }
+
+                    if dr == 0 {
+                        // Apical spire tip
+                        if root_c >= 0 && root_c < cols {
+                            scene.push_glyph(
+                                '▲',
+                                cell_pos(root_c, rr),
+                                cell_size,
+                                0.0,
+                                0.042,
+                                trunk_color,
+                                0.0,
+                            );
+                        }
+                        continue;
+                    }
+
+                    let tier = dr / 3;
+                    let step_in_tier = dr % 3;
+                    let half_w = (1 + tier + if step_in_tier > 0 { 1 } else { 0 }).min(5);
+
+                    for dc in -half_w..=half_w {
+                        let cc = root_c + dc;
+                        if cc < 0 || cc >= cols {
+                            continue;
+                        }
+
+                        let p = cell_pos(cc, rr);
+                        let needle_hash =
+                            (cc as u32).wrapping_mul(79) ^ (rr as u32).wrapping_mul(43);
+
+                        let ch = if dc == 0 {
+                            if dr % 2 == 0 { '║' } else { '▲' }
+                        } else if dc == -half_w {
+                            '/'
+                        } else if dc == half_w {
+                            '\\'
+                        } else if needle_hash.is_multiple_of(3) {
+                            '▒'
+                        } else if needle_hash.is_multiple_of(2) {
+                            '░'
+                        } else {
+                            '▲'
+                        };
+
+                        scene.push_glyph(ch, p, cell_size, 0.0, 0.042, trunk_color, 0.0);
+                    }
+                }
+
+                // Bare trunk anchored to ground
+                let trunk_start_r = (crown_top_r + canopy_len + 1).min(ground_row - 1);
+                for tr in trunk_start_r..ground_row {
+                    if root_c >= 0 && root_c < cols {
+                        scene.push_glyph(
+                            '║',
+                            cell_pos(root_c, tr),
+                            cell_size,
+                            0.0,
+                            0.042,
+                            trunk_color,
+                            0.0,
+                        );
+                    }
+                }
+            };
+
+        for k in min_stand..=max_stand {
+            let stand_world_c = k * stand_spacing + ((k * 37).rem_euclid(7) - 3);
+            let tree_c = (stand_world_c as f32 - mid_c_offset).round() as i32;
+
+            if tree_c >= -8 && tree_c < cols + 8 {
+                let h_rows = 18 + (k.unsigned_abs() * 19 % 8) as i32;
+                render_evergreen(self, tree_c, h_rows, midground_color);
+
+                // Occasional companion sibling evergreen for natural clustered forest look
+                if k % 2 == 0 {
+                    let comp_offset = if (k / 2) % 2 == 0 { 6 } else { -6 };
+                    let comp_c = tree_c + comp_offset;
+                    if comp_c >= -6 && comp_c < cols + 6 {
+                        let comp_h = 12 + (k.unsigned_abs() * 7 % 4) as i32;
+                        render_evergreen(self, comp_c, comp_h, midground_color);
+                    }
+                }
             }
         }
 
@@ -934,6 +1084,234 @@ impl LivingRookeryScene {
             }
         }
 
+        // 5b. Multi-Cell Forest Floor Woodland Fauna (Milestone 10)
+        for fauna in &world_guard.fauna {
+            let sp = self.world_to_screen(fauna.pos, offset_x);
+            let center_c = (sp[0] / cell_w).round() as i32;
+            let center_r = (sp[1] / cell_h).round() as i32;
+            if center_c < -4 || center_c > cols + 4 || center_r < 0 || center_r >= rows {
+                continue;
+            }
+
+            // Directional cast shadow on ground turf away from celestial moon
+            if fauna.pos[1] >= 740.0 {
+                for sk in 1..=2 {
+                    let sc = center_c + shadow_dir * sk;
+                    if sc >= 0 && sc < cols {
+                        self.push_glyph(
+                            '░',
+                            cell_pos(sc, ground_row),
+                            cell_size,
+                            0.0,
+                            0.052,
+                            shadow_color,
+                            0.0,
+                        );
+                    }
+                }
+            }
+
+            let is_startled = matches!(fauna.state, FaunaState::Startled { .. });
+            let is_sleeping = matches!(fauna.state, FaunaState::Sleeping { .. });
+            let is_sniffing = matches!(fauna.state, FaunaState::Sniffing { .. });
+
+            // Exclamation indicator when startled
+            if is_startled && center_r >= 1 {
+                self.push_glyph(
+                    '!',
+                    cell_pos(center_c, center_r - 1),
+                    [cell_w * 0.85, cell_h * 0.85],
+                    0.0,
+                    0.28,
+                    [0.98, 0.88, 0.25, 0.98],
+                    0.0,
+                );
+            }
+
+            // Sleep indicator notes
+            if is_sleeping && center_r >= 1 && (self.time as f32 * 1.5).sin() > 0.0 {
+                self.push_glyph(
+                    'z',
+                    cell_pos(center_c, center_r - 1),
+                    [cell_w * 0.75, cell_h * 0.75],
+                    0.0,
+                    0.27,
+                    [0.85, 0.90, 1.0, 0.85],
+                    0.0,
+                );
+            }
+
+            match fauna.species {
+                FaunaSpecies::Fox => {
+                    let coat_col = [0.94, 0.46, 0.16, 0.98];
+                    let white_col = [0.98, 0.95, 0.88, 0.98];
+                    let bg_col = [0.14, 0.06, 0.02, 0.88];
+
+                    if is_sleeping {
+                        // Curled ball: ~ o ~
+                        let cells = [('~', coat_col), ('o', coat_col), ('~', white_col)];
+                        for (i, &(ch, col)) in cells.iter().enumerate() {
+                            let cc = center_c - 1 + i as i32;
+                            if cc >= 0 && cc < cols {
+                                let p = cell_pos(cc, center_r);
+                                self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                                self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                            }
+                        }
+                    } else {
+                        // 4-cell sleek fox: Tail, Body, Head, Snout
+                        let head_ch = if is_sniffing { '.' } else { 'o' };
+                        let snout_ch = if is_sniffing {
+                            'v'
+                        } else if fauna.facing_left {
+                            '<'
+                        } else {
+                            '>'
+                        };
+                        let tail_ch = if fauna.anim_phase.sin() > 0.0 {
+                            '~'
+                        } else {
+                            '≈'
+                        };
+
+                        let sprite_chars = if fauna.facing_left {
+                            [
+                                (snout_ch, white_col),
+                                (head_ch, coat_col),
+                                ('▄', coat_col),
+                                (tail_ch, white_col),
+                            ]
+                        } else {
+                            [
+                                (tail_ch, white_col),
+                                ('▄', coat_col),
+                                (head_ch, coat_col),
+                                (snout_ch, white_col),
+                            ]
+                        };
+
+                        for (i, &(ch, col)) in sprite_chars.iter().enumerate() {
+                            let cc = center_c - 1 + i as i32;
+                            if cc >= 0 && cc < cols {
+                                let p = cell_pos(cc, center_r);
+                                self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                                self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                            }
+                        }
+                    }
+                }
+                FaunaSpecies::Squirrel => {
+                    let coat_col = [0.78, 0.48, 0.22, 0.98];
+                    let chest_col = [0.96, 0.90, 0.82, 0.98];
+                    let bg_col = [0.12, 0.08, 0.04, 0.88];
+
+                    if matches!(fauna.state, FaunaState::ClimbingTrunk { .. }) {
+                        // Vertical climbing sprite
+                        let p_head = cell_pos(center_c, center_r);
+                        self.push_glyph('█', p_head, cell_size, 0.0, 0.22, bg_col, 0.0);
+                        self.push_glyph('^', p_head, cell_size, 0.0, 0.26, chest_col, 0.0);
+
+                        if center_r + 1 < rows {
+                            let p_body = cell_pos(center_c, center_r + 1);
+                            self.push_glyph('█', p_body, cell_size, 0.0, 0.22, bg_col, 0.0);
+                            self.push_glyph('"', p_body, cell_size, 0.0, 0.25, coat_col, 0.0);
+                        }
+                    } else if matches!(fauna.state, FaunaState::Foraging { .. }) {
+                        // Upright foraging with nut: ? o *
+                        let sprite = if fauna.facing_left {
+                            [
+                                ('*', [0.98, 0.82, 0.25, 0.98]),
+                                ('o', chest_col),
+                                ('c', coat_col),
+                            ]
+                        } else {
+                            [
+                                ('?', coat_col),
+                                ('o', chest_col),
+                                ('*', [0.98, 0.82, 0.25, 0.98]),
+                            ]
+                        };
+                        for (i, &(ch, col)) in sprite.iter().enumerate() {
+                            let cc = center_c - 1 + i as i32;
+                            if cc >= 0 && cc < cols {
+                                let p = cell_pos(cc, center_r);
+                                self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                                self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                            }
+                        }
+                    } else {
+                        // Trotting 3 cells: Tail, Body, Nose
+                        let sprite = if fauna.facing_left {
+                            [('<', chest_col), ('o', coat_col), ('c', coat_col)]
+                        } else {
+                            [('?', coat_col), ('o', coat_col), ('>', chest_col)]
+                        };
+                        for (i, &(ch, col)) in sprite.iter().enumerate() {
+                            let cc = center_c - 1 + i as i32;
+                            if cc >= 0 && cc < cols {
+                                let p = cell_pos(cc, center_r);
+                                self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                                self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                            }
+                        }
+                    }
+                }
+                FaunaSpecies::Badger => {
+                    let coat_col = [0.34, 0.36, 0.40, 0.98];
+                    let stripe_col = [0.98, 0.98, 1.0, 0.98];
+                    let bg_col = [0.08, 0.08, 0.10, 0.88];
+
+                    let muzzle_ch = if is_sniffing {
+                        '.'
+                    } else if fauna.facing_left {
+                        '<'
+                    } else {
+                        '>'
+                    };
+                    let sprite = if fauna.facing_left {
+                        [(muzzle_ch, stripe_col), ('≡', coat_col), ('~', coat_col)]
+                    } else {
+                        [('~', coat_col), ('≡', coat_col), (muzzle_ch, stripe_col)]
+                    };
+
+                    for (i, &(ch, col)) in sprite.iter().enumerate() {
+                        let cc = center_c - 1 + i as i32;
+                        if cc >= 0 && cc < cols {
+                            let p = cell_pos(cc, center_r);
+                            self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                            self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                        }
+                    }
+                }
+                FaunaSpecies::Hedgehog => {
+                    let quill_col = [0.64, 0.52, 0.38, 0.98];
+                    let snout_col = [0.92, 0.82, 0.72, 0.98];
+                    let bg_col = [0.10, 0.08, 0.06, 0.88];
+
+                    if is_sleeping || (is_startled && fauna.anim_phase.sin() > 0.0) {
+                        // Curled prickly ball: ○
+                        let p = cell_pos(center_c, center_r);
+                        self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                        self.push_glyph('○', p, cell_size, 0.0, 0.25, quill_col, 0.0);
+                    } else {
+                        let sprite = if fauna.facing_left {
+                            [('<', snout_col), ('*', quill_col)]
+                        } else {
+                            [('*', quill_col), ('>', snout_col)]
+                        };
+                        for (i, &(ch, col)) in sprite.iter().enumerate() {
+                            let cc = center_c + i as i32;
+                            if cc >= 0 && cc < cols {
+                                let p = cell_pos(cc, center_r);
+                                self.push_glyph('█', p, cell_size, 0.0, 0.22, bg_col, 0.0);
+                                self.push_glyph(ch, p, cell_size, 0.0, 0.25, col, 0.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 6. Forest Infrastructure: Plant Signs, Lanterns, Baths & Perches
         for sign in &world_guard.signs {
             let sp = snap(self.world_to_screen(sign.pos, offset_x));
@@ -1070,13 +1448,14 @@ impl LivingRookeryScene {
         let active_tree_num = world_guard.trees.len();
 
         let status_str = format!(
-            "╡ FORT SYLVAN · SEED #{} · TREE #{}: {} · BOUGHS:{} · BUDS:{} · FLOCK:{} ╞",
+            "╡ FORT SYLVAN · SEED #{} · TREE #{}: {} · BOUGHS:{} · BUDS:{} · FLOCK:{} · FAUNA:{} ╞",
             world_guard.seed,
             active_tree_num,
             active_species_name,
             world_guard.stats.total_branches,
             world_guard.stats.total_foliage,
-            world_guard.birds.len()
+            world_guard.birds.len(),
+            world_guard.fauna.len()
         );
         self.push_text(
             &status_str,
