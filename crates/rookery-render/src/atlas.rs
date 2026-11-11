@@ -14,7 +14,7 @@ pub const ATLAS_WIDTH: u32 = 512;
 pub const ATLAS_HEIGHT: u32 = 512;
 pub const CELL_SIZE: u32 = 32;
 pub const COLS_PER_ROW: u32 = ATLAS_WIDTH / CELL_SIZE; // 16
-pub const GLYPH_COUNT: u32 = 129; // 95 ASCII printable + 34 custom/CP437 box, shade & geometric symbols
+pub const GLYPH_COUNT: u32 = 130; // 95 ASCII printable + 35 custom/CP437 box, shade & celestial symbols
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -399,6 +399,7 @@ pub fn char_to_glyph_index(c: char) -> u32 {
         '○' => 126,
         '∙' | '·' => 127,
         '✦' => 128,
+        '☾' => 129,
         ' '..='~' => u - 32,
         _ => 0, // space fallback
     }
@@ -580,8 +581,8 @@ fn get_glyph_8x16(glyph_idx: u32) -> [u8; 16] {
     FONT_8X16[glyph_idx as usize]
 }
 
-// 8x16 bitmap font: 95 ASCII characters (space..~) + 34 custom/CP437 symbols
-const FONT_8X16: [[u8; 16]; 129] = [
+// 8x16 bitmap font: 95 ASCII characters (space..~) + 35 custom/CP437 symbols
+const FONT_8X16: [[u8; 16]; 130] = [
     // 0: ' ' (space)
     [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1227,6 +1228,11 @@ const FONT_8X16: [[u8; 16]; 129] = [
         0x00, 0x18, 0x18, 0x3C, 0xFF, 0xFF, 0x3C, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00,
     ],
+    // 129: '☾' (crescent moon)
+    [
+        0x00, 0x0E, 0x1C, 0x38, 0x30, 0x70, 0x70, 0x70, 0x70, 0x70, 0x30, 0x38, 0x1C, 0x0E, 0x00,
+        0x00,
+    ],
 ];
 
 #[cfg(test)]
@@ -1244,6 +1250,7 @@ mod tests {
         assert_eq!(char_to_glyph_index('║'), 116);
         assert_eq!(char_to_glyph_index('◆'), 123);
         assert_eq!(char_to_glyph_index('✦'), 128);
+        assert_eq!(char_to_glyph_index('☾'), 129);
 
         let sdf = generate_sdf_atlas();
         assert_eq!(sdf.len(), (ATLAS_WIDTH * ATLAS_HEIGHT) as usize);
