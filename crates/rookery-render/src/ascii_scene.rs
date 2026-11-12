@@ -108,8 +108,8 @@ impl LivingRookeryScene {
     /// Converts normalized world coordinates [0..1000, 0..850] to current screen viewport pixels.
     fn world_to_screen(&self, pt: [f32; 2], offset_x: f32) -> [f32; 2] {
         let x = ((pt[0] - offset_x) / 1000.0) * self.width;
-        let ground_y = self.height * 0.72;
-        let tree_scale = (self.height / 1020.0).clamp(0.6, 2.0);
+        let ground_y = self.height * 0.80;
+        let tree_scale = (self.height / 960.0).clamp(0.6, 2.0);
         let y = ground_y - (750.0 - pt[1]) * tree_scale;
         [x, y]
     }
@@ -122,8 +122,8 @@ impl LivingRookeryScene {
             .map(|w| w.viewport_offset_x)
             .unwrap_or(0.0);
         let x = (pt.x / self.width) * 1000.0 + offset_x;
-        let ground_y = self.height * 0.72;
-        let tree_scale = (self.height / 1020.0).clamp(0.6, 2.0);
+        let ground_y = self.height * 0.80;
+        let tree_scale = (self.height / 960.0).clamp(0.6, 2.0);
         let y = 750.0 - (ground_y - pt.y) / tree_scale;
         [x, y]
     }
@@ -194,7 +194,7 @@ impl LivingRookeryScene {
         let cell_size = [cell_w, cell_h];
         let cols = (self.width / cell_w).floor() as i32;
         let rows = (self.height / cell_h).floor() as i32;
-        let ground_row = ((self.height * 0.72) / cell_h).floor() as i32;
+        let ground_row = ((self.height * 0.80) / cell_h).floor() as i32;
 
         let snap = |pt: [f32; 2]| -> [f32; 2] {
             let c = (pt[0] / cell_w).floor();
@@ -519,7 +519,7 @@ impl LivingRookeryScene {
         // 2a. Upper grass depth interface (ground_row - 1): tall grass tips & wild shrubs poking into the air
         for c in 1..cols.saturating_sub(1) {
             let grass_hash = (c as u32).wrapping_mul(127_412_617) ^ 0x9e3779b9;
-            if grass_hash % 100 < 42 {
+            if grass_hash % 100 < 24 {
                 let (grass_ch, is_flower) = match grass_hash % 6 {
                     0 => ('"', false),
                     1 => ('☘', false),
@@ -586,21 +586,35 @@ impl LivingRookeryScene {
                     continue;
                 }
 
-                // Foreground vs background grass distribution
-                let (glyph_ch, glyph_col, z_lay) = if cell_hash % 100 < 5 {
-                    // Wildflower cluster
+                // Foreground vs background grass distribution:
+                // Keep the meadow serene and proportioned: a fairly high percentage (~75%) of tiles
+                // are plain green tiles, while the remaining ~25% feature organic wildflowers,
+                // clovers, and varied grass tufts that scale with depth to maintain depth perception.
+                let grass_cutoff = 10 + 14 + (depth_t * 6.0) as u32; // ~24% at horizon up to 30% in foreground
+                let roll = cell_hash % 100;
+
+                if roll < 4 {
+                    // Wildflower cluster (4%)
                     let f_ch = match (cell_hash / 10) % 4 {
                         0 => '*',
                         1 => 'o',
                         2 => '✿',
                         _ => '❀',
                     };
-                    (f_ch, flower_color, 0.06)
-                } else if cell_hash % 100 < 14 {
-                    // Lush wild clover
-                    ('☘', turf_color, 0.055)
-                } else {
-                    // Varied grass blades and moss cover
+                    self.push_glyph(
+                        f_ch,
+                        cell_pos(c, r),
+                        cell_size,
+                        0.0,
+                        0.06,
+                        flower_color,
+                        0.0,
+                    );
+                } else if roll < 10 {
+                    // Lush wild clover (6%)
+                    self.push_glyph('☘', cell_pos(c, r), cell_size, 0.0, 0.055, turf_color, 0.0);
+                } else if roll < grass_cutoff {
+                    // Varied grass blades and moss tufts with depth gradient
                     let ch = if depth_t > 0.6 {
                         // Foreground: taller, crisper grass tufts
                         match cell_hash % 6 {
@@ -639,18 +653,18 @@ impl LivingRookeryScene {
                         mix_f32(turf_deep[2], turf_color[2], depth_t),
                         mix_f32(0.85, 0.98, depth_t),
                     ];
-                    (ch, col, 0.045 + depth_t * 0.01)
-                };
-
-                self.push_glyph(
-                    glyph_ch,
-                    cell_pos(c, r),
-                    cell_size,
-                    0.0,
-                    z_lay,
-                    glyph_col,
-                    0.0,
-                );
+                    self.push_glyph(
+                        ch,
+                        cell_pos(c, r),
+                        cell_size,
+                        0.0,
+                        0.045 + depth_t * 0.01,
+                        col,
+                        0.0,
+                    );
+                }
+                // When roll >= grass_cutoff, this tile is left as a plain green tile,
+                // letting the background shader's verdant meadow gradient and CRT grid lines shine through.
 
                 // Natural boulders and mushrooms scattered across the meadow
                 if cell_hash % 240 == 42 && r > ground_row + 1 {
