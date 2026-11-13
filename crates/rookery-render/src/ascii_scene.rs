@@ -670,14 +670,24 @@ impl LivingRookeryScene {
 
         // Layer 2: Midground Evergreen Forest Canopy Stands with 0.55x Parallax (~1.5x scale)
         let mid_c_offset = (offset_x * 0.55) / cell_w;
-        let stand_spacing = 32;
-        let min_stand = ((mid_c_offset - 20.0) / stand_spacing as f32).floor() as i32;
-        let max_stand = ((mid_c_offset + cols as f32 + 20.0) / stand_spacing as f32).ceil() as i32;
+        let stand_spacing = 18;
+        let min_stand = ((mid_c_offset - 24.0) / stand_spacing as f32).floor() as i32;
+        let max_stand = ((mid_c_offset + cols as f32 + 24.0) / stand_spacing as f32).ceil() as i32;
+
+        let hash_stand = |seed: i32| -> u32 {
+            let mut h = (seed as u32).wrapping_mul(0x9E37_79B9);
+            h ^= h >> 16;
+            h = h.wrapping_mul(0x85EB_CA6B);
+            h ^= h >> 13;
+            h = h.wrapping_mul(0xC2B2_AE35);
+            h ^= h >> 16;
+            h
+        };
 
         let render_evergreen =
             |scene: &mut Self, root_c: i32, height_rows: i32, trunk_color: [f32; 4]| {
                 let crown_top_r = (ground_row - height_rows).clamp(2, ground_row - 5);
-                let canopy_len = (height_rows - 4).max(6);
+                let canopy_len = (height_rows - 2).max(5);
 
                 // Tiered conical evergreen boughs
                 for dr in 0..=canopy_len {
@@ -734,9 +744,10 @@ impl LivingRookeryScene {
                     }
                 }
 
-                // Bare trunk anchored to ground
+                // Bare trunk anchored into the horizon ground row so there is no sky gap
                 let trunk_start_r = (crown_top_r + canopy_len + 1).min(ground_row - 1);
-                for tr in trunk_start_r..ground_row {
+                let trunk_end_r = ground_row.min(rows - 1);
+                for tr in trunk_start_r..=trunk_end_r {
                     if root_c >= 0 && root_c < cols {
                         scene.push_glyph(
                             '║',
@@ -752,19 +763,35 @@ impl LivingRookeryScene {
             };
 
         for k in min_stand..=max_stand {
-            let stand_world_c = k * stand_spacing + ((k * 37).rem_euclid(7) - 3);
+            let h1 = hash_stand(k);
+            let h2 = hash_stand(k.wrapping_add(1_000_003));
+            let h3 = hash_stand(k.wrapping_sub(7919));
+
+            let jitter = (h1 % 15) as i32 - 7;
+            let stand_world_c = k * stand_spacing + jitter;
             let tree_c = (stand_world_c as f32 - mid_c_offset).round() as i32;
 
             if tree_c >= -8 && tree_c < cols + 8 {
-                let h_rows = 18 + (k.unsigned_abs() * 19 % 8) as i32;
+                let h_rows = 12 + (h2 % 14) as i32;
                 render_evergreen(self, tree_c, h_rows, midground_color);
 
-                // Occasional companion sibling evergreen for natural clustered forest look
-                if k % 2 == 0 {
-                    let comp_offset = if (k / 2) % 2 == 0 { 6 } else { -6 };
+                // Irregular companion evergreens for a denser, organic forest silhouette
+                if (h1 >> 8) % 100 < 60 {
+                    let sign = if (h2 >> 4).is_multiple_of(2) { 1 } else { -1 };
+                    let comp_offset = sign * (4 + ((h2 >> 8) % 6) as i32);
                     let comp_c = tree_c + comp_offset;
                     if comp_c >= -6 && comp_c < cols + 6 {
-                        let comp_h = 12 + (k.unsigned_abs() * 7 % 4) as i32;
+                        let comp_h = 9 + ((h3 >> 4) % 10) as i32;
+                        render_evergreen(self, comp_c, comp_h, midground_color);
+                    }
+                }
+
+                if (h3 >> 12) % 100 < 25 {
+                    let sign = if (h3 >> 2).is_multiple_of(2) { 1 } else { -1 };
+                    let comp_offset = sign * (5 + ((h1 >> 16) % 7) as i32);
+                    let comp_c = tree_c + comp_offset;
+                    if comp_c >= -6 && comp_c < cols + 6 {
+                        let comp_h = 8 + ((h1 >> 20) % 8) as i32;
                         render_evergreen(self, comp_c, comp_h, midground_color);
                     }
                 }
