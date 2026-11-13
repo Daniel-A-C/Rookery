@@ -766,8 +766,10 @@ impl LivingRookeryScene {
                         2 // Developing tree: 5 cells wide (├ █ ║ █ ┤)
                     } else if branch.thickness < 44.0 {
                         3 // Grand mature tree: 7 cells wide
-                    } else {
+                    } else if branch.thickness < 56.0 {
                         4 // Massive ancient trunk: 9 cells wide
+                    } else {
+                        5 // Colossal Baobab / Redwood base: 11 cells wide
                     };
 
                     // Noticeable cast shadow on the ground turf at the base of the trunk
@@ -839,6 +841,41 @@ impl LivingRookeryScene {
                         };
                         self.push_glyph(ch, tp, cell_size, 0.0, 0.10, bark_fg, 0.0);
                     }
+                } else if branch.is_root {
+                    // 2.5D Ground Root Tendrils & Aerial Prop Roots
+                    let root_fg = [
+                        bark_fg[0] * 0.80,
+                        bark_fg[1] * 0.76,
+                        bark_fg[2] * 0.70,
+                        bark_fg[3],
+                    ];
+                    let is_tip = s == steps;
+                    let dc = (c1 - c0).abs();
+                    let dr = (r1 - r0).abs();
+                    let local_thick = branch.thickness * (1.0 - 0.70 * t);
+
+                    let root_ch = if is_tip {
+                        if dc > dr * 2 { '~' } else { ',' }
+                    } else if dc > dr * 2 {
+                        '─'
+                    } else if dr > dc * 2 {
+                        '│'
+                    } else if (c1 - c0) * (r1 - r0) < 0 {
+                        '/'
+                    } else {
+                        '\\'
+                    };
+
+                    let pos = cell_pos(cc, rr);
+                    self.push_glyph('█', pos, cell_size, 0.0, 0.085, bark_bg, 0.0);
+                    self.push_glyph(root_ch, pos, cell_size, 0.0, 0.105, root_fg, 0.0);
+
+                    // Thicker buttress collar near the trunk base tapers down into 1-cell tendrils
+                    if local_thick >= 10.0 && !is_tip && rr + 1 < rows {
+                        let sub_pos = cell_pos(cc, rr + 1);
+                        self.push_glyph('█', sub_pos, cell_size, 0.0, 0.08, bark_bg, 0.0);
+                        self.push_glyph('░', sub_pos, cell_size, 0.0, 0.095, root_fg, 0.0);
+                    }
                 } else {
                     // Depth-based bough shading: Deeper background branches have subdued tone
                     let branch_fg = if branch.depth >= 3 {
@@ -856,6 +893,7 @@ impl LivingRookeryScene {
                     let dr = (r1 - r0).abs();
                     let is_tip = s == steps;
                     let is_actively_growing = branch.growth_progress < 0.96;
+                    let local_thick = branch.thickness * (1.0 - 0.60 * t);
 
                     if is_tip && is_actively_growing {
                         // Tender growing shoot / bud at the extending branch front
@@ -901,15 +939,40 @@ impl LivingRookeryScene {
                         } else {
                             '┐'
                         };
-                        let pos = cell_pos(cc, rr);
-                        self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
-                        self.push_glyph(box_ch, pos, cell_size, 0.0, 0.11, branch_fg, 0.0);
+
+                        // Multi-cell tapering thickness for primary and secondary boughs
+                        let extra_offsets: &[(i32, i32)] = if is_tip || local_thick < 9.0 {
+                            &[(0, 0)]
+                        } else if local_thick < 18.0 {
+                            if dc >= dr {
+                                &[(0, 0), (0, 1)]
+                            } else {
+                                &[(0, 0), (1, 0)]
+                            }
+                        } else if dc >= dr {
+                            &[(0, -1), (0, 0), (0, 1)]
+                        } else {
+                            &[(-1, 0), (0, 0), (1, 0)]
+                        };
+
+                        for &(ox, oy) in extra_offsets {
+                            let tc = cc + ox;
+                            let tr = rr + oy;
+                            if tc < 0 || tc >= cols || tr < 0 || tr >= rows {
+                                continue;
+                            }
+                            let pos = cell_pos(tc, tr);
+                            self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
+                            let ch = if ox == 0 && oy == 0 { box_ch } else { '█' };
+                            self.push_glyph(ch, pos, cell_size, 0.0, 0.11, branch_fg, 0.0);
+                        }
 
                         // Moss & lichen on shaded lower contours of older branches
                         if branch.depth <= 2 && (s as u32).is_multiple_of(4) && rr < ground_row - 1
                         {
+                            let moss_offset = if local_thick >= 9.0 && dc >= dr { 2 } else { 1 };
                             let moss_col = [0.28, 0.72, 0.36, 0.75];
-                            let moss_pos = cell_pos(cc, (rr + 1).min(rows - 1));
+                            let moss_pos = cell_pos(cc, (rr + moss_offset).min(rows - 1));
                             self.push_glyph('░', moss_pos, cell_size, 0.0, 0.095, moss_col, 0.0);
                         }
                     }

@@ -9,7 +9,7 @@ pub const WORLD_STATE_FILE_NAME: &str = "rookery_world.json";
 /// Tuned so that after camera succession pans to the new tree, approximately ~35% of the
 /// previous mature tree's eastern canopy and boughs remain gracefully visible framing the left viewport,
 /// forming an unbroken, continuous woodland canopy.
-pub const FOREST_TREE_SPACING: f32 = 580.0;
+pub const FOREST_TREE_SPACING: f32 = 540.0;
 
 /// Deterministic 64-bit XorShift PRNG for reproducible world generation and growth.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -475,6 +475,9 @@ pub enum TreeSpecies {
     JapaneseMaple,
     SilverBirch,
     GreatBaobab,
+    GiantRedwood,
+    CherryBlossom,
+    AncientBanyan,
 }
 
 impl TreeSpecies {
@@ -486,6 +489,9 @@ impl TreeSpecies {
             Self::JapaneseMaple => "Japanese Maple",
             Self::SilverBirch => "Silver Birch",
             Self::GreatBaobab => "Great Baobab",
+            Self::GiantRedwood => "Giant Redwood",
+            Self::CherryBlossom => "Cherry Blossom",
+            Self::AncientBanyan => "Ancient Banyan",
         }
     }
 
@@ -497,6 +503,9 @@ impl TreeSpecies {
             Self::JapaneseMaple,
             Self::SilverBirch,
             Self::GreatBaobab,
+            Self::GiantRedwood,
+            Self::CherryBlossom,
+            Self::AncientBanyan,
         ]
     }
 
@@ -507,7 +516,10 @@ impl TreeSpecies {
             Self::AlpinePine => Self::JapaneseMaple,
             Self::JapaneseMaple => Self::SilverBirch,
             Self::SilverBirch => Self::GreatBaobab,
-            Self::GreatBaobab => Self::AncientOak,
+            Self::GreatBaobab => Self::GiantRedwood,
+            Self::GiantRedwood => Self::CherryBlossom,
+            Self::CherryBlossom => Self::AncientBanyan,
+            Self::AncientBanyan => Self::AncientOak,
         }
     }
 
@@ -519,6 +531,9 @@ impl TreeSpecies {
             Self::JapaneseMaple => 36,
             Self::SilverBirch => 40,
             Self::GreatBaobab => 38,
+            Self::GiantRedwood => 46,
+            Self::CherryBlossom => 38,
+            Self::AncientBanyan => 44,
         }
     }
 
@@ -530,6 +545,9 @@ impl TreeSpecies {
             "japanesemaple" | "maple" => Some(Self::JapaneseMaple),
             "silverbirch" | "birch" => Some(Self::SilverBirch),
             "greatbaobab" | "baobab" => Some(Self::GreatBaobab),
+            "giantredwood" | "redwood" | "sequoia" => Some(Self::GiantRedwood),
+            "cherryblossom" | "cherry" | "sakura" => Some(Self::CherryBlossom),
+            "ancientbanyan" | "banyan" => Some(Self::AncientBanyan),
             _ => None,
         }
     }
@@ -542,6 +560,9 @@ impl TreeSpecies {
             Self::JapaneseMaple => "japanese_maple",
             Self::SilverBirch => "silver_birch",
             Self::GreatBaobab => "great_baobab",
+            Self::GiantRedwood => "giant_redwood",
+            Self::CherryBlossom => "cherry_blossom",
+            Self::AncientBanyan => "ancient_banyan",
         }
     }
 }

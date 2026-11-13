@@ -2,7 +2,367 @@
 
 use super::*;
 
+/// Species-specific architectural proportions for procedural tree growth.
+struct SpeciesProfile {
+    trunk_total_len: f32,
+    base_thickness: f32,
+    trunk_curve_amp: f32,
+    root_len: (f32, f32),
+    root_thick: f32,
+    has_secondary_roots: bool,
+}
+
+impl SpeciesProfile {
+    fn for_species(species: TreeSpecies) -> Self {
+        match species {
+            TreeSpecies::GiantRedwood => Self {
+                trunk_total_len: 630.0,
+                base_thickness: 54.0,
+                trunk_curve_amp: 0.03,
+                root_len: (38.0, 56.0),
+                root_thick: 16.0,
+                has_secondary_roots: true,
+            },
+            TreeSpecies::AlpinePine => Self {
+                trunk_total_len: 580.0,
+                base_thickness: 28.0,
+                trunk_curve_amp: 0.04,
+                root_len: (24.0, 38.0),
+                root_thick: 10.0,
+                has_secondary_roots: false,
+            },
+            TreeSpecies::SilverBirch => Self {
+                trunk_total_len: 490.0,
+                base_thickness: 20.0,
+                trunk_curve_amp: 0.16,
+                root_len: (20.0, 32.0),
+                root_thick: 8.0,
+                has_secondary_roots: false,
+            },
+            TreeSpecies::AncientOak => Self {
+                trunk_total_len: 330.0,
+                base_thickness: 42.0,
+                trunk_curve_amp: 0.14,
+                root_len: (34.0, 52.0),
+                root_thick: 14.0,
+                has_secondary_roots: true,
+            },
+            TreeSpecies::GreatBaobab => Self {
+                trunk_total_len: 340.0,
+                base_thickness: 66.0,
+                trunk_curve_amp: 0.07,
+                root_len: (38.0, 58.0),
+                root_thick: 18.0,
+                has_secondary_roots: true,
+            },
+            TreeSpecies::AncientBanyan => Self {
+                trunk_total_len: 310.0,
+                base_thickness: 44.0,
+                trunk_curve_amp: 0.15,
+                root_len: (36.0, 54.0),
+                root_thick: 14.0,
+                has_secondary_roots: true,
+            },
+            TreeSpecies::WeepingWillow => Self {
+                trunk_total_len: 290.0,
+                base_thickness: 30.0,
+                trunk_curve_amp: 0.14,
+                root_len: (28.0, 44.0),
+                root_thick: 10.0,
+                has_secondary_roots: true,
+            },
+            TreeSpecies::CherryBlossom => Self {
+                trunk_total_len: 280.0,
+                base_thickness: 26.0,
+                trunk_curve_amp: 0.20,
+                root_len: (24.0, 38.0),
+                root_thick: 9.0,
+                has_secondary_roots: false,
+            },
+            TreeSpecies::JapaneseMaple => Self {
+                trunk_total_len: 260.0,
+                base_thickness: 24.0,
+                trunk_curve_amp: 0.22,
+                root_len: (22.0, 36.0),
+                root_thick: 9.0,
+                has_secondary_roots: false,
+            },
+        }
+    }
+}
+
 impl WorldState {
+    /// Keep child branches/segments anchored to a parent branch's tip when it extends.
+    fn sync_trunk_segment_children(&mut self, parent_id: u32, new_tip: [f32; 2]) {
+        let mut child_updates: Vec<(u32, [f32; 2])> = Vec::new();
+        for b in &mut self.branches {
+            if b.parent_id == Some(parent_id) && b.depth == 0 {
+                b.start = new_tip;
+                b.end = b.current_end();
+                child_updates.push((b.id, b.end));
+            }
+        }
+        for (cid, tip) in child_updates {
+            self.sync_trunk_segment_children(cid, tip);
+        }
+    }
+
+    /// Generate species-specific foliage buds for a canopy branch.
+    fn generate_foliage_for_branch(
+        &mut self,
+        species: TreeSpecies,
+        depth: u32,
+        mature_now: bool,
+    ) -> Vec<FoliageBud> {
+        let mut foliage = Vec::new();
+        let leaf_count = match depth {
+            1 => self.rng.range_i32(4, 7) as usize,
+            2 => self.rng.range_i32(6, 11) as usize,
+            _ => self.rng.range_i32(8, 14) as usize,
+        };
+        let chars: &[u8] = match species {
+            TreeSpecies::AlpinePine | TreeSpecies::GiantRedwood => b"^*+^#",
+            TreeSpecies::WeepingWillow => b"|~;:,",
+            TreeSpecies::JapaneseMaple => b"*@&#",
+            TreeSpecies::CherryBlossom => b"*@o&#",
+            TreeSpecies::SilverBirch => b"\"'`*",
+            TreeSpecies::AncientBanyan => b"%&@o#",
+            _ => b"*%&@o#",
+        };
+
+        for _ in 0..leaf_count {
+            let char_code = chars[self.rng.range_i32(0, chars.len() as i32) as usize];
+            let color_idx = match species {
+                TreeSpecies::JapaneseMaple => self.rng.range_i32(2, 4) as u8,
+                TreeSpecies::CherryBlossom => {
+                    if self.rng.f32() < 0.80 {
+                        3 // Blossom pink
+                    } else {
+                        0
+                    }
+                }
+                TreeSpecies::SilverBirch => {
+                    if self.rng.f32() > 0.5 {
+                        1
+                    } else {
+                        2
+                    }
+                }
+                _ => self.rng.range_i32(0, 3) as u8,
+            };
+            let init_bloom = if mature_now { 0.85 } else { 0.0 };
+            foliage.push(FoliageBud {
+                offset_along: self.rng.range(0.25, 1.0),
+                lateral_offset: self.rng.range(-14.0, 14.0),
+                char_code,
+                color_idx,
+                scale: self.rng.range(0.9, 1.3),
+                bloom: init_bloom,
+            });
+        }
+        foliage
+    }
+
+    /// Compute species-appropriate angle and compact, realistic length for a canopy branch.
+    #[allow(clippy::too_many_arguments)]
+    fn compute_branch_geometry(
+        &mut self,
+        species: TreeSpecies,
+        depth: u32,
+        p_angle: f32,
+        p_len: f32,
+        attach_pos: [f32; 2],
+        trunk_total_len: f32,
+        branch_sign: f32,
+        slot_idx: usize,
+    ) -> (f32, f32) {
+        match species {
+            TreeSpecies::AlpinePine => {
+                if depth == 1 {
+                    let a = branch_sign * self.rng.range(1.18, 1.42);
+                    let dist_from_base = (750.0 - attach_pos[1]).max(10.0);
+                    let h_factor = 1.0 - (dist_from_base / trunk_total_len).clamp(0.0, 0.80);
+                    let l = (105.0 * h_factor).clamp(32.0, 105.0);
+                    (a, l)
+                } else {
+                    let a = (p_angle + branch_sign * self.rng.range(0.18, 0.42)).clamp(-1.48, 1.48);
+                    let l = (p_len * 0.52).clamp(20.0, 48.0);
+                    (a, l)
+                }
+            }
+            TreeSpecies::GiantRedwood => {
+                if depth == 1 {
+                    // Slight downward droop on massive high-altitude boughs
+                    let a = branch_sign * self.rng.range(1.28, 1.62);
+                    let dist_from_base = (750.0 - attach_pos[1]).max(10.0);
+                    let h_factor = 1.0 - (dist_from_base / trunk_total_len).clamp(0.0, 0.72);
+                    let l = (95.0 * h_factor).clamp(34.0, 95.0);
+                    (a, l)
+                } else {
+                    let a = (p_angle + branch_sign * self.rng.range(0.15, 0.38)).clamp(-1.68, 1.68);
+                    let l = (p_len * 0.55).clamp(22.0, 50.0);
+                    (a, l)
+                }
+            }
+            TreeSpecies::WeepingWillow => {
+                if depth <= 2 {
+                    let a = if depth == 1 {
+                        branch_sign * self.rng.range(0.38, 0.88)
+                    } else {
+                        (p_angle + branch_sign * self.rng.range(0.18, 0.45)).clamp(-1.15, 1.15)
+                    };
+                    let l = if depth == 1 {
+                        self.rng.range(72.0, 108.0)
+                    } else {
+                        self.rng.range(45.0, 74.0)
+                    };
+                    (a, l)
+                } else {
+                    // Downward weeping cascade, clamped safely above the ground
+                    let a = branch_sign * self.rng.range(2.25, 2.85);
+                    let raw_l = self.rng.range(65.0, 115.0);
+                    let max_down_len = (715.0 - attach_pos[1]).max(20.0);
+                    (a, raw_l.min(max_down_len))
+                }
+            }
+            TreeSpecies::JapaneseMaple => {
+                let a = if depth == 1 {
+                    branch_sign * self.rng.range(0.45, 0.98)
+                } else {
+                    let zig = if depth.is_multiple_of(2) { 0.48 } else { -0.48 };
+                    (p_angle + zig * branch_sign + self.rng.range(-0.15, 0.15)).clamp(-1.30, 1.30)
+                };
+                let l = match depth {
+                    1 => self.rng.range(65.0, 100.0),
+                    2 => self.rng.range(44.0, 70.0),
+                    _ => self.rng.range(28.0, 48.0),
+                };
+                (a, l)
+            }
+            TreeSpecies::CherryBlossom => {
+                let a = if depth == 1 {
+                    branch_sign * self.rng.range(0.48, 1.05)
+                } else {
+                    (p_angle + branch_sign * self.rng.range(0.15, 0.42)).clamp(-1.35, 1.35)
+                };
+                let l = match depth {
+                    1 => self.rng.range(70.0, 110.0),
+                    2 => self.rng.range(45.0, 75.0),
+                    _ => self.rng.range(30.0, 50.0),
+                };
+                (a, l)
+            }
+            TreeSpecies::SilverBirch => {
+                let a = if depth == 1 {
+                    branch_sign * self.rng.range(0.24, 0.58)
+                } else {
+                    (p_angle + branch_sign * self.rng.range(0.15, 0.35)).clamp(-0.88, 0.88)
+                };
+                let l = if depth == 1 {
+                    self.rng.range(55.0, 85.0)
+                } else {
+                    self.rng.range(35.0, 58.0)
+                };
+                (a, l)
+            }
+            TreeSpecies::GreatBaobab => {
+                let a = if depth == 1 {
+                    let spread = [-1.15, 1.15, -0.62, 0.62];
+                    let base_a = spread[slot_idx % spread.len()];
+                    base_a + self.rng.range(-0.15, 0.15)
+                } else {
+                    (p_angle + branch_sign * self.rng.range(0.15, 0.40)).clamp(-1.35, 1.35)
+                };
+                let l = if depth == 1 {
+                    self.rng.range(70.0, 112.0)
+                } else {
+                    self.rng.range(40.0, 66.0)
+                };
+                (a, l)
+            }
+            TreeSpecies::AncientBanyan => {
+                let a = if depth == 1 {
+                    branch_sign * self.rng.range(0.85, 1.32)
+                } else {
+                    (p_angle + branch_sign * self.rng.range(0.18, 0.42)).clamp(-1.38, 1.38)
+                };
+                let l = match depth {
+                    1 => self.rng.range(84.0, 128.0),
+                    2 => self.rng.range(46.0, 74.0),
+                    _ => self.rng.range(30.0, 50.0),
+                };
+                (a, l)
+            }
+            TreeSpecies::AncientOak => {
+                let a = if depth == 1 {
+                    branch_sign * self.rng.range(0.38, 0.92)
+                } else {
+                    (p_angle + branch_sign * self.rng.range(0.20, 0.50)).clamp(-1.28, 1.28)
+                };
+                let l = match depth {
+                    1 => self.rng.range(75.0, 120.0),
+                    2 => self.rng.range(48.0, 80.0),
+                    _ => self.rng.range(30.0, 52.0),
+                };
+                (a, l)
+            }
+        }
+    }
+
+    /// Spawn a single canopy branch on `parent_id`.
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_canopy_branch(
+        &mut self,
+        species: TreeSpecies,
+        parent_id: u32,
+        attach_pos: [f32; 2],
+        depth: u32,
+        p_angle: f32,
+        p_len: f32,
+        p_thick: f32,
+        trunk_total_len: f32,
+        branch_sign: f32,
+        slot_idx: usize,
+        mature_now: bool,
+    ) {
+        self.next_id += 1;
+        let id = self.next_id;
+        let (angle, target_len) = self.compute_branch_geometry(
+            species,
+            depth,
+            p_angle,
+            p_len,
+            attach_pos,
+            trunk_total_len,
+            branch_sign,
+            slot_idx,
+        );
+        let thickness = (p_thick * 0.68).max(3.0);
+        let foliage = self.generate_foliage_for_branch(species, depth, mature_now);
+        let init_progress = if mature_now { 1.0 } else { 0.04 };
+
+        self.branches.push(Branch {
+            id,
+            parent_id: Some(parent_id),
+            depth,
+            start: attach_pos,
+            end: [
+                attach_pos[0] + angle.sin() * target_len,
+                attach_pos[1] - angle.cos() * target_len,
+            ],
+            angle,
+            length: target_len,
+            target_length: target_len,
+            thickness,
+            growth_progress: init_progress,
+            children_spawned: false,
+            has_nest: false,
+            sway_factor: (depth as f32 * 0.12).min(0.65),
+            is_root: false,
+            foliage,
+        });
+    }
+
     /// Plant a brand-new sapling of a specific species at `base_x`.
     pub fn plant_new_sapling(&mut self, base_x: f32, species: TreeSpecies) -> u32 {
         self.next_id += 1;
@@ -59,18 +419,18 @@ impl WorldState {
 
     /// Collect all branch IDs descended from `root_id` (including `root_id`).
     pub fn tree_branch_ids(&self, root_id: u32) -> Vec<u32> {
-        let mut tree_branch_ids = vec![root_id];
-        let mut idx = 0;
-        while idx < tree_branch_ids.len() {
-            let pid = tree_branch_ids[idx];
-            for b in &self.branches {
-                if b.parent_id == Some(pid) && !tree_branch_ids.contains(&b.id) {
-                    tree_branch_ids.push(b.id);
-                }
+        let mut sorted = vec![root_id];
+        let mut out = vec![root_id];
+        for b in &self.branches {
+            if let Some(pid) = b.parent_id
+                && sorted.binary_search(&pid).is_ok()
+                && let Err(pos) = sorted.binary_search(&b.id)
+            {
+                sorted.insert(pos, b.id);
+                out.push(b.id);
             }
-            idx += 1;
         }
-        tree_branch_ids
+        out
     }
 
     /// Discrete growth engine: fires every 5-10 seconds to visibly grow a new element on the active tree.
@@ -113,382 +473,374 @@ impl WorldState {
         let max_steps = tree.target_growth_steps;
         let is_now_mature = step >= max_steps;
 
-        // Collect all branches currently belonging to this tree
-        let tree_branch_ids = self.tree_branch_ids(root_id);
+        let mature_now = !auto_succession || is_now_mature;
+        let profile = SpeciesProfile::for_species(species);
 
-        // 1. Stage 1 (Steps 1..18): Progressive Trunk Ascent & Buttress Roots
-        // Heights scaled up significantly to command ~5/6ths of screen height (ground at y=750.0)
-        let target_trunk_len = match species {
-            TreeSpecies::AlpinePine => 600.0,
-            TreeSpecies::SilverBirch => 540.0,
-            TreeSpecies::AncientOak => 330.0,
-            TreeSpecies::GreatBaobab => 340.0,
-            TreeSpecies::WeepingWillow => 290.0,
-            TreeSpecies::JapaneseMaple => 260.0,
-        };
-        let target_thickness = match species {
-            TreeSpecies::GreatBaobab => 54.0,
-            TreeSpecies::AncientOak => 36.0,
-            TreeSpecies::AlpinePine => 22.0,
-            TreeSpecies::WeepingWillow => 24.0,
-            TreeSpecies::JapaneseMaple => 22.0,
-            TreeSpecies::SilverBirch => 18.0,
-        };
+        // Collect all branches currently belonging to this tree in O(1) lookup set
+        let mut tree_set: std::collections::HashSet<u32> =
+            self.tree_branch_ids(root_id).into_iter().collect();
 
+        // 1. Stage 1 (Steps 1..18): Segmented, Curving Trunk Ascent & 2.5D Root Tendrils
         if step <= 18 {
-            let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
-            let target_step_len = 18.0 + (target_trunk_len - 18.0) * frac;
-            let target_step_thick = 4.0 + (target_thickness - 4.0) * frac;
+            // Build a 5-segment tapering, subtly curving trunk
+            let seg_len = profile.trunk_total_len / 5.0;
+            let spawn_steps = [1u32, 4, 7, 11, 15];
+            let trunk_seg_ids: Vec<u32> = self
+                .branches
+                .iter()
+                .filter(|b| tree_set.contains(&b.id) && b.depth == 0 && !b.is_root)
+                .map(|b| b.id)
+                .collect();
 
-            if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
-                trunk.target_length = target_step_len;
-                if !auto_succession || is_now_mature {
-                    trunk.length = target_step_len;
-                    trunk.thickness = target_step_thick;
-                    trunk.end = trunk.current_end();
+            // Spawn the next trunk segment when reaching a milestone step
+            if let Some(seg_idx) = spawn_steps.iter().position(|&s| s == step)
+                && seg_idx > 0
+                && trunk_seg_ids.len() <= seg_idx
+                && let Some(&prev_seg_id) = trunk_seg_ids.last()
+                && let Some((prev_tip, prev_angle, prev_thick)) = self
+                    .branches
+                    .iter()
+                    .find(|b| b.id == prev_seg_id)
+                    .map(|b| (b.current_end(), b.angle, b.thickness))
+            {
+                // Alternate gentle S-curve bias so the crown stays balanced over the root collar
+                let curve_dir = if seg_idx % 2 == 1 { 1.0 } else { -1.0 };
+                let lean = if self.rng.bool_with_prob(0.7) {
+                    curve_dir
+                } else {
+                    -curve_dir
+                };
+                let delta = lean * self.rng.range(0.35, 1.0) * profile.trunk_curve_amp;
+                let seg_angle = (prev_angle + delta).clamp(-0.26, 0.26);
+                let seg_thick = (prev_thick * 0.84).max(8.0);
+                self.next_id += 1;
+                let new_seg_id = self.next_id;
+                let init_len = if mature_now { seg_len } else { 10.0 };
+                let init_prog = if mature_now { 1.0 } else { 0.15 };
+                self.branches.push(Branch {
+                    id: new_seg_id,
+                    parent_id: Some(prev_seg_id),
+                    depth: 0,
+                    start: prev_tip,
+                    end: [
+                        prev_tip[0] + seg_angle.sin() * init_len,
+                        prev_tip[1] - seg_angle.cos() * init_len,
+                    ],
+                    angle: seg_angle,
+                    length: init_len,
+                    target_length: seg_len,
+                    thickness: seg_thick,
+                    growth_progress: init_prog,
+                    children_spawned: false,
+                    has_nest: false,
+                    sway_factor: (0.04 + seg_idx as f32 * 0.025).min(0.16),
+                    is_root: false,
+                    foliage: Vec::new(),
+                });
+                tree_set.insert(new_seg_id);
+            }
+
+            // Update target lengths and thicknesses of all existing trunk segments in one pass
+            let trunk_frac = (step as f32 / 18.0).clamp(0.0, 1.0);
+            let mut seg_idx = 0usize;
+            let mut mature_tips: Vec<(u32, [f32; 2])> = Vec::new();
+            for seg in &mut self.branches {
+                if tree_set.contains(&seg.id) && seg.depth == 0 && !seg.is_root {
+                    let taper = (1.0 - 0.16 * seg_idx as f32).max(0.28);
+                    let target_seg_thick =
+                        (4.0 + (profile.base_thickness - 4.0) * trunk_frac) * taper;
+                    let seg_target_len = if seg_idx == 0 {
+                        18.0 + (seg_len - 18.0) * (step as f32 / 4.0).clamp(0.0, 1.0)
+                    } else {
+                        seg_len
+                    };
+                    seg.target_length = seg_target_len;
+                    if mature_now {
+                        seg.length = seg_target_len;
+                        seg.thickness = target_seg_thick;
+                        seg.growth_progress = 1.0;
+                        seg.end = seg.current_end();
+                        mature_tips.push((seg.id, seg.end));
+                    }
+                    seg_idx += 1;
+                }
+            }
+            for (sid, tip) in mature_tips {
+                self.sync_trunk_segment_children(sid, tip);
+            }
+
+            // Spawn balanced left + right 2.5D root tendrils at steps 2, 4, 6
+            if step == 2 || step == 4 || step == 6 {
+                let collar_offset = (profile.base_thickness * 0.16).min(8.0);
+                let init_progress = if mature_now { 1.0 } else { 0.08 };
+                for &flare_dir in &[-1.0f32, 1.0f32] {
+                    // Angle > PI/2 (1.57) so roots extend outward AND downward into 2.5D ground (y > 750)
+                    let root_angle = flare_dir * self.rng.range(1.78, 2.28);
+                    let root_len = self.rng.range(profile.root_len.0, profile.root_len.1);
+                    let start_pt = [base_x + flare_dir * collar_offset, 750.0];
+                    self.next_id += 1;
+                    let rid = self.next_id;
+                    self.branches.push(Branch {
+                        id: rid,
+                        parent_id: Some(root_id),
+                        depth: 1,
+                        start: start_pt,
+                        end: [
+                            start_pt[0] + root_angle.sin() * root_len,
+                            start_pt[1] - root_angle.cos() * root_len,
+                        ],
+                        angle: root_angle,
+                        length: root_len,
+                        target_length: root_len,
+                        thickness: profile.root_thick,
+                        growth_progress: init_progress,
+                        children_spawned: true,
+                        has_nest: false,
+                        sway_factor: 0.0,
+                        is_root: true,
+                        foliage: Vec::new(),
+                    });
+                    tree_set.insert(rid);
                 }
             }
 
-            // At step 3 & 5: flare buttress roots at the ground
-            if step == 3 || step == 5 || step == 7 {
-                let flare_dir = if step.is_multiple_of(2) { 1.0 } else { -1.0 };
-                let root_angle = flare_dir * self.rng.range(1.15, 1.45);
-                let root_len = match species {
-                    TreeSpecies::GreatBaobab => self.rng.range(38.0, 68.0),
-                    TreeSpecies::AncientOak => self.rng.range(32.0, 58.0),
-                    _ => self.rng.range(22.0, 42.0),
-                };
-                let root_thick = match species {
-                    TreeSpecies::GreatBaobab => 16.0,
-                    TreeSpecies::AncientOak => 12.0,
-                    _ => 8.0,
-                };
-                self.next_id += 1;
-                let init_progress = if !auto_succession || is_now_mature {
-                    1.0
-                } else {
-                    0.05
-                };
-                self.branches.push(Branch {
-                    id: self.next_id,
-                    parent_id: Some(root_id),
-                    depth: 1,
-                    start: [base_x, 750.0],
-                    end: [
-                        base_x + root_angle.sin() * root_len,
-                        750.0 - root_angle.cos() * root_len,
-                    ],
-                    angle: root_angle,
-                    length: root_len,
-                    target_length: root_len,
-                    thickness: root_thick,
-                    growth_progress: init_progress,
-                    children_spawned: true,
-                    has_nest: false,
-                    sway_factor: 0.0,
-                    is_root: true,
-                    foliage: Vec::new(),
-                });
+            // Secondary branching root tendrils at step 7 for heavy-rooted species
+            if step == 7 && profile.has_secondary_roots {
+                let primary_roots: Vec<(u32, [f32; 2], f32, f32)> = self
+                    .branches
+                    .iter()
+                    .filter(|b| b.is_root && b.depth == 1 && tree_set.contains(&b.id))
+                    .take(4)
+                    .map(|b| (b.id, b.end, b.angle, b.thickness))
+                    .collect();
+                let init_progress = if mature_now { 1.0 } else { 0.08 };
+                for (r_id, r_end, r_angle, r_thick) in primary_roots {
+                    let sign = if r_angle < 0.0 { -1.0 } else { 1.0 };
+                    let sub_angle =
+                        (r_angle + sign * self.rng.range(-0.22, 0.25)).clamp(-2.45, 2.45);
+                    let sub_angle = if sub_angle.abs() < 1.72 {
+                        sign * 1.78
+                    } else {
+                        sub_angle
+                    };
+                    let sub_len = self.rng.range(18.0, 30.0);
+                    self.next_id += 1;
+                    let rid = self.next_id;
+                    self.branches.push(Branch {
+                        id: rid,
+                        parent_id: Some(r_id),
+                        depth: 2,
+                        start: r_end,
+                        end: [
+                            r_end[0] + sub_angle.sin() * sub_len,
+                            r_end[1] - sub_angle.cos() * sub_len,
+                        ],
+                        angle: sub_angle,
+                        length: sub_len,
+                        target_length: sub_len,
+                        thickness: (r_thick * 0.55).max(3.0),
+                        growth_progress: init_progress,
+                        children_spawned: true,
+                        has_nest: false,
+                        sway_factor: 0.0,
+                        is_root: true,
+                        foliage: Vec::new(),
+                    });
+                    tree_set.insert(rid);
+                }
             }
         }
 
-        // 2. Stage 2 (Steps 6..30): Primary Scaffold Limbs & Species Branching
-        if (6..=30).contains(&step) {
-            let mut candidates: Vec<u32> = tree_branch_ids
-                .iter()
-                .copied()
-                .filter(|&bid| {
-                    if let Some(b) = self.branches.iter().find(|b| b.id == bid) {
-                        !b.is_root && b.depth < 4
-                    } else {
-                        false
+        // 2. Stage 2 (Steps 5..32): Balanced Cohort Branching
+        if (5..=32).contains(&step) {
+            let mut trunk_segs = Vec::new();
+            let mut primary_boughs_count = 0usize;
+            for b in &self.branches {
+                if tree_set.contains(&b.id) && !b.is_root {
+                    if b.depth == 0 {
+                        trunk_segs.push(b.id);
+                    } else if b.depth == 1 {
+                        primary_boughs_count += 1;
                     }
-                })
-                .collect();
-
-            if candidates.is_empty() {
-                candidates.push(root_id);
+                }
             }
-
-            let is_pine = species == TreeSpecies::AlpinePine;
-            let primary_pine_whorls = self
-                .branches
-                .iter()
-                .filter(|b| b.parent_id == Some(root_id) && !b.is_root)
-                .count();
-
-            let parent_id = if is_pine && primary_pine_whorls < 12 && self.rng.f32() < 0.70 {
-                root_id
-            } else {
-                candidates[self.rng.range_i32(0, candidates.len() as i32) as usize]
+            let target_primary_boughs = match species {
+                TreeSpecies::AlpinePine | TreeSpecies::GiantRedwood => 12,
+                TreeSpecies::GreatBaobab => 6,
+                _ => 8,
             };
 
-            let parent_data = self
-                .branches
-                .iter()
-                .find(|b| b.id == parent_id)
-                .map(|b| (b.start, b.end, b.angle, b.depth, b.thickness, b.length));
+            let min_trunk_seg_for_boughs = match species {
+                TreeSpecies::AlpinePine => 1,
+                TreeSpecies::GiantRedwood => 2,
+                TreeSpecies::GreatBaobab => 3,
+                _ => 1,
+            };
 
-            if let Some((_p_start, p_end, p_angle, p_depth, p_thick, p_len)) = parent_data {
-                let depth = p_depth + 1;
-                let count = if depth == 1 {
-                    match species {
-                        TreeSpecies::AlpinePine => 2, // symmetrical horizontal whorl
-                        TreeSpecies::GreatBaobab => self.rng.range_i32(2, 4),
-                        _ => self.rng.range_i32(1, 3),
+            let spawn_primary = primary_boughs_count < target_primary_boughs
+                && trunk_segs.len() > min_trunk_seg_for_boughs
+                && (step % 2 == 1 || primary_boughs_count < 2);
+
+            if spawn_primary {
+                // Pick an eligible trunk segment (from lower-mid up to crown) in balanced progression
+                let tier_idx = (primary_boughs_count / 2)
+                    % (trunk_segs.len() - min_trunk_seg_for_boughs).max(1);
+                let parent_seg_id = trunk_segs[min_trunk_seg_for_boughs + tier_idx];
+                if let Some((p_angle, p_thick, p_len, attach_pt)) = self
+                    .branches
+                    .iter()
+                    .find(|b| b.id == parent_seg_id)
+                    .map(|b| {
+                        let t = self.rng.range(0.45, 0.95);
+                        (b.angle, b.thickness, b.length, b.point_at(t))
+                    })
+                {
+                    if let Some(p) = self.branches.iter_mut().find(|b| b.id == parent_seg_id) {
+                        p.children_spawned = true;
                     }
-                } else {
-                    1
-                };
-
-                let attach_pos = if parent_id == root_id {
-                    let t = match species {
-                        TreeSpecies::AlpinePine => {
-                            let tier_idx = (primary_pine_whorls / 2) % 7;
-                            0.20 + (tier_idx as f32) * 0.11
-                        }
-                        TreeSpecies::AncientOak => self.rng.range(0.40, 0.95),
-                        TreeSpecies::GreatBaobab => self.rng.range(0.72, 0.98),
-                        TreeSpecies::SilverBirch => self.rng.range(0.50, 0.95),
-                        _ => self.rng.range(0.40, 0.95),
-                    };
-                    if let Some(trunk) = self.branches.iter().find(|b| b.id == root_id) {
-                        trunk.point_at(t)
-                    } else {
-                        p_end
+                    // Spawn a balanced left & right pair of primary boughs simultaneously
+                    for (k, &sign) in [-1.0f32, 1.0f32].iter().enumerate() {
+                        self.spawn_canopy_branch(
+                            species,
+                            parent_seg_id,
+                            attach_pt,
+                            1,
+                            p_angle,
+                            p_len,
+                            p_thick,
+                            profile.trunk_total_len,
+                            sign,
+                            primary_boughs_count + k,
+                            mature_now,
+                        );
                     }
-                } else {
-                    p_end
-                };
-
-                if let Some(parent) = self.branches.iter_mut().find(|b| b.id == parent_id) {
-                    parent.children_spawned = true;
                 }
+            } else {
+                // Balanced secondary/tertiary expansion: prioritize lowest-depth branches that haven't sprouted yet
+                let mut parents: Vec<(u32, u32, [f32; 2], f32, f32, f32)> = self
+                    .branches
+                    .iter()
+                    .filter(|b| {
+                        !b.is_root
+                            && b.depth >= 1
+                            && b.depth < 3
+                            && !b.children_spawned
+                            && tree_set.contains(&b.id)
+                    })
+                    .map(|b| (b.id, b.depth, b.end, b.angle, b.length, b.thickness))
+                    .collect();
 
-                for k in 0..count {
+                // Sort by depth ascending so all depth-1 boughs fork before depth-2 twigs fork
+                parents.sort_by_key(|p| p.1);
+
+                let cohort_limit = 1.min(parents.len());
+                for (idx, (pid, p_depth, p_end, p_angle, p_len, p_thick)) in
+                    parents.into_iter().take(cohort_limit).enumerate()
+                {
+                    if let Some(p) = self.branches.iter_mut().find(|b| b.id == pid) {
+                        p.children_spawned = true;
+                    }
+                    let child_depth = p_depth + 1;
+                    // Spawn 2 balanced diverging sub-branches on each limb
+                    for (k, &sign) in [-1.0f32, 1.0f32].iter().enumerate() {
+                        self.spawn_canopy_branch(
+                            species,
+                            pid,
+                            p_end,
+                            child_depth,
+                            p_angle,
+                            p_len,
+                            p_thick,
+                            profile.trunk_total_len,
+                            sign,
+                            idx * 2 + k,
+                            mature_now,
+                        );
+                    }
+                }
+            }
+
+            // Ancient Banyan: aerial prop roots descending from primary horizontal boughs
+            if species == TreeSpecies::AncientBanyan && (22..=28).contains(&step) && step % 3 == 1 {
+                let banyan_boughs: Vec<(u32, [f32; 2])> = self
+                    .branches
+                    .iter()
+                    .filter(|b| !b.is_root && b.depth == 1 && tree_set.contains(&b.id))
+                    .map(|b| (b.id, b.point_at(0.70)))
+                    .collect();
+                let prop_count = self
+                    .branches
+                    .iter()
+                    .filter(|b| {
+                        b.is_root && b.parent_id != Some(root_id) && tree_set.contains(&b.id)
+                    })
+                    .count();
+                if let Some(&(bough_id, start_pt)) =
+                    banyan_boughs.get(prop_count % banyan_boughs.len().max(1))
+                    && start_pt[1] < 720.0
+                {
+                    let prop_len = (750.0 - start_pt[1]).max(30.0);
+                    let prop_angle = std::f32::consts::PI + self.rng.range(-0.06, 0.06);
                     self.next_id += 1;
-                    let id = self.next_id;
-
-                    let branch_sign = if count == 1 {
-                        if self.rng.f32() > 0.5 { 1.0 } else { -1.0 }
-                    } else if k % 2 == 0 {
-                        -1.0
-                    } else {
-                        1.0
-                    };
-
-                    let (angle, target_len) = match species {
-                        TreeSpecies::AlpinePine => {
-                            if depth == 1 {
-                                let a = branch_sign * self.rng.range(1.22, 1.45);
-                                let dist_from_trunk_base = (750.0 - attach_pos[1]).max(10.0);
-                                let h_factor = 1.0
-                                    - (dist_from_trunk_base / target_trunk_len).clamp(0.0, 0.78);
-                                let l = (210.0 * h_factor).clamp(55.0, 210.0);
-                                (a, l)
-                            } else {
-                                let a = (p_angle + branch_sign * self.rng.range(0.18, 0.40))
-                                    .clamp(-1.50, 1.50);
-                                let l = (p_len * 0.60).clamp(32.0, 85.0);
-                                (a, l)
-                            }
-                        }
-                        TreeSpecies::WeepingWillow => {
-                            if depth <= 2 {
-                                let a = if parent_id == root_id {
-                                    branch_sign * self.rng.range(0.30, 0.85)
-                                } else {
-                                    (p_angle + branch_sign * self.rng.range(0.15, 0.45))
-                                        .clamp(-1.10, 1.10)
-                                };
-                                let l = if depth == 1 {
-                                    self.rng.range(160.0, 240.0)
-                                } else {
-                                    self.rng.range(100.0, 160.0)
-                                };
-                                (a, l)
-                            } else {
-                                // Downward weeping cascade
-                                let a = branch_sign * self.rng.range(2.1, 2.8);
-                                let raw_l = self.rng.range(110.0, 180.0);
-                                // Ensure cascading branches never pierce the ground
-                                let max_down_len = (715.0 - attach_pos[1]).max(20.0);
-                                (a, raw_l.min(max_down_len))
-                            }
-                        }
-                        TreeSpecies::JapaneseMaple => {
-                            let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.42, 0.95)
-                            } else {
-                                let zig = if depth % 2 == 0 { 0.55 } else { -0.55 };
-                                (p_angle + zig * branch_sign + self.rng.range(-0.15, 0.15))
-                                    .clamp(-1.3, 1.3)
-                            };
-                            let l = if depth == 1 {
-                                self.rng.range(150.0, 230.0)
-                            } else if depth == 2 {
-                                self.rng.range(100.0, 160.0)
-                            } else {
-                                self.rng.range(65.0, 110.0)
-                            };
-                            (a, l)
-                        }
-                        TreeSpecies::SilverBirch => {
-                            let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.22, 0.60)
-                            } else {
-                                (p_angle + branch_sign * self.rng.range(0.15, 0.35))
-                                    .clamp(-0.85, 0.85)
-                            };
-                            let l = if depth == 1 {
-                                self.rng.range(130.0, 200.0)
-                            } else {
-                                self.rng.range(75.0, 130.0)
-                            };
-                            (a, l)
-                        }
-                        TreeSpecies::GreatBaobab => {
-                            let a = if parent_id == root_id {
-                                let spread = [-1.15, -0.65, 0.65, 1.15];
-                                let base_a = spread[(k as usize).min(spread.len() - 1)];
-                                base_a + self.rng.range(-0.18, 0.18)
-                            } else {
-                                (p_angle + branch_sign * self.rng.range(0.15, 0.40))
-                                    .clamp(-1.35, 1.35)
-                            };
-                            let l = if depth == 1 {
-                                self.rng.range(150.0, 240.0)
-                            } else {
-                                self.rng.range(80.0, 140.0)
-                            };
-                            (a, l)
-                        }
-                        TreeSpecies::AncientOak => {
-                            let a = if parent_id == root_id {
-                                branch_sign * self.rng.range(0.35, 0.90)
-                            } else {
-                                (p_angle + branch_sign * self.rng.range(0.20, 0.55))
-                                    .clamp(-1.25, 1.25)
-                            };
-                            let l = if depth == 1 {
-                                self.rng.range(170.0, 260.0)
-                            } else if depth == 2 {
-                                self.rng.range(110.0, 180.0)
-                            } else {
-                                self.rng.range(70.0, 120.0)
-                            };
-                            (a, l)
-                        }
-                    };
-
-                    let thickness = (p_thick * 0.72).max(2.5);
-
-                    // Generate species-specific foliage buds
-                    let mut foliage = Vec::new();
-                    let leaf_count = match depth {
-                        1 => self.rng.range_i32(4, 8) as usize,
-                        2 => self.rng.range_i32(6, 12) as usize,
-                        _ => self.rng.range_i32(8, 15) as usize,
-                    };
-                    let chars: &[u8] = match species {
-                        TreeSpecies::AlpinePine => b"^*+^#",
-                        TreeSpecies::WeepingWillow => b"|~;:,",
-                        TreeSpecies::JapaneseMaple => b"*@&#",
-                        TreeSpecies::SilverBirch => b"\"'`*",
-                        _ => b"*%&@o#",
-                    };
-
-                    for _ in 0..leaf_count {
-                        let char_code = chars[self.rng.range_i32(0, chars.len() as i32) as usize];
-                        let color_idx = match species {
-                            TreeSpecies::JapaneseMaple => self.rng.range_i32(2, 4) as u8,
-                            TreeSpecies::SilverBirch => {
-                                if self.rng.f32() > 0.5 {
-                                    1
-                                } else {
-                                    2
-                                }
-                            }
-                            _ => self.rng.range_i32(0, 3) as u8,
-                        };
-                        let init_bloom = if !auto_succession || is_now_mature {
-                            0.85
-                        } else {
-                            0.0
-                        };
-                        foliage.push(FoliageBud {
-                            offset_along: self.rng.range(0.25, 1.0),
-                            lateral_offset: self.rng.range(-16.0, 16.0),
-                            char_code,
-                            color_idx,
-                            scale: self.rng.range(0.9, 1.3),
-                            bloom: init_bloom,
-                        });
-                    }
-
-                    // Advance previous branches of this tree so discrete step calls progress
-                    for bid in &tree_branch_ids {
-                        if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid)
-                            && !b.is_root
-                            && b.id != root_id
-                        {
-                            b.growth_progress = (b.growth_progress + 0.35).min(1.0);
-                        }
-                    }
-
-                    let init_progress = if !auto_succession || is_now_mature {
-                        1.0
-                    } else {
-                        0.02
-                    };
-
                     self.branches.push(Branch {
-                        id,
-                        parent_id: Some(parent_id),
-                        depth,
-                        start: attach_pos,
+                        id: self.next_id,
+                        parent_id: Some(bough_id),
+                        depth: 2,
+                        start: start_pt,
                         end: [
-                            attach_pos[0] + angle.sin() * target_len,
-                            attach_pos[1] - angle.cos() * target_len,
+                            start_pt[0] + prop_angle.sin() * prop_len,
+                            start_pt[1] - prop_angle.cos() * prop_len,
                         ],
-                        angle,
-                        length: target_len,
-                        target_length: target_len,
-                        thickness,
-                        growth_progress: init_progress,
-                        children_spawned: false,
+                        angle: prop_angle,
+                        length: prop_len,
+                        target_length: prop_len,
+                        thickness: 6.0,
+                        growth_progress: if mature_now { 1.0 } else { 0.05 },
+                        children_spawned: true,
                         has_nest: false,
-                        sway_factor: (depth as f32 * 0.12).min(0.65),
-                        is_root: false,
-                        foliage,
+                        sway_factor: 0.02,
+                        is_root: true,
+                        foliage: Vec::new(),
                     });
                 }
             }
+
+            // Advance existing active branches together so the whole crown grows harmoniously
+            for b in &mut self.branches {
+                if tree_set.contains(&b.id) && !b.is_root && b.depth > 0 {
+                    b.growth_progress = (b.growth_progress + 0.28).min(1.0);
+                }
+            }
         }
-        // 3. Stage 3 (Steps 31..max_steps): Foliage Bloom, Densification & Maturation
-        if step > 30 {
-            for bid in &tree_branch_ids {
-                if let Some(b) = self.branches.iter_mut().find(|b| b.id == *bid) {
-                    if !auto_succession || is_now_mature {
-                        for bud in &mut b.foliage {
-                            bud.bloom = 1.0;
-                        }
+
+        // 3. Stage 3 (Steps 33..max_steps): Foliage Bloom, Densification & Maturation
+        if step > 32 {
+            for b in &mut self.branches {
+                if !tree_set.contains(&b.id) {
+                    continue;
+                }
+                if mature_now {
+                    for bud in &mut b.foliage {
+                        bud.bloom = 1.0;
                     }
-                    if !b.is_root && b.depth >= 2 && b.foliage.len() < 16 {
-                        let init_bloom = if !auto_succession || is_now_mature {
-                            1.0
-                        } else {
-                            0.15
-                        };
-                        b.foliage.push(FoliageBud {
-                            offset_along: self.rng.range(0.35, 0.98),
-                            lateral_offset: self.rng.range(-15.0, 15.0),
-                            char_code: b'*',
-                            color_idx: 0,
-                            scale: 1.1,
-                            bloom: init_bloom,
-                        });
-                    }
+                }
+                if !b.is_root && b.depth >= 2 && b.foliage.len() < 16 {
+                    let init_bloom = if mature_now { 1.0 } else { 0.15 };
+                    let color_idx = if species == TreeSpecies::CherryBlossom {
+                        3
+                    } else if species == TreeSpecies::JapaneseMaple {
+                        self.rng.range_i32(2, 4) as u8
+                    } else {
+                        0
+                    };
+                    b.foliage.push(FoliageBud {
+                        offset_along: self.rng.range(0.35, 0.98),
+                        lateral_offset: self.rng.range(-14.0, 14.0),
+                        char_code: b'*',
+                        color_idx,
+                        scale: 1.1,
+                        bloom: init_bloom,
+                    });
                 }
             }
         }
@@ -799,44 +1151,55 @@ impl WorldState {
         }
 
         // 3. Fine-Grained Cell-by-Cell Procedural Growth Simulation
-        // A. Trunk upward ascent & radial thickening
-        for tree in &self.trees {
-            if tree.is_mature {
-                continue;
-            }
-            let root_id = tree.root_branch_id;
-            let target_thickness = match tree.species {
-                TreeSpecies::GreatBaobab => 54.0,
-                TreeSpecies::AncientOak => 36.0,
-                TreeSpecies::AlpinePine => 22.0,
-                TreeSpecies::WeepingWillow => 24.0,
-                TreeSpecies::JapaneseMaple => 22.0,
-                TreeSpecies::SilverBirch => 18.0,
-            };
-            let step = tree.growth_steps_completed;
-            let target_thick =
-                4.0 + (target_thickness - 4.0) * (step as f32 / 18.0).clamp(0.0, 1.0);
+        // A. Segmented trunk upward ascent & radial thickening
+        let active_trunks: Vec<(u32, TreeSpecies, u32)> = self
+            .trees
+            .iter()
+            .filter(|t| !t.is_mature)
+            .map(|t| (t.root_branch_id, t.species, t.growth_steps_completed))
+            .collect();
 
-            if let Some(trunk) = self.branches.iter_mut().find(|b| b.id == root_id) {
-                // Smooth trunk height extension
-                if trunk.length < trunk.target_length {
-                    let len_diff = trunk.target_length - trunk.length;
-                    let grow_step = (len_diff * 0.45).max(4.0) * effective_dt;
-                    trunk.length = (trunk.length + grow_step).min(trunk.target_length);
-                    trunk.end = trunk.current_end();
+        for (root_id, species, step) in active_trunks {
+            let profile = SpeciesProfile::for_species(species);
+            let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
+            let mut seg_ids = Vec::with_capacity(5);
+            for b in &self.branches {
+                if b.depth == 0
+                    && !b.is_root
+                    && (b.id == root_id || b.parent_id.is_some_and(|pid| seg_ids.contains(&pid)))
+                {
+                    seg_ids.push(b.id);
                 }
-                // Smooth trunk radial thickening
-                if trunk.thickness < target_thick {
-                    let thick_diff = target_thick - trunk.thickness;
-                    let thick_step = (thick_diff * 0.35).max(0.6) * effective_dt;
-                    trunk.thickness = (trunk.thickness + thick_step).min(target_thick);
+            }
+
+            for (idx, seg_id) in seg_ids.into_iter().enumerate() {
+                let taper = (1.0 - 0.16 * idx as f32).max(0.28);
+                let target_thick = (4.0 + (profile.base_thickness - 4.0) * frac) * taper;
+                let mut extended_tip = None;
+
+                if let Some(seg) = self.branches.iter_mut().find(|b| b.id == seg_id) {
+                    if seg.length < seg.target_length {
+                        let len_diff = seg.target_length - seg.length;
+                        let grow_step = (len_diff * 0.45).max(4.0) * effective_dt;
+                        seg.length = (seg.length + grow_step).min(seg.target_length);
+                        seg.end = seg.current_end();
+                        extended_tip = Some(seg.current_end());
+                    }
+                    if seg.thickness < target_thick {
+                        let thick_diff = target_thick - seg.thickness;
+                        let thick_step = (thick_diff * 0.35).max(0.6) * effective_dt;
+                        seg.thickness = (seg.thickness + thick_step).min(target_thick);
+                    }
+                }
+                if let Some(tip) = extended_tip {
+                    self.sync_trunk_segment_children(seg_id, tip);
                 }
             }
         }
 
         // B. Continuous glyph-by-glyph branch extension & bud swelling
-        let branch_grow_rate = 0.22 * effective_dt;
-        let bud_swell_rate = 0.16 * effective_dt;
+        let branch_grow_rate = 0.26 * effective_dt;
+        let bud_swell_rate = 0.20 * effective_dt;
 
         for b in &mut self.branches {
             if b.growth_progress < 1.0 {
@@ -858,7 +1221,9 @@ impl WorldState {
             let candidates: Vec<u32> = self
                 .branches
                 .iter()
-                .filter(|b| b.growth_progress >= 0.95 && (b.depth == 1 || b.depth == 2))
+                .filter(|b| {
+                    !b.is_root && b.growth_progress >= 0.95 && (b.depth == 1 || b.depth == 2)
+                })
                 .map(|b| b.id)
                 .collect();
             if !candidates.is_empty() {
@@ -882,7 +1247,7 @@ impl WorldState {
             let candidates: Vec<u32> = self
                 .branches
                 .iter()
-                .filter(|b| b.growth_progress >= 0.9 && b.depth == 1)
+                .filter(|b| !b.is_root && b.growth_progress >= 0.9 && b.depth == 1)
                 .map(|b| b.id)
                 .collect();
             if !candidates.is_empty() {
@@ -903,7 +1268,11 @@ impl WorldState {
                 .branches
                 .iter()
                 .filter(|b| {
-                    b.growth_progress >= 0.85 && b.depth >= 1 && b.depth <= 3 && !b.has_nest
+                    !b.is_root
+                        && b.growth_progress >= 0.85
+                        && b.depth >= 1
+                        && b.depth <= 3
+                        && !b.has_nest
                 })
                 .map(|b| b.id)
                 .collect();
@@ -944,8 +1313,8 @@ impl WorldState {
         let mut min_dist = max_radius;
 
         for b in &self.branches {
-            // Cannot prune trunk base (depth 0)
-            if b.depth == 0 {
+            // Cannot prune trunk segments (depth 0) or roots
+            if b.depth == 0 || b.is_root {
                 continue;
             }
             let mid = b.point_at(0.5);

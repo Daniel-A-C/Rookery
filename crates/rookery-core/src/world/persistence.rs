@@ -106,7 +106,9 @@ impl WorldState {
                         .map(|b| b.id)
                         .collect();
                     state.branches.retain(|b| {
-                        if let Some(pid) = b.parent_id {
+                        if !b.is_root
+                            && let Some(pid) = b.parent_id
+                        {
                             !root_ids.contains(&pid)
                         } else {
                             true

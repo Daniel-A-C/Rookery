@@ -73,7 +73,7 @@ impl WorldState {
                     start[1] + (end[1] - start[1]) * t,
                 ];
                 if let Some((c, r)) = world_to_grid(pt)
-                    && (r < ground_row || (b.is_root && r <= ground_row + 1))
+                    && (r < ground_row || (b.is_root && r <= (ground_row + 3).min(h - 1)))
                 {
                     let ch = if b.depth == 0 {
                         '║'

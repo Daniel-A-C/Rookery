@@ -253,15 +253,21 @@ fn palette_cycling_and_tree_species() {
     assert_eq!(world.active_palette, RookeryPalette::AutumnHearth);
     assert_eq!(world.aesthetic_style_name(), "Autumn Hearth");
 
-    // Verify all 6 real-tree species exist and cycle
+    // Verify all 9 real-tree species exist and cycle
     let species = TreeSpecies::all();
-    assert_eq!(species.len(), 6);
+    assert_eq!(species.len(), 9);
     assert_eq!(TreeSpecies::AncientOak.next(), TreeSpecies::WeepingWillow);
     assert_eq!(TreeSpecies::WeepingWillow.next(), TreeSpecies::AlpinePine);
     assert_eq!(TreeSpecies::AlpinePine.next(), TreeSpecies::JapaneseMaple);
     assert_eq!(TreeSpecies::JapaneseMaple.next(), TreeSpecies::SilverBirch);
     assert_eq!(TreeSpecies::SilverBirch.next(), TreeSpecies::GreatBaobab);
-    assert_eq!(TreeSpecies::GreatBaobab.next(), TreeSpecies::AncientOak);
+    assert_eq!(TreeSpecies::GreatBaobab.next(), TreeSpecies::GiantRedwood);
+    assert_eq!(TreeSpecies::GiantRedwood.next(), TreeSpecies::CherryBlossom);
+    assert_eq!(
+        TreeSpecies::CherryBlossom.next(),
+        TreeSpecies::AncientBanyan
+    );
+    assert_eq!(TreeSpecies::AncientBanyan.next(), TreeSpecies::AncientOak);
 
     // Verify sapling starts with 1 branch taking up only a few cells
     assert_eq!(world.branches.len(), 1);
@@ -345,9 +351,11 @@ fn test_all_species_tree_growth_and_geometry() {
             .map(|b| b.end[1])
             .fold(750.0f32, f32::min);
         let expected_max_y = match species {
-            TreeSpecies::WeepingWillow | TreeSpecies::JapaneseMaple | TreeSpecies::GreatBaobab => {
-                610.0
-            }
+            TreeSpecies::WeepingWillow
+            | TreeSpecies::JapaneseMaple
+            | TreeSpecies::GreatBaobab
+            | TreeSpecies::CherryBlossom
+            | TreeSpecies::AncientBanyan => 610.0,
             _ => 520.0,
         };
         assert!(
@@ -386,7 +394,7 @@ fn test_all_species_tree_growth_and_geometry() {
         if species == TreeSpecies::AlpinePine {
             let primary_starts: Vec<f32> = non_root_branches
                 .iter()
-                .filter(|b| b.parent_id == Some(root_id))
+                .filter(|b| b.depth == 1)
                 .map(|b| b.start[1])
                 .collect();
             let mut distinct_heights = primary_starts.clone();
@@ -398,6 +406,28 @@ fn test_all_species_tree_growth_and_geometry() {
                 distinct_heights
             );
         }
+
+        // 5. Balanced 2.5D ground roots on both left and right, extending downward (y > 750)
+        let root_branches: Vec<&Branch> = world
+            .branches
+            .iter()
+            .filter(|b| b.is_root && tree_0_branch_ids.contains(&b.id))
+            .collect();
+        assert!(
+            root_branches.iter().any(|b| b.end[0] < base_x - 5.0),
+            "{:?} must have left-spreading 2.5D roots",
+            species
+        );
+        assert!(
+            root_branches.iter().any(|b| b.end[0] > base_x + 5.0),
+            "{:?} must have right-spreading 2.5D roots",
+            species
+        );
+        assert!(
+            root_branches.iter().any(|b| b.end[1] > 750.0),
+            "{:?} must have roots extending downward into the 2.5D meadow",
+            species
+        );
     }
 }
 
@@ -609,7 +639,12 @@ fn test_generate_mature_showcase() {
     let mut world = WorldState::new(42);
     world.generate_mature_showcase(777);
 
-    assert_eq!(world.trees.len(), 6, "Must generate all 6 species");
+    assert_eq!(
+        world.trees.len(),
+        TreeSpecies::all().len(),
+        "Must generate all {} species",
+        TreeSpecies::all().len()
+    );
     for (i, &species) in TreeSpecies::all().iter().enumerate() {
         let tree = &world.trees[i];
         assert_eq!(tree.species, species);
@@ -618,7 +653,7 @@ fn test_generate_mature_showcase() {
     }
 
     let summaries = world.tree_summary_list();
-    assert_eq!(summaries.len(), 6);
+    assert_eq!(summaries.len(), TreeSpecies::all().len());
     for s in &summaries {
         assert!(s.is_mature);
         assert!(s.branch_count > 0);
