@@ -407,6 +407,27 @@ fn test_all_species_tree_growth_and_geometry() {
             );
         }
 
+        // 4b. All species must have primary boughs reaching the top trunk segment (no bare upper trunk)
+        let trunk_top_y = world
+            .branches
+            .iter()
+            .filter(|b| !b.is_root && b.depth == 0 && tree_0_branch_ids.contains(&b.id))
+            .map(|b| b.end[1])
+            .fold(750.0f32, f32::min);
+        let trunk_height = (750.0 - trunk_top_y).max(1.0);
+        let highest_primary_attach_y = non_root_branches
+            .iter()
+            .filter(|b| b.depth == 1)
+            .map(|b| b.start[1])
+            .fold(750.0f32, f32::min);
+        let top_attach_ratio = (750.0 - highest_primary_attach_y) / trunk_height;
+        assert!(
+            top_attach_ratio >= 0.80,
+            "{:?} upper trunk is bare: highest primary bough attaches at {:.1}% of trunk height (expected >= 80%)",
+            species,
+            top_attach_ratio * 100.0
+        );
+
         // 5. Balanced 2.5D ground roots on both left and right, extending downward (y > 750)
         let root_branches: Vec<&Branch> = world
             .branches

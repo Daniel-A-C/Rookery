@@ -677,21 +677,48 @@ impl WorldState {
                 _ => 1,
             };
 
+            let total_trunk_segs = 5usize;
+            let eligible_segs = (total_trunk_segs - min_trunk_seg_for_boughs).max(1);
+            let total_pairs = (target_primary_boughs / 2).max(1);
+            let pair_idx = primary_boughs_count / 2;
+            let target_seg_idx =
+                min_trunk_seg_for_boughs + (pair_idx * eligible_segs) / total_pairs;
+
+            let target_seg_ready = trunk_segs
+                .get(target_seg_idx)
+                .and_then(|&id| self.branches.iter().find(|b| b.id == id))
+                .is_some_and(|b| b.length >= b.target_length * 0.75);
+
             let spawn_primary = primary_boughs_count < target_primary_boughs
-                && trunk_segs.len() > min_trunk_seg_for_boughs
+                && target_seg_ready
                 && (step % 2 == 1 || primary_boughs_count < 2);
 
+            let top_seg_ready = trunk_segs
+                .get(total_trunk_segs - 1)
+                .and_then(|&id| self.branches.iter().find(|b| b.id == id))
+                .is_some_and(|b| b.length >= b.target_length * 0.75);
+            let spawn_crown_topper =
+                primary_boughs_count == target_primary_boughs && top_seg_ready && step % 2 == 1;
+
             if spawn_primary {
-                // Pick an eligible trunk segment (from lower-mid up to crown) in balanced progression
-                let tier_idx = (primary_boughs_count / 2)
-                    % (trunk_segs.len() - min_trunk_seg_for_boughs).max(1);
-                let parent_seg_id = trunk_segs[min_trunk_seg_for_boughs + tier_idx];
+                let parent_seg_id = trunk_segs[target_seg_idx];
+                let existing_on_seg = self
+                    .branches
+                    .iter()
+                    .filter(|b| !b.is_root && b.depth == 1 && b.parent_id == Some(parent_seg_id))
+                    .count();
                 if let Some((p_angle, p_thick, p_len, attach_pt)) = self
                     .branches
                     .iter()
                     .find(|b| b.id == parent_seg_id)
                     .map(|b| {
-                        let t = self.rng.range(0.45, 0.95);
+                        let t = if existing_on_seg >= 2 {
+                            self.rng.range(0.75, 0.96)
+                        } else if target_seg_idx + 1 == total_trunk_segs {
+                            self.rng.range(0.60, 0.94)
+                        } else {
+                            self.rng.range(0.35, 0.75)
+                        };
                         (b.angle, b.thickness, b.length, b.point_at(t))
                     })
                 {
@@ -715,6 +742,55 @@ impl WorldState {
                         );
                     }
                 }
+            } else if spawn_crown_topper {
+                // Cap the top trunk segment with a central crown leader so the silhouette
+                // tapers/rounds out naturally instead of ending flat at the trunk tip.
+                let top_seg_id = trunk_segs[total_trunk_segs - 1];
+                if let Some((top_angle, top_thick, top_tip)) = self
+                    .branches
+                    .iter()
+                    .find(|b| b.id == top_seg_id)
+                    .map(|b| (b.angle, b.thickness, b.current_end()))
+                {
+                    let crown_angle = match species {
+                        TreeSpecies::AlpinePine | TreeSpecies::GiantRedwood => {
+                            top_angle + self.rng.range(-0.08, 0.08)
+                        }
+                        _ => top_angle + self.rng.range(-0.16, 0.16),
+                    };
+                    let crown_len = match species {
+                        TreeSpecies::AlpinePine | TreeSpecies::GiantRedwood => {
+                            self.rng.range(48.0, 64.0)
+                        }
+                        TreeSpecies::GreatBaobab => self.rng.range(42.0, 56.0),
+                        TreeSpecies::SilverBirch => self.rng.range(48.0, 66.0),
+                        _ => self.rng.range(52.0, 74.0),
+                    };
+                    self.next_id += 1;
+                    let id = self.next_id;
+                    let foliage = self.generate_foliage_for_branch(species, 1, mature_now);
+                    let init_progress = if mature_now { 1.0 } else { 0.04 };
+                    self.branches.push(Branch {
+                        id,
+                        parent_id: Some(top_seg_id),
+                        depth: 1,
+                        start: top_tip,
+                        end: [
+                            top_tip[0] + crown_angle.sin() * crown_len,
+                            top_tip[1] - crown_angle.cos() * crown_len,
+                        ],
+                        angle: crown_angle,
+                        length: crown_len,
+                        target_length: crown_len,
+                        thickness: (top_thick * 0.65).max(3.5),
+                        growth_progress: init_progress,
+                        children_spawned: false,
+                        has_nest: false,
+                        sway_factor: 0.14,
+                        is_root: false,
+                        foliage,
+                    });
+                }
             } else {
                 // Balanced secondary/tertiary expansion: prioritize lowest-depth branches that haven't sprouted yet
                 let mut parents: Vec<(u32, u32, [f32; 2], f32, f32, f32)> = self
@@ -733,7 +809,11 @@ impl WorldState {
                 // Sort by depth ascending so all depth-1 boughs fork before depth-2 twigs fork
                 parents.sort_by_key(|p| p.1);
 
-                let cohort_limit = 1.min(parents.len());
+                let cohort_limit = if step >= 18 || parents.len() > 6 {
+                    2.min(parents.len())
+                } else {
+                    1.min(parents.len())
+                };
                 for (idx, (pid, p_depth, p_end, p_angle, p_len, p_thick)) in
                     parents.into_iter().take(cohort_limit).enumerate()
                 {
@@ -1137,82 +1217,25 @@ impl WorldState {
             self.viewport_offset_x = self.target_viewport_offset_x;
         }
 
-        // 2. Discrete 5-10s growth step timer
+        // 2. Discrete 5-10s growth step timer & interleaved continuous growth
         self.growth_step_timer -= effective_dt;
         let max_loops = ((effective_dt / 6.0).ceil() as usize).clamp(1, 60);
         let mut loop_guard = 0;
+        let mut remaining_dt = effective_dt;
         while self.growth_step_timer <= 0.0 && loop_guard < max_loops {
-            self.growth_step_timer += self.rng.range(5.0, 8.0);
+            let interval = self.rng.range(5.0, 8.0);
+            self.growth_step_timer += interval;
             self.execute_growth_step();
+            let step_dt = remaining_dt.min(interval);
+            self.step_continuous_growth(step_dt);
+            remaining_dt = (remaining_dt - step_dt).max(0.0);
             loop_guard += 1;
         }
         if self.growth_step_timer <= 0.0 {
             self.growth_step_timer = self.rng.range(5.0, 8.0);
         }
-
-        // 3. Fine-Grained Cell-by-Cell Procedural Growth Simulation
-        // A. Segmented trunk upward ascent & radial thickening
-        let active_trunks: Vec<(u32, TreeSpecies, u32)> = self
-            .trees
-            .iter()
-            .filter(|t| !t.is_mature)
-            .map(|t| (t.root_branch_id, t.species, t.growth_steps_completed))
-            .collect();
-
-        for (root_id, species, step) in active_trunks {
-            let profile = SpeciesProfile::for_species(species);
-            let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
-            let mut seg_ids = Vec::with_capacity(5);
-            for b in &self.branches {
-                if b.depth == 0
-                    && !b.is_root
-                    && (b.id == root_id || b.parent_id.is_some_and(|pid| seg_ids.contains(&pid)))
-                {
-                    seg_ids.push(b.id);
-                }
-            }
-
-            for (idx, seg_id) in seg_ids.into_iter().enumerate() {
-                let taper = (1.0 - 0.16 * idx as f32).max(0.28);
-                let target_thick = (4.0 + (profile.base_thickness - 4.0) * frac) * taper;
-                let mut extended_tip = None;
-
-                if let Some(seg) = self.branches.iter_mut().find(|b| b.id == seg_id) {
-                    if seg.length < seg.target_length {
-                        let len_diff = seg.target_length - seg.length;
-                        let grow_step = (len_diff * 0.45).max(4.0) * effective_dt;
-                        seg.length = (seg.length + grow_step).min(seg.target_length);
-                        seg.end = seg.current_end();
-                        extended_tip = Some(seg.current_end());
-                    }
-                    if seg.thickness < target_thick {
-                        let thick_diff = target_thick - seg.thickness;
-                        let thick_step = (thick_diff * 0.35).max(0.6) * effective_dt;
-                        seg.thickness = (seg.thickness + thick_step).min(target_thick);
-                    }
-                }
-                if let Some(tip) = extended_tip {
-                    self.sync_trunk_segment_children(seg_id, tip);
-                }
-            }
-        }
-
-        // B. Continuous glyph-by-glyph branch extension & bud swelling
-        let branch_grow_rate = 0.26 * effective_dt;
-        let bud_swell_rate = 0.20 * effective_dt;
-
-        for b in &mut self.branches {
-            if b.growth_progress < 1.0 {
-                b.growth_progress = (b.growth_progress + branch_grow_rate).min(1.0);
-                b.end = b.current_end();
-            }
-
-            // Buds swell from single dot -> young star -> expanding cluster -> mature canopy
-            for f in &mut b.foliage {
-                if b.growth_progress >= f.offset_along && f.bloom < 1.0 {
-                    f.bloom = (f.bloom + bud_swell_rate).min(1.0);
-                }
-            }
+        if remaining_dt > 0.0 {
+            self.step_continuous_growth(remaining_dt);
         }
 
         // 4. Ecosystem structures on mature branches over time
@@ -1302,6 +1325,73 @@ impl WorldState {
                 let eggs = self.rng.range_i32(1, 4) as u8;
                 nest.eggs_count = eggs;
                 self.stats.eggs_laid += eggs as u32;
+            }
+        }
+    }
+
+    /// Fine-grained cell-by-cell trunk ascent, radial thickening, branch extension, and bud swelling.
+    fn step_continuous_growth(&mut self, effective_dt: f32) {
+        // A. Segmented trunk upward ascent & radial thickening
+        let active_trunks: Vec<(u32, TreeSpecies, u32)> = self
+            .trees
+            .iter()
+            .filter(|t| !t.is_mature)
+            .map(|t| (t.root_branch_id, t.species, t.growth_steps_completed))
+            .collect();
+
+        for (root_id, species, step) in active_trunks {
+            let profile = SpeciesProfile::for_species(species);
+            let frac = (step as f32 / 18.0).clamp(0.0, 1.0);
+            let mut seg_ids = Vec::with_capacity(5);
+            for b in &self.branches {
+                if b.depth == 0
+                    && !b.is_root
+                    && (b.id == root_id || b.parent_id.is_some_and(|pid| seg_ids.contains(&pid)))
+                {
+                    seg_ids.push(b.id);
+                }
+            }
+
+            for (idx, seg_id) in seg_ids.into_iter().enumerate() {
+                let taper = (1.0 - 0.16 * idx as f32).max(0.28);
+                let target_thick = (4.0 + (profile.base_thickness - 4.0) * frac) * taper;
+                let mut extended_tip = None;
+
+                if let Some(seg) = self.branches.iter_mut().find(|b| b.id == seg_id) {
+                    if seg.length < seg.target_length {
+                        let len_diff = seg.target_length - seg.length;
+                        let grow_step = (len_diff * 0.45).max(4.0) * effective_dt;
+                        seg.length = (seg.length + grow_step).min(seg.target_length);
+                        seg.end = seg.current_end();
+                        extended_tip = Some(seg.current_end());
+                    }
+                    if seg.thickness < target_thick {
+                        let thick_diff = target_thick - seg.thickness;
+                        let thick_step = (thick_diff * 0.35).max(0.6) * effective_dt;
+                        seg.thickness = (seg.thickness + thick_step).min(target_thick);
+                    }
+                }
+                if let Some(tip) = extended_tip {
+                    self.sync_trunk_segment_children(seg_id, tip);
+                }
+            }
+        }
+
+        // B. Continuous glyph-by-glyph branch extension & bud swelling
+        let branch_grow_rate = 0.26 * effective_dt;
+        let bud_swell_rate = 0.20 * effective_dt;
+
+        for b in &mut self.branches {
+            if b.growth_progress < 1.0 {
+                b.growth_progress = (b.growth_progress + branch_grow_rate).min(1.0);
+                b.end = b.current_end();
+            }
+
+            // Buds swell from single dot -> young star -> expanding cluster -> mature canopy
+            for f in &mut b.foliage {
+                if b.growth_progress >= f.offset_along && f.bloom < 1.0 {
+                    f.bloom = (f.bloom + bud_swell_rate).min(1.0);
+                }
             }
         }
     }
