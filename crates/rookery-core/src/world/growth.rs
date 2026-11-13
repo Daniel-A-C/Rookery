@@ -963,7 +963,7 @@ impl WorldState {
         tid
     }
 
-    /// Debug mode: Generate all 6 species fully mature in a grand panorama showcase.
+    /// Debug mode: Generate all 9 species fully mature in a grand panorama showcase.
     pub fn generate_mature_showcase(&mut self, base_seed: u64) {
         self.branches.clear();
         self.trees.clear();

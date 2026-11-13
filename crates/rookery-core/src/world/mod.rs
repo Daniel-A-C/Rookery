@@ -210,7 +210,7 @@ impl WorldState {
             bird_baths,
             perches,
             viewport_offset_x: 0.0,
-            aesthetic_style: 1, // Strict ANSI Roguelike
+            aesthetic_style: 0, // Earth & Sylvan (matches RookeryPalette::EarthAndSylvan)
             trees: vec![initial_tree],
             active_tree_id: 1,
             growth_step_timer: 6.0,

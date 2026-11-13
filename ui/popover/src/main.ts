@@ -435,6 +435,7 @@ const btnSpawnHedgehog = el<HTMLButtonElement>("btn-spawn-hedgehog");
 const btnSpawnRabbit = el<HTMLButtonElement>("btn-spawn-rabbit");
 const btnScatterSnacks = el<HTMLButtonElement>("btn-scatter-snacks");
 const btnDebugResetWorld = el<HTMLButtonElement>("btn-debug-reset-world");
+const debugMsgStatus = el<HTMLSpanElement>("debug-msg-status");
 
 let currentStatus: HostStatus | null = null;
 let recordingInteractionHotkey = false;
@@ -884,13 +885,23 @@ let notificationTimer: number | null = null;
 function showNotification(iconName: IconName | string, msg: string): void {
   iconLabel(seedNotification, iconName, msg);
   seedNotification.hidden = false;
+  iconLabel(debugMsgStatus, iconName, msg);
+  debugMsgStatus.hidden = false;
   if (notificationTimer !== null) {
     window.clearTimeout(notificationTimer);
   }
   notificationTimer = window.setTimeout(() => {
     seedNotification.hidden = true;
+    debugMsgStatus.hidden = true;
     notificationTimer = null;
   }, 2800);
+}
+
+function formatSimSpeed(speed: number): string {
+  if (speed <= 0.01) return "0.0x (Paused)";
+  if (Math.abs(speed - 1.0) < 0.05) return "1.0x (Normal)";
+  if (Math.abs(speed - 50.0) < 0.5) return "50.0x (Hyper)";
+  return `${speed.toFixed(1)}x`;
 }
 
 let shareNotificationTimer: number | null = null;
@@ -945,6 +956,18 @@ function renderStatus(s: HostStatus): void {
     ) {
       selectRookeryStyle.value = String(s.rookery.aesthetic_style);
     }
+    if (
+      typeof s.rookery.aesthetic_style === "number" &&
+      document.activeElement !== selectDebugPalette
+    ) {
+      selectDebugPalette.value = String(s.rookery.aesthetic_style);
+    }
+    if (
+      typeof s.rookery.bird_style === "string" &&
+      document.activeElement !== selectDebugBirdStyle
+    ) {
+      selectDebugBirdStyle.value = s.rookery.bird_style;
+    }
 
     // Debug Mode Telemetry & Sync
     if (typeof s.rookery.debug_mode === "boolean") {
@@ -964,7 +987,7 @@ function renderStatus(s: HostStatus): void {
     debugTelSeed.textContent = `#${s.rookery.active_tree_seed ?? s.rookery.seed}`;
 
     if (typeof s.rookery.sim_speed === "number") {
-      valDebugSpeed.textContent = `${s.rookery.sim_speed.toFixed(1)}x`;
+      valDebugSpeed.textContent = formatSimSpeed(s.rookery.sim_speed);
       for (const btn of speedButtons) {
         const spd = parseFloat(btn.getAttribute("data-speed") || "1.0");
         btn.classList.toggle("active", Math.abs(spd - s.rookery.sim_speed) < 0.05);
@@ -996,6 +1019,11 @@ function renderStatus(s: HostStatus): void {
       if (activeId && document.activeElement !== selectDebugForestTree) {
         selectDebugForestTree.value = String(activeId);
       }
+      const treeCount = selectDebugForestTree.options.length;
+      const selIdx = selectDebugForestTree.selectedIndex;
+      btnDebugPrevTree.disabled = treeCount <= 1 || selIdx <= 0;
+      btnDebugNextTree.disabled =
+        treeCount <= 1 || selIdx < 0 || selIdx >= treeCount - 1;
     }
   }
 
@@ -1898,7 +1926,7 @@ btnDebugShowcaseAll.addEventListener("click", async () => {
       { seed },
     );
     renderStatus(s);
-    showNotification("plant", "Showcase of all 6 mature species generated!");
+    showNotification("plant", "Showcase of all 9 mature species generated!");
   } catch (err) {
     console.error("showcase all error:", err);
   }
@@ -2023,7 +2051,7 @@ for (const btn of speedButtons) {
     for (const b of speedButtons) {
       b.classList.toggle("active", b === btn);
     }
-    valDebugSpeed.textContent = `${speed.toFixed(1)}x`;
+    valDebugSpeed.textContent = formatSimSpeed(speed);
     try {
       const s = await api.executeAppAction("living-rookery", "set_sim_speed", {
         speed,
@@ -2155,17 +2183,37 @@ btnScatterSnacks.addEventListener("click", async () => {
   }
 });
 
+let resetConfirmPending = false;
+let resetConfirmTimer: number | null = null;
+
+function clearResetConfirm(): void {
+  resetConfirmPending = false;
+  if (resetConfirmTimer !== null) {
+    window.clearTimeout(resetConfirmTimer);
+    resetConfirmTimer = null;
+  }
+  iconLabel(btnDebugResetWorld, "arrow-clockwise", "Reset World to Default");
+}
+
 btnDebugResetWorld.addEventListener("click", async () => {
-  if (confirm("Reset Living Rookery forest back to clean default state?")) {
-    try {
-      const s = await api.executeAppAction("living-rookery", "reset_world", {
-        seed: 42,
-      });
-      renderStatus(s);
-      showNotification("arrow-clockwise", "World reset to default seed #42");
-    } catch (err) {
-      console.error("reset world error:", err);
-    }
+  if (!resetConfirmPending) {
+    resetConfirmPending = true;
+    iconLabel(btnDebugResetWorld, "warning", "Click Again to Confirm Reset");
+    resetConfirmTimer = window.setTimeout(clearResetConfirm, 3500);
+    return;
+  }
+
+  clearResetConfirm();
+  try {
+    const s = await api.executeAppAction("living-rookery", "reset_world", {
+      seed: 42,
+    });
+    inputDebugSeed.value = "42";
+    selectDebugSpecies.value = "AncientOak";
+    renderStatus(s);
+    showNotification("arrow-clockwise", "World reset to default seed #42");
+  } catch (err) {
+    console.error("reset world error:", err);
   }
 });
 

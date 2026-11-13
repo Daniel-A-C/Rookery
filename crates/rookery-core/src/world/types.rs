@@ -646,6 +646,14 @@ pub enum BirdStyle {
 }
 
 impl BirdStyle {
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::Classic3Cell => "classic",
+            Self::Streamlined2Cell => "streamlined",
+            Self::OrnateFlock => "ornate",
+        }
+    }
+
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Classic3Cell => "3-Cell Classic CP437",

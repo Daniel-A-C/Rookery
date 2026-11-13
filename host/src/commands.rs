@@ -607,7 +607,10 @@ pub fn execute_app_action(
                         .and_then(|p| p.get("seed"))
                         .and_then(|v| v.as_u64())
                         .unwrap_or(42);
+                    let was_debug = w.debug_mode;
                     *w = rookery_core::world::WorldState::new(seed);
+                    w.debug_mode = was_debug;
+                    let _ = w.save_atomic(&state.world_path);
                     state.audio.play_sfx(SoundEffect::PlantSeed);
                 }
                 other => return Err(format!("Unknown rookery action '{other}'")),
