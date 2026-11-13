@@ -173,6 +173,8 @@ pub struct LivingRookeryScene {
     last_screen_pointer: Option<Pointer>,
     is_dragging_panning: bool,
     drag_distance_accum: f32,
+    pan_remainder_x: f32,
+    pan_velocity_x: f32,
     snack_click_count: u32,
 }
 
@@ -224,6 +226,8 @@ impl LivingRookeryScene {
             last_screen_pointer: None,
             is_dragging_panning: false,
             drag_distance_accum: 0.0,
+            pan_remainder_x: 0.0,
+            pan_velocity_x: 0.0,
             snack_click_count: 0,
         }
     }
@@ -3001,9 +3005,12 @@ impl Scene for LivingRookeryScene {
                         self.last_screen_pointer = Some(sp);
                         self.is_dragging_panning = false;
                         self.drag_distance_accum = 0.0;
+                        self.pan_remainder_x = 0.0;
+                        self.pan_velocity_x = 0.0;
                     }
 
                     if input.left_held {
+                        let mut frame_pan_dx = 0.0;
                         if let Some(last) = self.last_screen_pointer {
                             let dx = sp.x - last.x;
                             let dy = sp.y - last.y;
@@ -3013,10 +3020,18 @@ impl Scene for LivingRookeryScene {
                             if self.drag_distance_accum > 7.0 {
                                 self.is_dragging_panning = true;
                                 let pan_scale = 1000.0 / self.width.max(1.0);
-                                w.pan_forest(-dx * pan_scale);
+                                frame_pan_dx = -dx * pan_scale;
+                                self.pan_remainder_x += frame_pan_dx;
                             }
                         }
                         self.last_screen_pointer = Some(sp);
+
+                        if self.is_dragging_panning && dt_secs > 0.0 {
+                            let safe_dt = dt_secs.max(1.0 / 240.0);
+                            let inst_vel = (frame_pan_dx / safe_dt).clamp(-4500.0, 4500.0);
+                            let vel_blend = 1.0 - (-dt_secs * 14.0).exp();
+                            self.pan_velocity_x += (inst_vel - self.pan_velocity_x) * vel_blend;
+                        }
                     }
                 }
 
@@ -3062,9 +3077,37 @@ impl Scene for LivingRookeryScene {
                 self.is_dragging_panning = false;
             }
 
+            let mut is_panning_smoothly = false;
+            if dt_secs > 0.0 {
+                if self.pan_remainder_x.abs() > 0.05 {
+                    let follow = 1.0 - (-dt_secs * 22.0).exp();
+                    let step = self.pan_remainder_x * follow;
+                    w.pan_forest(step);
+                    self.pan_remainder_x -= step;
+                    is_panning_smoothly = true;
+                } else if self.pan_remainder_x != 0.0 {
+                    w.pan_forest(self.pan_remainder_x);
+                    self.pan_remainder_x = 0.0;
+                }
+
+                if !self.is_dragging_panning && self.pan_velocity_x.abs() > 4.0 {
+                    let prev_offset = w.viewport_offset_x;
+                    w.pan_forest(self.pan_velocity_x * dt_secs);
+                    if (w.viewport_offset_x - prev_offset).abs() < 1e-4 {
+                        self.pan_velocity_x = 0.0;
+                    } else {
+                        let friction = (-dt_secs * 4.5).exp();
+                        self.pan_velocity_x *= friction;
+                        is_panning_smoothly = true;
+                    }
+                } else if !self.is_dragging_panning {
+                    self.pan_velocity_x = 0.0;
+                }
+            }
+
             let pal = w.active_palette.as_u8();
             let mut act = w.update(dt_secs, input.interactive, pointer_world);
-            if self.is_dragging_panning {
+            if self.is_dragging_panning || is_panning_smoothly {
                 act = Activity::Animating;
             }
             (act, pal)
