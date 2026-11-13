@@ -1382,9 +1382,15 @@ impl WorldState {
         let bud_swell_rate = 0.20 * effective_dt;
 
         for b in &mut self.branches {
-            if b.growth_progress < 1.0 {
+            let fully_grown = b.growth_progress >= 1.0;
+            if !fully_grown {
                 b.growth_progress = (b.growth_progress + branch_grow_rate).min(1.0);
                 b.end = b.current_end();
+            }
+
+            // Skip foliage scan on already-mature branches whose buds have all bloomed
+            if fully_grown && b.foliage.iter().all(|f| f.bloom >= 1.0) {
+                continue;
             }
 
             // Buds swell from single dot -> young star -> expanding cluster -> mature canopy
