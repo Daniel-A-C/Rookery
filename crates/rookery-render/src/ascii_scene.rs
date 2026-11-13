@@ -26,6 +26,134 @@ struct BgUniforms {
     palette_id: f32,
 }
 
+/// Returns `(bark_bg, bark_fg)` color tokens matching the active palette.
+fn palette_bark_colors(palette: RookeryPalette) -> ([f32; 4], [f32; 4]) {
+    match palette {
+        RookeryPalette::MidnightStarlight => ([0.12, 0.16, 0.22, 0.95], [0.72, 0.82, 0.92, 0.98]),
+        RookeryPalette::AutumnHearth => ([0.22, 0.12, 0.08, 0.95], [0.85, 0.52, 0.28, 0.98]),
+        RookeryPalette::VerdantRainforest => ([0.12, 0.18, 0.10, 0.95], [0.55, 0.82, 0.42, 0.98]),
+        RookeryPalette::AmberPhosphor => ([0.32, 0.18, 0.04, 0.95], [0.98, 0.75, 0.20, 0.98]),
+        RookeryPalette::MatrixGreen => ([0.05, 0.24, 0.08, 0.95], [0.28, 0.95, 0.38, 0.98]),
+        RookeryPalette::EarthAndSylvan => ([0.24, 0.16, 0.10, 0.92], [0.76, 0.56, 0.36, 0.98]),
+    }
+}
+
+/// Returns `(bg_col, fg_col, tile_char)` for canopy and bush/sapling foliage matching the tree aesthetic.
+fn palette_foliage_colors(
+    palette: RookeryPalette,
+    color_idx: u8,
+    idx: usize,
+) -> ([f32; 4], [f32; 4], char) {
+    match (palette, color_idx) {
+        (RookeryPalette::AutumnHearth, 0) => (
+            [0.32, 0.14, 0.06, 0.90],
+            [0.98, 0.48, 0.15, 0.98],
+            if idx.is_multiple_of(2) { '▓' } else { '☘' },
+        ),
+        (RookeryPalette::AutumnHearth, 1) => (
+            [0.35, 0.22, 0.05, 0.90],
+            [0.98, 0.82, 0.20, 0.98],
+            if idx.is_multiple_of(2) { '▒' } else { '*' },
+        ),
+        (RookeryPalette::AutumnHearth, 2) => {
+            ([0.38, 0.08, 0.08, 0.92], [0.98, 0.28, 0.22, 0.98], '◆')
+        }
+        (RookeryPalette::AutumnHearth, _) => {
+            ([0.28, 0.12, 0.06, 0.90], [0.85, 0.58, 0.22, 0.98], '✦')
+        }
+        (RookeryPalette::MidnightStarlight, 0) => (
+            [0.06, 0.18, 0.28, 0.90],
+            [0.35, 0.88, 0.98, 0.98],
+            if idx.is_multiple_of(2) { '☘' } else { '▓' },
+        ),
+        (RookeryPalette::MidnightStarlight, 1) => (
+            [0.10, 0.22, 0.32, 0.90],
+            [0.72, 0.92, 1.0, 0.98],
+            if idx.is_multiple_of(2) { '▒' } else { '*' },
+        ),
+        (RookeryPalette::MidnightStarlight, _) => {
+            ([0.18, 0.12, 0.28, 0.90], [0.88, 0.78, 0.98, 0.98], '✦')
+        }
+        (RookeryPalette::AmberPhosphor, _) => (
+            [0.24, 0.14, 0.02, 0.90],
+            [1.0, 0.78, 0.22, 0.98],
+            if idx.is_multiple_of(2) { '▓' } else { '*' },
+        ),
+        (RookeryPalette::MatrixGreen, _) => (
+            [0.04, 0.22, 0.06, 0.90],
+            [0.25, 0.98, 0.38, 0.98],
+            if idx.is_multiple_of(2) { '▒' } else { '☘' },
+        ),
+        _ => match color_idx {
+            0 => (
+                [0.06, 0.28, 0.14, 0.88],
+                [0.28, 0.95, 0.54, 0.98],
+                if idx.is_multiple_of(2) { '☘' } else { '▓' },
+            ),
+            1 => (
+                [0.10, 0.34, 0.16, 0.85],
+                [0.52, 0.96, 0.60, 0.98],
+                if idx.is_multiple_of(2) { '▒' } else { '*' },
+            ),
+            2 => ([0.34, 0.24, 0.05, 0.88], [0.98, 0.84, 0.25, 0.98], '✦'),
+            _ => ([0.36, 0.10, 0.20, 0.88], [0.98, 0.58, 0.78, 0.98], '◆'),
+        },
+    }
+}
+
+/// Returns `(water_bg, water_fg, bank_stone)` color tokens for the forest stream.
+fn palette_water_colors(palette: RookeryPalette) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    match palette {
+        RookeryPalette::MidnightStarlight => (
+            [0.04, 0.14, 0.26, 0.92],
+            [0.42, 0.78, 0.98, 0.94],
+            [0.36, 0.44, 0.54, 0.92],
+        ),
+        RookeryPalette::AutumnHearth => (
+            [0.07, 0.13, 0.20, 0.92],
+            [0.46, 0.72, 0.88, 0.92],
+            [0.48, 0.38, 0.30, 0.92],
+        ),
+        RookeryPalette::VerdantRainforest => (
+            [0.03, 0.18, 0.22, 0.92],
+            [0.35, 0.88, 0.85, 0.94],
+            [0.34, 0.48, 0.40, 0.92],
+        ),
+        RookeryPalette::AmberPhosphor => (
+            [0.14, 0.10, 0.02, 0.92],
+            [0.92, 0.72, 0.22, 0.92],
+            [0.54, 0.40, 0.16, 0.92],
+        ),
+        RookeryPalette::MatrixGreen => (
+            [0.02, 0.14, 0.06, 0.92],
+            [0.24, 0.88, 0.46, 0.92],
+            [0.18, 0.44, 0.24, 0.92],
+        ),
+        RookeryPalette::EarthAndSylvan => (
+            [0.05, 0.16, 0.26, 0.92],
+            [0.44, 0.82, 0.96, 0.94],
+            [0.44, 0.48, 0.46, 0.92],
+        ),
+    }
+}
+
+/// Returns `(world_center_col, half_width)` for the meandering forest stream at row `r`.
+fn stream_geometry(r: i32, ground_row: i32, cols: i32) -> (f32, f32) {
+    let dr = (r - ground_row) as f32;
+    let center =
+        (cols as f32 * 0.74) - dr * 0.85 + (dr * 0.42).sin() * 5.0 + (dr * 0.18).cos() * 2.5;
+    let depth_norm = (dr / 14.0).clamp(0.0, 1.0);
+    let half_w = 1.6 + depth_norm * 1.6;
+    (center, half_w)
+}
+
+#[derive(Clone, Copy)]
+struct ShadowPalette {
+    umbral: [f32; 4],
+    deep: [f32; 4],
+    soft: [f32; 4],
+}
+
 pub struct LivingRookeryScene {
     pub world: Arc<Mutex<WorldState>>,
     width: f32,
@@ -141,6 +269,43 @@ impl LivingRookeryScene {
     ) {
         self.glyphs
             .push(c, pos, size, rotation, z_layer, color, sway_factor);
+    }
+
+    /// Draws a directional moon-cast ground shadow cell with umbral backing and feathered edges.
+    /// `density`: 3 = deep contact/umbra, 2 = mid shadow body, 1 = soft penumbra.
+    #[allow(clippy::too_many_arguments)]
+    fn push_shadow_cell(
+        &mut self,
+        c: i32,
+        r: i32,
+        cols: i32,
+        rows: i32,
+        cell_size: [f32; 2],
+        density: u8,
+        z_layer: f32,
+        pal: ShadowPalette,
+    ) {
+        if c < 0 || c >= cols || r < 0 || r >= rows {
+            return;
+        }
+        let pos = [
+            (c as f32 + 0.5) * cell_size[0],
+            (r as f32 + 0.5) * cell_size[1],
+        ];
+        match density {
+            3.. => {
+                self.push_glyph('█', pos, cell_size, 0.0, z_layer, pal.umbral, 0.0);
+                self.push_glyph('▓', pos, cell_size, 0.0, z_layer + 0.001, pal.deep, 0.0);
+            }
+            2 => {
+                let mid_bg = [pal.umbral[0], pal.umbral[1], pal.umbral[2], 0.72];
+                self.push_glyph('█', pos, cell_size, 0.0, z_layer, mid_bg, 0.0);
+                self.push_glyph('▒', pos, cell_size, 0.0, z_layer + 0.001, pal.deep, 0.0);
+            }
+            _ => {
+                self.push_glyph('░', pos, cell_size, 0.0, z_layer, pal.soft, 0.0);
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -307,17 +472,27 @@ impl LivingRookeryScene {
         };
 
         let shadow_color = [
-            turf_deep[0] * 0.16 + shadow_tint[0] * 0.45,
-            turf_deep[1] * 0.18 + shadow_tint[1] * 0.45,
-            turf_deep[2] * 0.18 + shadow_tint[2] * 0.45,
+            turf_deep[0] * 0.16 + shadow_tint[0] * 0.48,
+            turf_deep[1] * 0.18 + shadow_tint[1] * 0.48,
+            turf_deep[2] * 0.18 + shadow_tint[2] * 0.48,
             0.90,
         ];
         let shadow_deep_color = [
-            shadow_color[0] * 0.70,
-            shadow_color[1] * 0.70,
-            shadow_color[2] * 0.70,
-            0.94,
+            shadow_color[0] * 0.65,
+            shadow_color[1] * 0.65,
+            shadow_color[2] * 0.65,
+            0.95,
         ];
+        let shadow_pal = ShadowPalette {
+            umbral: [
+                shadow_tint[0] * 0.50,
+                shadow_tint[1] * 0.50,
+                shadow_tint[2] * 0.50,
+                0.92,
+            ],
+            deep: shadow_deep_color,
+            soft: shadow_color,
+        };
 
         // 1. Atmospheric Celestial Sky & Twinkling Stars
         for r in 1..(ground_row - 2) {
@@ -596,9 +771,19 @@ impl LivingRookeryScene {
             }
         }
 
+        // Compute tree center early so meadow plants, bushes, and saplings frame the main tree cleanly
+        let trunk_center_c = world_guard
+            .branches
+            .iter()
+            .find(|b| b.depth == 0)
+            .map(|b| (self.world_to_screen(b.start, offset_x)[0] / cell_w).round() as i32)
+            .unwrap_or(cols / 2);
+
         // 2. Multi-Depth Verdant 2.5D Meadow & Forest Floor Ground Plane (World-Anchored)
         let mix_f32 = |a: f32, b: f32, t: f32| -> f32 { a + (b - a) * t.clamp(0.0, 1.0) };
         let world_col_offset = ((offset_x / 1000.0) * self.width / cell_w).round() as i32;
+        let (water_bg, water_fg, bank_stone) = palette_water_colors(palette);
+        let (bark_bg_shared, bark_fg_shared) = palette_bark_colors(palette);
 
         // 2a. Upper grass depth interface (ground_row - 1): sparse, calm grass tips
         for c in 1..cols.saturating_sub(1) {
@@ -635,14 +820,81 @@ impl LivingRookeryScene {
             }
         }
 
-        // 2b. Full 2.5D Meadow Field across ground_row .. rows
+        // 2b. Full 2.5D Meadow Field, Winding Forest Stream & Individual Smaller Plants
         for r in ground_row..rows {
             let depth_t = (r - ground_row) as f32 / (rows - ground_row).max(2) as f32;
+            let (stream_center, stream_half_w) = stream_geometry(r, ground_row, cols);
 
             for c in 1..cols.saturating_sub(1) {
                 let world_c = c + world_col_offset;
                 let cell_hash =
                     (world_c as u32).wrapping_mul(73_856_093) ^ (r as u32).wrapping_mul(19_349_663);
+
+                let stream_dx = world_c as f32 - stream_center;
+                let stream_dist = stream_dx.abs();
+
+                // Winding moonlit forest stream
+                if stream_dist <= stream_half_w {
+                    let norm_x = (stream_dx / stream_half_w).clamp(-1.0, 1.0);
+                    // Left bank is shaded; right-of-center current catches moonlight
+                    let water_lit = (0.44 + norm_x * 0.28 + depth_t * 0.08).clamp(0.18, 0.90);
+                    let wave = ((self.time as f32 * 2.1) + (world_c as f32 * 0.55)
+                        - ((r - ground_row) as f32 * 0.75))
+                        .sin();
+                    let is_glint = norm_x > 0.05 && wave > 0.72 && cell_hash.is_multiple_of(3);
+                    let w_ch = if is_glint {
+                        if wave > 0.88 { '✦' } else { '·' }
+                    } else if stream_dist > stream_half_w - 0.65 {
+                        if wave > 0.0 { '~' } else { '░' }
+                    } else if wave > 0.35 {
+                        '~'
+                    } else if wave < -0.45 {
+                        '-'
+                    } else {
+                        '·'
+                    };
+                    let fg_col = if is_glint {
+                        [light_tint[0], light_tint[1], light_tint[2], 0.95]
+                    } else {
+                        shade_color(water_fg, water_lit)
+                    };
+                    let p = cell_pos(c, r);
+                    self.push_glyph(
+                        '█',
+                        p,
+                        cell_size,
+                        0.0,
+                        0.041,
+                        shade_color(water_bg, water_lit * 0.85),
+                        0.0,
+                    );
+                    self.push_glyph(w_ch, p, cell_size, 0.0, 0.044, fg_col, 0.0);
+                    continue;
+                }
+
+                // Stream bank pebbles, moss & shaded undercut edge
+                if stream_dist <= stream_half_w + 1.25 {
+                    let is_right_bank = stream_dx > 0.0;
+                    let bank_lit = if is_right_bank { 0.72 } else { 0.26 };
+                    if !is_right_bank && cell_hash % 5 < 3 {
+                        self.push_shadow_cell(c, r, cols, rows, cell_size, 1, 0.048, shadow_pal);
+                    }
+                    if cell_hash % 10 < 6 {
+                        let b_ch = match cell_hash % 4 {
+                            0 => 'o',
+                            1 => '·',
+                            2 => ',',
+                            _ => '▄',
+                        };
+                        let b_col = if cell_hash.is_multiple_of(3) {
+                            shade_color(turf_color, bank_lit)
+                        } else {
+                            shade_color(bank_stone, bank_lit)
+                        };
+                        self.push_glyph(b_ch, cell_pos(c, r), cell_size, 0.0, 0.054, b_col, 0.0);
+                    }
+                    continue;
+                }
 
                 // Natural winding earth path cutting gently across the meadow (world-anchored)
                 let trail_center = (cols as f32 * 0.44)
@@ -680,8 +932,8 @@ impl LivingRookeryScene {
                     let f_ch = match (cell_hash / 10) % 4 {
                         0 => '*',
                         1 => 'o',
-                        2 => '✿',
-                        _ => '❀',
+                        2 => '✦',
+                        _ => '◆',
                     };
                     let f_col = [
                         flower_color[0],
@@ -740,48 +992,245 @@ impl LivingRookeryScene {
                     );
                 }
 
-                // Natural boulders and mushrooms scattered across the meadow (world-anchored)
-                if cell_hash % 280 == 42 && r > ground_row + 1 {
-                    let is_boulder = cell_hash.is_multiple_of(2);
-                    let obj_pos = cell_pos(c, r);
-                    if is_boulder {
-                        self.push_glyph(
-                            'o',
-                            obj_pos,
-                            cell_size,
-                            0.0,
-                            0.07,
-                            shade_color([0.58, 0.64, 0.70, 0.95], 0.68),
-                            0.0,
-                        );
+                // Stream-bank reeds & cattail tufts near the water's edge
+                let near_stream =
+                    stream_dist > stream_half_w + 1.3 && stream_dist < stream_half_w + 4.8;
+                if near_stream && cell_hash % 37 == 7 && r > ground_row {
+                    let reed_col_base = shade_color(turf_deep, 0.48);
+                    let reed_col_tip = shade_color(turf_color, 0.72);
+                    self.push_glyph(
+                        '│',
+                        cell_pos(c, r),
+                        cell_size,
+                        0.0,
+                        0.072,
+                        reed_col_base,
+                        0.0,
+                    );
+                    let tip_ch = if cell_hash.is_multiple_of(3) {
+                        '•'
                     } else {
-                        self.push_glyph(
-                            'T',
-                            obj_pos,
-                            cell_size,
-                            0.0,
-                            0.07,
-                            shade_color([0.92, 0.44, 0.25, 0.98], 0.68),
-                            0.0,
-                        );
-                    }
-                    // Directional cast shadow on green grass away from moon
-                    for sk in 1..=3 {
-                        let sc = c + shadow_dir * sk;
-                        if sc >= 0 && sc < cols {
-                            let (s_ch, s_col) = if sk == 1 {
-                                ('▒', shadow_deep_color)
-                            } else {
-                                ('░', shadow_color)
-                            };
+                        '|'
+                    };
+                    self.push_glyph(
+                        tip_ch,
+                        cell_pos(c, r - 1),
+                        cell_size,
+                        0.0,
+                        0.074,
+                        reed_col_tip,
+                        0.03,
+                    );
+                    self.push_shadow_cell(
+                        c + shadow_dir,
+                        r,
+                        cols,
+                        rows,
+                        cell_size,
+                        2,
+                        0.063,
+                        shadow_pal,
+                    );
+                    self.push_shadow_cell(
+                        c + shadow_dir * 2,
+                        r,
+                        cols,
+                        rows,
+                        cell_size,
+                        1,
+                        0.063,
+                        shadow_pal,
+                    );
+                }
+
+                // Individual smaller plants, mossy boulders, ferns & shaded mushrooms (world-anchored)
+                let clear_of_trunk = (c - trunk_center_c).abs() > 8;
+                if clear_of_trunk && cell_hash % 290 == 42 && r > ground_row + 1 {
+                    let kind = (cell_hash / 290) % 5;
+                    let (fol_bg, fol_fg, _) =
+                        palette_foliage_colors(palette, (cell_hash % 2) as u8, c as usize);
+                    match kind {
+                        0 => {
+                            // 2-cell shaded mossy boulder
+                            let stone_col = [0.56, 0.62, 0.68, 0.96];
                             self.push_glyph(
-                                s_ch,
-                                cell_pos(sc, r),
+                                '▄',
+                                cell_pos(c, r),
                                 cell_size,
                                 0.0,
-                                0.052,
-                                s_col,
+                                0.075,
+                                shade_color(stone_col, 0.76),
                                 0.0,
+                            );
+                            if c > 0 {
+                                self.push_glyph(
+                                    '▄',
+                                    cell_pos(c - 1, r),
+                                    cell_size,
+                                    0.0,
+                                    0.075,
+                                    shade_color(stone_col, 0.34),
+                                    0.0,
+                                );
+                            }
+                            for sk in 1..=3 {
+                                let density = if sk == 1 {
+                                    3
+                                } else if sk == 2 {
+                                    2
+                                } else {
+                                    1
+                                };
+                                let sc = if shadow_dir < 0 { c - 1 - sk } else { c + sk };
+                                self.push_shadow_cell(
+                                    sc, r, cols, rows, cell_size, density, 0.063, shadow_pal,
+                                );
+                            }
+                        }
+                        1 => {
+                            // Shaded toadstool / mushroom cluster
+                            let cap_col = match palette {
+                                RookeryPalette::MidnightStarlight => [0.68, 0.86, 0.98, 0.96],
+                                RookeryPalette::MatrixGreen => [0.35, 0.98, 0.55, 0.96],
+                                _ => [0.92, 0.44, 0.25, 0.98],
+                            };
+                            let stem_col = shade_color([0.82, 0.78, 0.70, 0.95], 0.52);
+                            self.push_glyph(
+                                '│',
+                                cell_pos(c, r),
+                                cell_size,
+                                0.0,
+                                0.074,
+                                stem_col,
+                                0.0,
+                            );
+                            self.push_glyph(
+                                '▀',
+                                cell_pos(c, r - 1),
+                                cell_size,
+                                0.0,
+                                0.076,
+                                shade_color(cap_col, 0.74),
+                                0.0,
+                            );
+                            for sk in 1..=2 {
+                                self.push_shadow_cell(
+                                    c + shadow_dir * sk,
+                                    r,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    if sk == 1 { 2 } else { 1 },
+                                    0.063,
+                                    shadow_pal,
+                                );
+                            }
+                        }
+                        2 | 3 => {
+                            // Arching forest fern frond cluster (moonlight shaded)
+                            let p_base = cell_pos(c, r);
+                            self.push_glyph(
+                                '█',
+                                p_base,
+                                cell_size,
+                                0.0,
+                                0.071,
+                                shade_color(fol_bg, 0.38),
+                                0.0,
+                            );
+                            self.push_glyph(
+                                '☘',
+                                p_base,
+                                cell_size,
+                                0.0,
+                                0.074,
+                                shade_color(fol_fg, 0.46),
+                                0.0,
+                            );
+                            if c + 1 < cols {
+                                self.push_glyph(
+                                    '/',
+                                    cell_pos(c + 1, r - 1),
+                                    cell_size,
+                                    0.0,
+                                    0.075,
+                                    shade_color(fol_fg, 0.80),
+                                    0.02,
+                                );
+                            }
+                            if c > 0 {
+                                self.push_glyph(
+                                    '\\',
+                                    cell_pos(c - 1, r - 1),
+                                    cell_size,
+                                    0.0,
+                                    0.075,
+                                    shade_color(fol_fg, 0.32),
+                                    0.02,
+                                );
+                            }
+                            for sk in 1..=3 {
+                                self.push_shadow_cell(
+                                    c + shadow_dir * sk,
+                                    r,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    if sk == 1 {
+                                        3
+                                    } else if sk == 2 {
+                                        2
+                                    } else {
+                                        1
+                                    },
+                                    0.063,
+                                    shadow_pal,
+                                );
+                            }
+                        }
+                        _ => {
+                            // Stemmed wildflower sprig
+                            self.push_glyph(
+                                '│',
+                                cell_pos(c, r),
+                                cell_size,
+                                0.0,
+                                0.072,
+                                shade_color(turf_deep, 0.50),
+                                0.0,
+                            );
+                            self.push_glyph(
+                                if cell_hash.is_multiple_of(2) {
+                                    '✦'
+                                } else {
+                                    '*'
+                                },
+                                cell_pos(c, r - 1),
+                                cell_size,
+                                0.0,
+                                0.076,
+                                shade_color(flower_color, 0.82),
+                                0.03,
+                            );
+                            self.push_shadow_cell(
+                                c + shadow_dir,
+                                r,
+                                cols,
+                                rows,
+                                cell_size,
+                                2,
+                                0.063,
+                                shadow_pal,
+                            );
+                            self.push_shadow_cell(
+                                c + shadow_dir * 2,
+                                r,
+                                cols,
+                                rows,
+                                cell_size,
+                                1,
+                                0.063,
+                                shadow_pal,
                             );
                         }
                     }
@@ -789,13 +1238,292 @@ impl LivingRookeryScene {
             }
         }
 
-        // Compute tree center and left canopy spread for directional moonlight shading & cast shadows
-        let trunk_center_c = world_guard
-            .branches
-            .iter()
-            .find(|b| b.depth == 0)
-            .map(|b| (self.world_to_screen(b.start, offset_x)[0] / cell_w).round() as i32)
-            .unwrap_or(cols / 2);
+        // 2c. Foreground Bushes & Young Saplings (World-Anchored, Reaching Past Horizon)
+        let slot_spacing = 30i32;
+        let min_slot = ((world_col_offset - 16) as f32 / slot_spacing as f32).floor() as i32;
+        let max_slot = ((world_col_offset + cols + 16) as f32 / slot_spacing as f32).ceil() as i32;
+        let depth_span = (rows - ground_row - 1).clamp(2, 7);
+        for slot in min_slot..=max_slot {
+            // 2-round avalanche hash so X-jitter, Y-depth, presence, and species are uncorrelated
+            let mut slot_hash = (slot as u32).wrapping_mul(0x9e37_79b9) ^ 0x45d9_f3b1;
+            slot_hash ^= slot_hash >> 16;
+            slot_hash = slot_hash.wrapping_mul(0x85eb_ca6b);
+            slot_hash ^= slot_hash >> 13;
+
+            // Skip ~30% of slots for natural open clearings and irregular spacing
+            if (slot_hash >> 24) % 10 < 3 {
+                continue;
+            }
+
+            let jitter = (slot_hash % 21) as i32 - 10;
+            let world_c = slot * slot_spacing + jitter;
+            let base_c = world_c - world_col_offset;
+            if base_c < -6 || base_c >= cols + 6 {
+                continue;
+            }
+            // Keep clear of main tree trunk & root collar
+            if (base_c - trunk_center_c).abs() < 16 {
+                continue;
+            }
+            let row_offset = ((slot_hash >> 8) % (depth_span as u32 + 1)) as i32;
+            let root_r = (ground_row + row_offset).min(rows - 1);
+            let (s_center, s_half_w) = stream_geometry(root_r, ground_row, cols);
+            if (world_c as f32 - s_center).abs() <= s_half_w + 2.4 {
+                continue;
+            }
+            let trail_c = (cols as f32 * 0.44)
+                + ((root_r - ground_row) as f32 * 1.1)
+                + ((root_r as f32 * 0.38).sin() * 4.5);
+            if (world_c as f32 - trail_c).abs() < 3.0 {
+                continue;
+            }
+
+            let depth_ratio = (root_r - ground_row) as f32 / (rows - ground_row).max(2) as f32;
+            let z_fg = (0.175 + depth_ratio * 0.035).clamp(0.17, 0.22);
+            let is_sapling = ((slot_hash >> 16) % 5) < 2;
+
+            if is_sapling {
+                // Young sapling (6..=9 rows tall, reaching well above ground_row horizon)
+                let height = 6 + ((slot_hash >> 19) % 4) as i32;
+                let crown_r = (root_r - height + 2).max(2);
+
+                // Ground cast shadow away from moon
+                for sk in 1..=6 {
+                    let density = if sk <= 2 {
+                        3
+                    } else if sk <= 4 {
+                        2
+                    } else {
+                        1
+                    };
+                    self.push_shadow_cell(
+                        base_c + shadow_dir * sk,
+                        root_r,
+                        cols,
+                        rows,
+                        cell_size,
+                        density,
+                        0.064,
+                        shadow_pal,
+                    );
+                    if sk <= 4 && root_r + 1 < rows {
+                        self.push_shadow_cell(
+                            base_c + shadow_dir * sk,
+                            root_r + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            if sk <= 2 { 2 } else { 1 },
+                            0.064,
+                            shadow_pal,
+                        );
+                    }
+                }
+
+                // Shaded sapling trunk matching main tree bark aesthetic
+                for rr in crown_r..=root_r {
+                    if base_c >= 0 && base_c < cols && rr >= 0 && rr < rows {
+                        let trunk_lit = 0.56 + ((root_r - rr) as f32 * 0.03);
+                        let p = cell_pos(base_c, rr);
+                        self.push_glyph(
+                            '█',
+                            p,
+                            cell_size,
+                            0.0,
+                            z_fg - 0.01,
+                            shade_color(bark_bg_shared, trunk_lit),
+                            0.0,
+                        );
+                        self.push_glyph(
+                            if rr == root_r { '║' } else { '│' },
+                            p,
+                            cell_size,
+                            0.0,
+                            z_fg,
+                            shade_color(bark_fg_shared, trunk_lit),
+                            0.0,
+                        );
+                    }
+                }
+                // Small forked boughs
+                for &(dc, dr, bch) in &[(-1, 1, '\\'), (1, 1, '/')] {
+                    let (bc, br) = (base_c + dc, crown_r + dr);
+                    if bc >= 0 && bc < cols && br >= 0 && br < rows {
+                        let b_lit = if dc > 0 { 0.72 } else { 0.34 };
+                        self.push_glyph(
+                            bch,
+                            cell_pos(bc, br),
+                            cell_size,
+                            0.0,
+                            z_fg,
+                            shade_color(bark_fg_shared, b_lit),
+                            0.0,
+                        );
+                    }
+                }
+
+                // Moonlit asymmetric foliage crown matching Stage 4 canopy shading
+                let crown_offsets: &[(i32, i32)] = &[
+                    (0, -2),
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                    (2, -1),
+                    (-2, 0),
+                    (-1, 0),
+                    (0, 0),
+                    (1, 0),
+                    (2, 0),
+                    (-1, 1),
+                    (0, 1),
+                    (1, 1),
+                ];
+                for (oi, &(dc, dr)) in crown_offsets.iter().enumerate() {
+                    let (cc, rr) = (base_c + dc, crown_r + dr);
+                    if cc < 0 || cc >= cols || rr < 0 || rr >= rows {
+                        continue;
+                    }
+                    let cell_lit =
+                        (0.45 + (dc as f32 * 0.20) - (dr as f32 * 0.22)).clamp(0.08, 0.92);
+                    let c_idx = ((slot_hash as usize + oi) % 2) as u8;
+                    let (f_bg, f_fg, t_ch) =
+                        palette_foliage_colors(palette, c_idx, oi + slot as usize);
+                    let ch = if dc > 0 || dr < 0 {
+                        if cell_lit > 0.68 { '▓' } else { t_ch }
+                    } else if cell_lit < 0.26 {
+                        '░'
+                    } else {
+                        '▒'
+                    };
+                    let cp = cell_pos(cc, rr);
+                    self.push_glyph(
+                        '█',
+                        cp,
+                        cell_size,
+                        0.0,
+                        z_fg + 0.005,
+                        shade_color(f_bg, cell_lit),
+                        0.0,
+                    );
+                    self.push_glyph(
+                        ch,
+                        cp,
+                        cell_size,
+                        0.0,
+                        z_fg + 0.015,
+                        shade_color(f_fg, cell_lit),
+                        0.015,
+                    );
+                }
+            } else {
+                // Lush foreground bush (3..=4 rows tall, reaching up past ground_row horizon)
+                let bush_rows = 3 + ((slot_hash / 13) % 2) as i32;
+                let half_w = 2 + ((slot_hash / 17) % 2) as i32;
+
+                // Wide ground cast shadow away from moon
+                for sk in 1..=(half_w + 3) {
+                    let density = if sk <= 2 {
+                        3
+                    } else if sk <= half_w + 1 {
+                        2
+                    } else {
+                        1
+                    };
+                    let sc = if shadow_dir < 0 {
+                        base_c - half_w + 1 - sk
+                    } else {
+                        base_c + half_w - 1 + sk
+                    };
+                    self.push_shadow_cell(
+                        sc, root_r, cols, rows, cell_size, density, 0.064, shadow_pal,
+                    );
+                    if root_r + 1 < rows && sk <= half_w + 1 {
+                        self.push_shadow_cell(
+                            sc,
+                            root_r + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            if sk <= 2 { 2 } else { 1 },
+                            0.064,
+                            shadow_pal,
+                        );
+                    }
+                }
+                // Contact shadow directly under bush base
+                for dc in -half_w..=half_w {
+                    self.push_shadow_cell(
+                        base_c + dc,
+                        root_r,
+                        cols,
+                        rows,
+                        cell_size,
+                        3,
+                        0.064,
+                        shadow_pal,
+                    );
+                }
+
+                // Organic rounded bush dome with moonlit upper-right rim and shaded underside
+                for dr in 0..bush_rows {
+                    let rr = root_r - dr;
+                    if rr < 0 || rr >= rows {
+                        continue;
+                    }
+                    let row_half_w = if dr == bush_rows - 1 {
+                        (half_w - 1).max(1)
+                    } else {
+                        half_w
+                    };
+                    for dc in -row_half_w..=row_half_w {
+                        let cc = base_c + dc;
+                        if cc < 0 || cc >= cols {
+                            continue;
+                        }
+                        let cell_lit =
+                            (0.42 + (dc as f32 * 0.20) + (dr as f32 * 0.18)).clamp(0.08, 0.90);
+                        let b_hash = (cc as u32).wrapping_mul(31) ^ (rr as u32).wrapping_mul(97);
+                        let c_idx = if b_hash.is_multiple_of(5) {
+                            2
+                        } else {
+                            (b_hash % 2) as u8
+                        };
+                        let (f_bg, f_fg, t_ch) =
+                            palette_foliage_colors(palette, c_idx, b_hash as usize);
+                        let ch = if dr == 0 && dc.abs() <= 1 && b_hash.is_multiple_of(3) {
+                            '▒'
+                        } else if dc > 0 || dr == bush_rows - 1 {
+                            if cell_lit > 0.66 { '☘' } else { t_ch }
+                        } else if cell_lit < 0.24 {
+                            '░'
+                        } else {
+                            '▒'
+                        };
+                        let cp = cell_pos(cc, rr);
+                        self.push_glyph(
+                            '█',
+                            cp,
+                            cell_size,
+                            0.0,
+                            z_fg + 0.005,
+                            shade_color(f_bg, cell_lit),
+                            0.0,
+                        );
+                        self.push_glyph(
+                            ch,
+                            cp,
+                            cell_size,
+                            0.0,
+                            z_fg + 0.015,
+                            shade_color(f_fg, cell_lit),
+                            0.015,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Compute left canopy spread for directional moonlight shading & cast shadows
         let canopy_left_span = world_guard
             .branches
             .iter()
@@ -874,71 +1602,93 @@ impl LivingRookeryScene {
                     if rr == ground_row {
                         for dx in -(span + 1)..=(span + 1) {
                             let bc = cc + dx;
-                            if bc >= 0 && bc < cols {
-                                if ground_row + 1 < rows {
-                                    let ch1 = if dx.abs() <= span { '▓' } else { '▒' };
-                                    self.push_glyph(
-                                        ch1,
-                                        cell_pos(bc, ground_row + 1),
-                                        cell_size,
-                                        0.0,
-                                        0.053,
-                                        shadow_deep_color,
-                                        0.0,
-                                    );
-                                }
-                                if ground_row + 2 < rows && dx <= span {
-                                    let ch2 = if dx <= 0 { '▒' } else { '░' };
-                                    self.push_glyph(
-                                        ch2,
-                                        cell_pos(bc, ground_row + 2),
-                                        cell_size,
-                                        0.0,
-                                        0.052,
-                                        shadow_color,
-                                        0.0,
-                                    );
-                                }
+                            if ground_row + 1 < rows {
+                                let d1 = if dx.abs() <= span { 3 } else { 2 };
+                                self.push_shadow_cell(
+                                    bc,
+                                    ground_row + 1,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    d1,
+                                    0.064,
+                                    shadow_pal,
+                                );
+                            }
+                            if ground_row + 2 < rows && dx <= span {
+                                let d2 = if dx <= 0 { 2 } else { 1 };
+                                self.push_shadow_cell(
+                                    bc,
+                                    ground_row + 2,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    d2,
+                                    0.064,
+                                    shadow_pal,
+                                );
                             }
                         }
-                        let cast_len = (5 + span * 2).min(13);
+                        let cast_len = (7 + span * 2).min(16);
                         for sk in 1..=cast_len {
                             let sc = if shadow_dir < 0 {
                                 cc - span + shadow_dir * sk
                             } else {
                                 cc + span + shadow_dir * sk
                             };
-                            if sc >= 0 && sc < cols {
-                                let (shadow_ch, s_col) = if sk <= 3 {
-                                    ('█', shadow_deep_color)
-                                } else if sk <= cast_len / 2 + 1 {
-                                    ('▓', shadow_deep_color)
-                                } else if sk <= (cast_len * 3) / 4 {
-                                    ('▒', shadow_color)
+                            let density = if sk <= 4 {
+                                3
+                            } else if sk <= (cast_len * 2) / 3 {
+                                2
+                            } else {
+                                1
+                            };
+                            self.push_shadow_cell(
+                                sc, ground_row, cols, rows, cell_size, density, 0.064, shadow_pal,
+                            );
+                            if sk <= (cast_len * 4) / 5 && ground_row + 1 < rows {
+                                let sub_d = if sk <= 4 {
+                                    3
+                                } else if sk <= cast_len / 2 {
+                                    2
                                 } else {
-                                    ('░', shadow_color)
+                                    1
                                 };
-                                self.push_glyph(
-                                    shadow_ch,
-                                    cell_pos(sc, ground_row),
+                                self.push_shadow_cell(
+                                    sc,
+                                    ground_row + 1,
+                                    cols,
+                                    rows,
                                     cell_size,
-                                    0.0,
-                                    0.052,
-                                    s_col,
-                                    0.0,
+                                    sub_d,
+                                    0.064,
+                                    shadow_pal,
                                 );
-                                if sk <= (cast_len * 2) / 3 && ground_row + 1 < rows {
-                                    let sub_ch = if sk <= 3 { '▒' } else { '░' };
-                                    self.push_glyph(
-                                        sub_ch,
-                                        cell_pos(sc, ground_row + 1),
-                                        cell_size,
-                                        0.0,
-                                        0.051,
-                                        shadow_color,
-                                        0.0,
-                                    );
-                                }
+                            }
+                            if sk >= 2 && sk <= (cast_len * 2) / 3 && ground_row + 2 < rows {
+                                let sub_d2 = if sk <= cast_len / 3 { 2 } else { 1 };
+                                self.push_shadow_cell(
+                                    sc + shadow_dir,
+                                    ground_row + 2,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    sub_d2,
+                                    0.064,
+                                    shadow_pal,
+                                );
+                            }
+                            if sk >= 3 && sk <= cast_len / 2 && ground_row + 3 < rows {
+                                self.push_shadow_cell(
+                                    sc + shadow_dir * 2,
+                                    ground_row + 3,
+                                    cols,
+                                    rows,
+                                    cell_size,
+                                    1,
+                                    0.064,
+                                    shadow_pal,
+                                );
                             }
                         }
                     }
@@ -1060,27 +1810,46 @@ impl LivingRookeryScene {
                         let sub_pos = cell_pos(cc, rr + 1);
                         self.push_glyph('█', sub_pos, cell_size, 0.0, 0.08, root_bg, 0.0);
                         self.push_glyph('░', sub_pos, cell_size, 0.0, 0.095, root_fg, 0.0);
-                        let shadow_c = cc + shadow_dir;
-                        if shadow_c >= 0 && shadow_c < cols {
-                            self.push_glyph(
-                                '▒',
-                                cell_pos(shadow_c, rr + 1),
-                                cell_size,
-                                0.0,
-                                0.052,
-                                shadow_color,
-                                0.0,
-                            );
-                        }
-                    } else if rr >= ground_row && rr + 1 < rows {
-                        self.push_glyph(
-                            '░',
-                            cell_pos(cc, rr + 1),
+                        self.push_shadow_cell(
+                            cc + shadow_dir,
+                            rr + 1,
+                            cols,
+                            rows,
                             cell_size,
-                            0.0,
-                            0.051,
-                            shadow_color,
-                            0.0,
+                            2,
+                            0.064,
+                            shadow_pal,
+                        );
+                        self.push_shadow_cell(
+                            cc + shadow_dir * 2,
+                            rr + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            1,
+                            0.064,
+                            shadow_pal,
+                        );
+                    } else if rr >= ground_row && rr + 1 < rows {
+                        self.push_shadow_cell(
+                            cc,
+                            rr + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            2,
+                            0.064,
+                            shadow_pal,
+                        );
+                        self.push_shadow_cell(
+                            cc + shadow_dir,
+                            rr + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            1,
+                            0.064,
+                            shadow_pal,
                         );
                     }
                 } else {
@@ -1400,38 +2169,42 @@ impl LivingRookeryScene {
             }
         }
 
-        // Dappled canopy shadow cast leftward onto the meadow floor
-        for sc_off in 2..=canopy_left_span {
-            let sc = trunk_center_c + shadow_dir * sc_off;
-            if sc < 0 || sc >= cols {
-                continue;
-            }
-            let dapple_hash = (sc as u32).wrapping_mul(1103515245) ^ 0x5bd1e995;
-            if dapple_hash % 10 < 6 {
-                let s_ch = if sc_off < canopy_left_span / 2 && dapple_hash.is_multiple_of(3) {
-                    '▒'
-                } else {
-                    '░'
-                };
-                self.push_glyph(
-                    s_ch,
-                    cell_pos(sc, ground_row),
-                    cell_size,
-                    0.0,
-                    0.050,
-                    shadow_color,
-                    0.0,
-                );
-                if ground_row + 1 < rows && dapple_hash.is_multiple_of(2) {
-                    self.push_glyph(
-                        '░',
-                        cell_pos(sc, ground_row + 1),
-                        cell_size,
-                        0.0,
-                        0.050,
-                        shadow_color,
-                        0.0,
-                    );
+        // Organic dappled canopy shadow cast away from the moon across the meadow floor
+        let max_shadow_rows = 5.min(rows - ground_row - 1).max(1);
+        let canopy_rx = (canopy_left_span as f32 * 0.55).max(5.0);
+        let canopy_shadow_center = trunk_center_c as f32 + (shadow_dir as f32 * (canopy_rx * 0.95));
+        for sr_off in 0..=max_shadow_rows {
+            let sr = ground_row + sr_off;
+            let ny = sr_off as f32 / (max_shadow_rows as f32 + 0.6);
+            let row_center = canopy_shadow_center + (shadow_dir as f32 * sr_off as f32 * 1.1);
+            let row_rx = canopy_rx * (1.0 - ny * ny * 0.55).max(0.25);
+            let c_min = (row_center - row_rx).floor() as i32;
+            let c_max = (row_center + row_rx).ceil() as i32;
+            for sc in c_min..=c_max {
+                if sc < 0 || sc >= cols {
+                    continue;
+                }
+                let nx = (sc as f32 - row_center) / row_rx.max(1.0);
+                let dist = (nx * nx + ny * ny * 0.65).sqrt();
+                let dapple_hash =
+                    (sc as u32).wrapping_mul(1103515245) ^ (sr as u32).wrapping_mul(2654435761);
+                let wave_edge = 0.96 + (sc as f32 * 0.42 + sr as f32 * 0.8).sin() * 0.14;
+                if dist <= wave_edge {
+                    // Dense umbral core in the middle, organic dappled penumbra at the edges
+                    let density = if dist < 0.48 && (dapple_hash % 10 < 8) {
+                        3
+                    } else if dist < 0.78 && (dapple_hash % 10 < 7) {
+                        2
+                    } else if dapple_hash % 10 < 5 {
+                        1
+                    } else {
+                        0
+                    };
+                    if density > 0 {
+                        self.push_shadow_cell(
+                            sc, sr, cols, rows, cell_size, density, 0.062, shadow_pal,
+                        );
+                    }
                 }
             }
         }
@@ -1567,43 +2340,72 @@ impl LivingRookeryScene {
                 FaunaSpecies::Rabbit | FaunaSpecies::Squirrel | FaunaSpecies::Hedgehog => (3, 2),
             };
 
-            // Ground contact occlusion & directional cast shadow away from celestial moon
+            // Strong ground contact occlusion & organic directional cast shadow away from moon
             if fauna.pos[1] >= 740.0 {
                 let col_offset_start = -1;
                 let col_offset_end = col_offset_start + width_cols;
+                let shadow_z = (z_base - 0.05).clamp(0.065, 0.14);
                 for c_off in col_offset_start..col_offset_end {
                     let base_c = center_c + c_off;
-                    // Ground contact shadow directly under paws/belly
-                    if base_c >= 0 && base_c < cols && shadow_r + 1 < rows {
-                        self.push_glyph(
-                            '▓',
-                            cell_pos(base_c, shadow_r + 1),
+                    // Deep umbral contact shadow directly under paws/belly
+                    self.push_shadow_cell(
+                        base_c, shadow_r, cols, rows, cell_size, 3, shadow_z, shadow_pal,
+                    );
+                    if shadow_r + 1 < rows {
+                        self.push_shadow_cell(
+                            base_c,
+                            shadow_r + 1,
+                            cols,
+                            rows,
                             cell_size,
-                            0.0,
-                            0.053,
-                            shadow_deep_color,
-                            0.0,
+                            2,
+                            shadow_z,
+                            shadow_pal,
                         );
                     }
-                    // Directional cast shadow tapering leftward away from moon
-                    for sk in 1..=3 {
-                        let sc = base_c + shadow_dir * sk;
-                        if sc >= 0 && sc < cols {
-                            let (s_ch, s_col) = if sk == 1 {
-                                ('▒', shadow_deep_color)
-                            } else {
-                                ('░', shadow_color)
-                            };
-                            self.push_glyph(
-                                s_ch,
-                                cell_pos(sc, shadow_r),
+                }
+                // Angled, tapered body shadow stretching away from moon
+                let edge_c = if shadow_dir < 0 {
+                    center_c + col_offset_start
+                } else {
+                    center_c + col_offset_end - 1
+                };
+                let cast_len = if height_rows >= 3 { 5 } else { 4 };
+                for sk in 1..=cast_len {
+                    let sc = edge_c + shadow_dir * sk;
+                    if sk <= 2 {
+                        let d_top = if sk == 1 { 3 } else { 2 };
+                        self.push_shadow_cell(
+                            sc, shadow_r, cols, rows, cell_size, d_top, shadow_z, shadow_pal,
+                        );
+                        if shadow_r + 1 < rows {
+                            self.push_shadow_cell(
+                                sc,
+                                shadow_r + 1,
+                                cols,
+                                rows,
                                 cell_size,
-                                0.0,
-                                0.052,
-                                s_col,
-                                0.0,
+                                2,
+                                shadow_z,
+                                shadow_pal,
                             );
                         }
+                    } else if shadow_r + 1 < rows {
+                        let d_tip = if sk < cast_len { 2 } else { 1 };
+                        self.push_shadow_cell(
+                            sc,
+                            shadow_r + 1,
+                            cols,
+                            rows,
+                            cell_size,
+                            d_tip,
+                            shadow_z,
+                            shadow_pal,
+                        );
+                    } else {
+                        self.push_shadow_cell(
+                            sc, shadow_r, cols, rows, cell_size, 1, shadow_z, shadow_pal,
+                        );
                     }
                 }
             }
@@ -1643,7 +2445,7 @@ impl LivingRookeryScene {
             let in_tree_shadow = shadow_dir < 0
                 && center_c < trunk_center_c
                 && center_c >= trunk_center_c - canopy_left_span
-                && center_r <= ground_row + 2;
+                && center_r <= ground_row + 5;
             let fauna_ambient = if in_tree_shadow { 0.36 } else { 0.54 };
 
             let mut draw_cell = |cc: i32, rr: i32, ch: char, fg: [f32; 4], bg: [f32; 4]| {
@@ -2000,18 +2802,16 @@ impl LivingRookeryScene {
             if c >= 0 && c < cols {
                 // Directional cast shadow on ground turf
                 for sk in 1..=2 {
-                    let sc = c + shadow_dir * sk;
-                    if sc >= 0 && sc < cols {
-                        self.push_glyph(
-                            '░',
-                            cell_pos(sc, r.clamp(0, rows - 1)),
-                            cell_size,
-                            0.0,
-                            0.052,
-                            shadow_color,
-                            0.0,
-                        );
-                    }
+                    self.push_shadow_cell(
+                        c + shadow_dir * sk,
+                        r.clamp(0, rows - 1),
+                        cols,
+                        rows,
+                        cell_size,
+                        if sk == 1 { 2 } else { 1 },
+                        0.064,
+                        shadow_pal,
+                    );
                 }
                 self.push_glyph('█', sp, cell_size, 0.0, 0.30, [0.28, 0.18, 0.10, 0.95], 0.0);
                 self.push_glyph('i', sp, cell_size, 0.0, 0.32, [0.98, 0.92, 0.55, 0.98], 0.0);
@@ -2024,19 +2824,23 @@ impl LivingRookeryScene {
             let r = (sp[1] / cell_h).round() as i32;
             if c >= 0 && c < cols {
                 // Directional cast shadow on ground turf
-                for sk in 1..=2 {
-                    let sc = c + shadow_dir * sk;
-                    if sc >= 0 && sc < cols {
-                        self.push_glyph(
-                            '▒',
-                            cell_pos(sc, r.clamp(0, rows - 1)),
-                            cell_size,
-                            0.0,
-                            0.052,
-                            shadow_color,
-                            0.0,
-                        );
-                    }
+                for sk in 1..=3 {
+                    self.push_shadow_cell(
+                        c + shadow_dir * sk,
+                        r.clamp(0, rows - 1),
+                        cols,
+                        rows,
+                        cell_size,
+                        if sk == 1 {
+                            3
+                        } else if sk == 2 {
+                            2
+                        } else {
+                            1
+                        },
+                        0.064,
+                        shadow_pal,
+                    );
                 }
                 self.push_glyph('█', sp, cell_size, 0.0, 0.28, [0.18, 0.22, 0.26, 0.95], 0.0);
                 self.push_glyph('~', sp, cell_size, 0.0, 0.30, [0.45, 0.85, 0.98, 0.98], 0.0);
@@ -2050,18 +2854,16 @@ impl LivingRookeryScene {
             if c >= 0 && c < cols {
                 // Directional cast shadow on ground turf
                 for sk in 1..=2 {
-                    let sc = c + shadow_dir * sk;
-                    if sc >= 0 && sc < cols {
-                        self.push_glyph(
-                            '░',
-                            cell_pos(sc, r.clamp(0, rows - 1)),
-                            cell_size,
-                            0.0,
-                            0.052,
-                            shadow_color,
-                            0.0,
-                        );
-                    }
+                    self.push_shadow_cell(
+                        c + shadow_dir * sk,
+                        r.clamp(0, rows - 1),
+                        cols,
+                        rows,
+                        cell_size,
+                        if sk == 1 { 2 } else { 1 },
+                        0.064,
+                        shadow_pal,
+                    );
                 }
                 self.push_glyph('═', sp, cell_size, 0.0, 0.28, [0.68, 0.52, 0.35, 0.95], 0.0);
             }
