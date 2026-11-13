@@ -207,61 +207,127 @@ impl LivingRookeryScene {
         let palette = world_guard.active_palette;
 
         // Palette color tokens for sky, celestial, and verdant 2.5D meadow:
-        let (turf_color, turf_deep, flower_color, trail_color, border_color, star_color) =
+        let (turf_color, turf_deep, flower_color, trail_color, _border_color, star_color) =
             match palette {
                 RookeryPalette::MidnightStarlight => (
-                    [0.35, 0.80, 0.92, 0.95],
-                    [0.15, 0.42, 0.58, 0.90],
-                    [0.85, 0.95, 1.00, 0.98],
-                    [0.25, 0.35, 0.48, 0.70],
+                    [0.36, 0.78, 0.90, 0.88],
+                    [0.22, 0.52, 0.68, 0.80],
+                    [0.85, 0.95, 1.00, 0.92],
+                    [0.28, 0.38, 0.52, 0.65],
                     [0.45, 0.75, 0.95, 0.92],
-                    [0.85, 0.92, 1.0, 0.85],
+                    [0.85, 0.92, 1.0, 0.88],
                 ),
                 RookeryPalette::AutumnHearth => (
-                    [0.78, 0.62, 0.22, 0.95],
-                    [0.42, 0.30, 0.12, 0.90],
-                    [0.98, 0.42, 0.20, 0.98],
-                    [0.55, 0.32, 0.18, 0.70],
+                    [0.78, 0.64, 0.26, 0.88],
+                    [0.52, 0.40, 0.18, 0.80],
+                    [0.98, 0.42, 0.20, 0.92],
+                    [0.58, 0.36, 0.22, 0.65],
                     [0.88, 0.55, 0.22, 0.92],
-                    [1.0, 0.88, 0.72, 0.85],
+                    [1.0, 0.88, 0.72, 0.88],
                 ),
                 RookeryPalette::VerdantRainforest => (
-                    [0.22, 0.95, 0.45, 0.95],
-                    [0.10, 0.52, 0.24, 0.90],
-                    [0.98, 0.40, 0.82, 0.98],
-                    [0.35, 0.45, 0.25, 0.70],
+                    [0.24, 0.88, 0.46, 0.88],
+                    [0.16, 0.60, 0.32, 0.80],
+                    [0.98, 0.40, 0.82, 0.92],
+                    [0.38, 0.48, 0.28, 0.65],
                     [0.25, 0.88, 0.48, 0.92],
-                    [0.82, 0.98, 0.85, 0.85],
+                    [0.82, 0.98, 0.85, 0.88],
                 ),
                 RookeryPalette::AmberPhosphor => (
-                    [0.98, 0.75, 0.18, 0.95],
-                    [0.55, 0.38, 0.08, 0.90],
-                    [1.0, 0.92, 0.45, 0.98],
-                    [0.48, 0.30, 0.06, 0.70],
+                    [0.92, 0.72, 0.22, 0.88],
+                    [0.64, 0.46, 0.14, 0.80],
+                    [1.0, 0.92, 0.45, 0.92],
+                    [0.52, 0.34, 0.08, 0.65],
                     [0.98, 0.72, 0.15, 0.92],
-                    [0.98, 0.82, 0.25, 0.85],
+                    [0.98, 0.82, 0.25, 0.88],
                 ),
                 RookeryPalette::MatrixGreen => (
-                    [0.25, 0.98, 0.35, 0.95],
-                    [0.08, 0.45, 0.16, 0.90],
-                    [0.65, 1.00, 0.75, 0.98],
-                    [0.12, 0.35, 0.15, 0.70],
+                    [0.26, 0.90, 0.36, 0.88],
+                    [0.14, 0.56, 0.24, 0.80],
+                    [0.65, 1.00, 0.75, 0.92],
+                    [0.16, 0.40, 0.18, 0.65],
                     [0.18, 0.95, 0.28, 0.92],
-                    [0.45, 0.98, 0.55, 0.85],
+                    [0.45, 0.98, 0.55, 0.88],
                 ),
                 RookeryPalette::EarthAndSylvan => (
-                    [0.28, 0.88, 0.44, 0.95],
-                    [0.14, 0.50, 0.24, 0.90],
-                    [0.98, 0.85, 0.25, 0.98],
-                    [0.52, 0.38, 0.24, 0.70],
+                    [0.30, 0.82, 0.44, 0.88],
+                    [0.20, 0.56, 0.30, 0.80],
+                    [0.98, 0.85, 0.25, 0.92],
+                    [0.55, 0.42, 0.28, 0.65],
                     [0.28, 0.72, 0.58, 0.92],
-                    [0.88, 0.92, 0.98, 0.85],
+                    [0.88, 0.92, 0.98, 0.88],
                 ),
             };
+
+        // Directional moonlight parameters (bright upper-right moon)
+        let moon_c = (cols - 14).max(8);
+        let moon_r = 5.min((rows / 4).max(3));
+        let moon_rx = 6.5f32;
+        let moon_ry = 3.8f32;
+        let shadow_dir: i32 = if moon_c >= cols / 2 { -1 } else { 1 };
+
+        let (shadow_tint, light_tint) = match palette {
+            RookeryPalette::MidnightStarlight => ([0.03, 0.06, 0.14], [0.85, 0.94, 1.00]),
+            RookeryPalette::AutumnHearth => ([0.10, 0.05, 0.06], [1.00, 0.86, 0.66]),
+            RookeryPalette::VerdantRainforest => ([0.03, 0.08, 0.06], [0.82, 0.98, 0.86]),
+            RookeryPalette::AmberPhosphor => ([0.10, 0.06, 0.01], [1.00, 0.84, 0.32]),
+            RookeryPalette::MatrixGreen => ([0.02, 0.08, 0.03], [0.48, 1.00, 0.60]),
+            RookeryPalette::EarthAndSylvan => ([0.04, 0.07, 0.12], [0.88, 0.93, 1.00]),
+        };
+
+        let shade_color = |base: [f32; 4], lit: f32| -> [f32; 4] {
+            let l = lit.clamp(0.0, 1.0);
+            if l < 0.5 {
+                let t = l * 2.0;
+                let dark = [
+                    base[0] * 0.22 + shadow_tint[0] * 0.28,
+                    base[1] * 0.22 + shadow_tint[1] * 0.28,
+                    base[2] * 0.22 + shadow_tint[2] * 0.28,
+                ];
+                [
+                    dark[0] + (base[0] - dark[0]) * t,
+                    dark[1] + (base[1] - dark[1]) * t,
+                    dark[2] + (base[2] - dark[2]) * t,
+                    base[3],
+                ]
+            } else {
+                let t = (l - 0.5) * 2.0;
+                let bright = [
+                    (base[0] * 1.10 + light_tint[0] * 0.10).min(0.95),
+                    (base[1] * 1.10 + light_tint[1] * 0.10).min(0.95),
+                    (base[2] * 1.10 + light_tint[2] * 0.10).min(0.95),
+                ];
+                [
+                    base[0] + (bright[0] - base[0]) * t,
+                    base[1] + (bright[1] - base[1]) * t,
+                    base[2] + (bright[2] - base[2]) * t,
+                    base[3],
+                ]
+            }
+        };
+
+        let shadow_color = [
+            turf_deep[0] * 0.16 + shadow_tint[0] * 0.45,
+            turf_deep[1] * 0.18 + shadow_tint[1] * 0.45,
+            turf_deep[2] * 0.18 + shadow_tint[2] * 0.45,
+            0.90,
+        ];
+        let shadow_deep_color = [
+            shadow_color[0] * 0.70,
+            shadow_color[1] * 0.70,
+            shadow_color[2] * 0.70,
+            0.94,
+        ];
 
         // 1. Atmospheric Celestial Sky & Twinkling Stars
         for r in 1..(ground_row - 2) {
             for c in 1..(cols - 1) {
+                // Suppress stars inside the large moon disc and inner corona
+                let mdx = (c - moon_c) as f32 / moon_rx;
+                let mdy = (r - moon_r) as f32 / moon_ry;
+                if (mdx * mdx + mdy * mdy) < 1.85 {
+                    continue;
+                }
                 let star_hash =
                     (c as u32).wrapping_mul(374_761_393) ^ (r as u32).wrapping_mul(668_265_263);
                 if star_hash.is_multiple_of(113) {
@@ -278,42 +344,59 @@ impl LivingRookeryScene {
             }
         }
 
-        // Celestial Crescent Moon in upper sky with glowing ambient halo
-        let moon_c = (cols - 10).max(4);
-        let moon_r = 3.min(rows - 1);
-        let shadow_dir: i32 = if moon_c >= cols / 2 { -1 } else { 1 };
-        let shadow_color = [
-            turf_color[0] * 0.22,
-            turf_color[1] * 0.28,
-            turf_color[2] * 0.20,
-            0.88,
-        ];
-
-        // Soft glowing halo in adjacent cells
-        for dr in -1..=1 {
-            for dc in -2..=2 {
-                if dr == 0 && dc == 0 {
-                    continue;
-                }
+        // Large Celestial Moon in upper-right sky with shaded disc & radiant halo
+        for dr in -6..=6 {
+            for dc in -10..=10 {
                 let hc = moon_c + dc;
                 let hr = moon_r + dr;
-                if hc >= 0 && hc < cols && hr >= 0 && hr < ground_row - 2 {
-                    let halo_col = [star_color[0], star_color[1], star_color[2], 0.22];
-                    self.push_glyph('·', cell_pos(hc, hr), cell_size, 0.0, 0.02, halo_col, 0.0);
+                if hc < 0 || hc >= cols || hr < 0 || hr >= ground_row - 2 {
+                    continue;
+                }
+                let nx = dc as f32 / moon_rx;
+                let ny = dr as f32 / moon_ry;
+                let dist = (nx * nx + ny * ny).sqrt();
+                if dist <= 1.0 {
+                    // Shaded moon sphere: bright upper-right limb, subtle craters, softer left limb
+                    let crater_hash =
+                        (dc + 31).wrapping_mul(17) as u32 ^ (dr + 19).wrapping_mul(53) as u32;
+                    let limb_lit = (0.62 + nx * 0.34 - ny * 0.22).clamp(0.28, 1.0);
+                    let is_crater = crater_hash.is_multiple_of(7) && dist < 0.85;
+                    let (ch, brightness, alpha) = if dist > 0.86 && limb_lit < 0.45 {
+                        ('▒', 0.65, 0.82)
+                    } else if is_crater {
+                        ('▓', 0.76 * limb_lit, 0.90)
+                    } else if limb_lit > 0.58 {
+                        ('█', 0.96, 0.98)
+                    } else {
+                        ('▓', 0.82 * limb_lit + 0.16, 0.93)
+                    };
+                    let moon_col = [
+                        (star_color[0] * brightness + light_tint[0] * 0.18).min(1.0),
+                        (star_color[1] * brightness + light_tint[1] * 0.18).min(1.0),
+                        (star_color[2] * brightness + light_tint[2] * 0.18).min(1.0),
+                        alpha,
+                    ];
+                    self.push_glyph(ch, cell_pos(hc, hr), cell_size, 0.0, 0.03, moon_col, 0.0);
+                } else if dist <= 1.75 {
+                    let falloff = 1.0 - (dist - 1.0) / 0.75;
+                    let (halo_ch, halo_alpha) = if dist < 1.28 {
+                        ('░', 0.24 * falloff + 0.06)
+                    } else {
+                        ('·', 0.18 * falloff)
+                    };
+                    let halo_col = [light_tint[0], light_tint[1], light_tint[2], halo_alpha];
+                    self.push_glyph(
+                        halo_ch,
+                        cell_pos(hc, hr),
+                        cell_size,
+                        0.0,
+                        0.02,
+                        halo_col,
+                        0.0,
+                    );
                 }
             }
         }
-
-        // Celestial Moon body
-        self.push_glyph(
-            '☾',
-            cell_pos(moon_c, moon_r),
-            cell_size,
-            0.0,
-            0.03,
-            [star_color[0], star_color[1], star_color[2], 0.95],
-            0.0,
-        );
 
         // Rare Shooting Star / Meteor streak (appears periodically in upper sky)
         let meteor_period = 22.0f32;
@@ -513,30 +596,32 @@ impl LivingRookeryScene {
             }
         }
 
-        // 2. Multi-Depth Verdant 2.5D Meadow & Forest Floor Ground Plane (Looking Down)
+        // 2. Multi-Depth Verdant 2.5D Meadow & Forest Floor Ground Plane (World-Anchored)
         let mix_f32 = |a: f32, b: f32, t: f32| -> f32 { a + (b - a) * t.clamp(0.0, 1.0) };
+        let world_col_offset = ((offset_x / 1000.0) * self.width / cell_w).round() as i32;
 
-        // 2a. Upper grass depth interface (ground_row - 1): tall grass tips & wild shrubs poking into the air
+        // 2a. Upper grass depth interface (ground_row - 1): sparse, calm grass tips
         for c in 1..cols.saturating_sub(1) {
-            let grass_hash = (c as u32).wrapping_mul(127_412_617) ^ 0x9e3779b9;
-            if grass_hash % 100 < 24 {
+            let world_c = c + world_col_offset;
+            let grass_hash = (world_c as u32).wrapping_mul(127_412_617) ^ 0x9e3779b9;
+            if grass_hash % 100 < 9 {
                 let (grass_ch, is_flower) = match grass_hash % 6 {
-                    0 => ('"', false),
-                    1 => ('☘', false),
-                    2 => ('v', false),
-                    3 => ('w', false),
+                    0 => (',', false),
+                    1 => ('.', false),
+                    2 => ('\'', false),
+                    3 => ('"', false),
                     4 => ('*', true),
-                    _ => (',', false),
+                    _ => ('v', false),
                 };
                 let col = if is_flower {
-                    flower_color
-                } else {
                     [
-                        turf_color[0] * 1.05,
-                        turf_color[1] * 1.05,
-                        turf_color[2] * 1.02,
-                        0.92,
+                        flower_color[0],
+                        flower_color[1],
+                        flower_color[2],
+                        flower_color[3] * 0.78,
                     ]
+                } else {
+                    [turf_color[0], turf_color[1], turf_color[2], 0.58]
                 };
                 self.push_glyph(
                     grass_ch,
@@ -550,26 +635,26 @@ impl LivingRookeryScene {
             }
         }
 
-        // 2b. Full 2.5D Meadow Field across ground_row .. rows - 1
-        for r in ground_row..rows.saturating_sub(1) {
+        // 2b. Full 2.5D Meadow Field across ground_row .. rows
+        for r in ground_row..rows {
             let depth_t = (r - ground_row) as f32 / (rows - ground_row).max(2) as f32;
 
             for c in 1..cols.saturating_sub(1) {
+                let world_c = c + world_col_offset;
                 let cell_hash =
-                    (c as u32).wrapping_mul(73_856_093) ^ (r as u32).wrapping_mul(19_349_663);
+                    (world_c as u32).wrapping_mul(73_856_093) ^ (r as u32).wrapping_mul(19_349_663);
 
-                // Natural winding earth path cutting gently across the meadow
+                // Natural winding earth path cutting gently across the meadow (world-anchored)
                 let trail_center = (cols as f32 * 0.44)
                     + ((r - ground_row) as f32 * 1.1)
                     + ((r as f32 * 0.38).sin() * 4.5);
-                let is_trail = (c as f32 - trail_center).abs() < 1.4 && cell_hash % 10 < 7;
+                let is_trail = (world_c as f32 - trail_center).abs() < 1.3 && cell_hash % 10 < 5;
 
                 if is_trail {
                     // Soft earth stepping trail
                     let trail_ch = match cell_hash % 4 {
                         0 => '·',
-                        1 => '¸',
-                        2 => '.',
+                        1 => '.',
                         _ => ' ',
                     };
                     if trail_ch != ' ' {
@@ -586,72 +671,63 @@ impl LivingRookeryScene {
                     continue;
                 }
 
-                // Foreground vs background grass distribution:
-                // Keep the meadow serene and proportioned: a fairly high percentage (~75%) of tiles
-                // are plain green tiles, while the remaining ~25% feature organic wildflowers,
-                // clovers, and varied grass tufts that scale with depth to maintain depth perception.
-                let grass_cutoff = 10 + 14 + (depth_t * 6.0) as u32; // ~24% at horizon up to 30% in foreground
-                let roll = cell_hash % 100;
+                // Serene, uncluttered meadow distribution (~90% clean ground, ~10% subtle detail)
+                let grass_cutoff = 35 + 45 + (depth_t * 25.0) as u32; // ~8.0% at horizon up to ~10.5% in foreground
+                let roll = cell_hash % 1000;
 
-                if roll < 4 {
-                    // Wildflower cluster (4%)
+                if roll < 15 {
+                    // Sparse wildflower cluster (1.5%)
                     let f_ch = match (cell_hash / 10) % 4 {
                         0 => '*',
                         1 => 'o',
                         2 => '✿',
                         _ => '❀',
                     };
-                    self.push_glyph(
-                        f_ch,
-                        cell_pos(c, r),
-                        cell_size,
-                        0.0,
-                        0.06,
-                        flower_color,
-                        0.0,
-                    );
-                } else if roll < 10 {
-                    // Lush wild clover (6%)
-                    self.push_glyph('☘', cell_pos(c, r), cell_size, 0.0, 0.055, turf_color, 0.0);
+                    let f_col = [
+                        flower_color[0],
+                        flower_color[1],
+                        flower_color[2],
+                        flower_color[3] * 0.80,
+                    ];
+                    self.push_glyph(f_ch, cell_pos(c, r), cell_size, 0.0, 0.06, f_col, 0.0);
+                } else if roll < 35 {
+                    // Sparse wild clover (2.0%)
+                    let clover_col = [turf_color[0], turf_color[1], turf_color[2], 0.60];
+                    self.push_glyph('☘', cell_pos(c, r), cell_size, 0.0, 0.055, clover_col, 0.0);
                 } else if roll < grass_cutoff {
-                    // Varied grass blades and moss tufts with depth gradient
+                    // Subtle grass blades with gentle depth gradient
                     let ch = if depth_t > 0.6 {
-                        // Foreground: taller, crisper grass tufts
-                        match cell_hash % 6 {
-                            0 => '"',
-                            1 => 'w',
+                        match cell_hash % 5 {
+                            0 => ',',
+                            1 => '\'',
                             2 => 'v',
-                            3 => ',',
-                            4 => ';',
+                            3 => '.',
                             _ => '"',
                         }
                     } else if depth_t > 0.28 {
-                        // Mid meadow: mixed grass blades & turf
-                        match cell_hash % 6 {
-                            0 => '"',
-                            1 => 'v',
-                            2 => ',',
-                            3 => '.',
-                            4 => '\'',
-                            _ => '`',
-                        }
-                    } else {
-                        // Horizon edge: denser, smaller turf & moss
                         match cell_hash % 5 {
                             0 => ',',
                             1 => '.',
                             2 => '\'',
                             3 => '`',
-                            _ => '~',
+                            _ => 'v',
+                        }
+                    } else {
+                        match cell_hash % 4 {
+                            0 => ',',
+                            1 => '.',
+                            2 => '\'',
+                            _ => '`',
                         }
                     };
 
-                    // Depth-based color shading: deeper/softer in distance, bright & vibrant in foreground
+                    // Gentle depth-based color shading so ground doesn't overpower the scene
+                    let gentle_t = depth_t * 0.55;
                     let col = [
-                        mix_f32(turf_deep[0], turf_color[0], depth_t),
-                        mix_f32(turf_deep[1], turf_color[1], depth_t),
-                        mix_f32(turf_deep[2], turf_color[2], depth_t),
-                        mix_f32(0.85, 0.98, depth_t),
+                        mix_f32(turf_deep[0], turf_color[0], gentle_t),
+                        mix_f32(turf_deep[1], turf_color[1], gentle_t),
+                        mix_f32(turf_deep[2], turf_color[2], gentle_t),
+                        mix_f32(0.45, 0.64, depth_t),
                     ];
                     self.push_glyph(
                         ch,
@@ -663,11 +739,9 @@ impl LivingRookeryScene {
                         0.0,
                     );
                 }
-                // When roll >= grass_cutoff, this tile is left as a plain green tile,
-                // letting the background shader's verdant meadow gradient and CRT grid lines shine through.
 
-                // Natural boulders and mushrooms scattered across the meadow
-                if cell_hash % 240 == 42 && r > ground_row + 1 {
+                // Natural boulders and mushrooms scattered across the meadow (world-anchored)
+                if cell_hash % 280 == 42 && r > ground_row + 1 {
                     let is_boulder = cell_hash.is_multiple_of(2);
                     let obj_pos = cell_pos(c, r);
                     if is_boulder {
@@ -677,7 +751,7 @@ impl LivingRookeryScene {
                             cell_size,
                             0.0,
                             0.07,
-                            [0.60, 0.65, 0.70, 0.95],
+                            shade_color([0.58, 0.64, 0.70, 0.95], 0.68),
                             0.0,
                         );
                     } else {
@@ -687,21 +761,26 @@ impl LivingRookeryScene {
                             cell_size,
                             0.0,
                             0.07,
-                            [0.95, 0.45, 0.25, 0.98],
+                            shade_color([0.92, 0.44, 0.25, 0.98], 0.68),
                             0.0,
                         );
                     }
                     // Directional cast shadow on green grass away from moon
-                    for sk in 1..=2 {
+                    for sk in 1..=3 {
                         let sc = c + shadow_dir * sk;
                         if sc >= 0 && sc < cols {
+                            let (s_ch, s_col) = if sk == 1 {
+                                ('▒', shadow_deep_color)
+                            } else {
+                                ('░', shadow_color)
+                            };
                             self.push_glyph(
-                                '░',
+                                s_ch,
                                 cell_pos(sc, r),
                                 cell_size,
                                 0.0,
                                 0.052,
-                                shadow_color,
+                                s_col,
                                 0.0,
                             );
                         }
@@ -710,7 +789,27 @@ impl LivingRookeryScene {
             }
         }
 
-        // 3. Stepped Monospace Box-Drawing Tree Boughs & Multi-Column Bark
+        // Compute tree center and left canopy spread for directional moonlight shading & cast shadows
+        let trunk_center_c = world_guard
+            .branches
+            .iter()
+            .find(|b| b.depth == 0)
+            .map(|b| (self.world_to_screen(b.start, offset_x)[0] / cell_w).round() as i32)
+            .unwrap_or(cols / 2);
+        let canopy_left_span = world_guard
+            .branches
+            .iter()
+            .filter(|b| !b.is_root)
+            .map(|b| {
+                let end_c =
+                    (self.world_to_screen(b.current_end(), offset_x)[0] / cell_w).round() as i32;
+                (trunk_center_c - end_c).max(0)
+            })
+            .max()
+            .unwrap_or(8)
+            .clamp(4, 32);
+
+        // 3. Stepped Monospace Box-Drawing Tree Boughs & Multi-Column Bark (Moonlight Shaded)
         for branch in &world_guard.branches {
             // Viewport culling: only render branches within or near the visible screen area
             let min_x = branch.start[0].min(branch.current_end()[0]);
@@ -756,8 +855,7 @@ impl LivingRookeryScene {
                 }
 
                 if branch.depth == 0 {
-                    // Wide ANSI trunk with double-line box-drawing edges and organic bark knots
-                    // Subtle trunk ring expansion and bark widening happening cell-by-cell
+                    // Wide ANSI trunk with strong right-to-left moonlight shading
                     let span = if branch.thickness < 8.0 {
                         0 // Sapling single-column stem: 1 cell wide (║)
                     } else if branch.thickness < 18.0 {
@@ -772,25 +870,75 @@ impl LivingRookeryScene {
                         5 // Colossal Baobab / Redwood base: 11 cells wide
                     };
 
-                    // Noticeable cast shadow on the ground turf at the base of the trunk
+                    // Strong ground contact shadow & extended directional cast shadow away from moon
                     if rr == ground_row {
-                        for sk in 1..=3 {
+                        for dx in -(span + 1)..=(span + 1) {
+                            let bc = cc + dx;
+                            if bc >= 0 && bc < cols {
+                                if ground_row + 1 < rows {
+                                    let ch1 = if dx.abs() <= span { '▓' } else { '▒' };
+                                    self.push_glyph(
+                                        ch1,
+                                        cell_pos(bc, ground_row + 1),
+                                        cell_size,
+                                        0.0,
+                                        0.053,
+                                        shadow_deep_color,
+                                        0.0,
+                                    );
+                                }
+                                if ground_row + 2 < rows && dx <= span {
+                                    let ch2 = if dx <= 0 { '▒' } else { '░' };
+                                    self.push_glyph(
+                                        ch2,
+                                        cell_pos(bc, ground_row + 2),
+                                        cell_size,
+                                        0.0,
+                                        0.052,
+                                        shadow_color,
+                                        0.0,
+                                    );
+                                }
+                            }
+                        }
+                        let cast_len = (5 + span * 2).min(13);
+                        for sk in 1..=cast_len {
                             let sc = if shadow_dir < 0 {
                                 cc - span + shadow_dir * sk
                             } else {
                                 cc + span + shadow_dir * sk
                             };
                             if sc >= 0 && sc < cols {
-                                let shadow_ch = if sk <= 2 { '▒' } else { '░' };
+                                let (shadow_ch, s_col) = if sk <= 3 {
+                                    ('█', shadow_deep_color)
+                                } else if sk <= cast_len / 2 + 1 {
+                                    ('▓', shadow_deep_color)
+                                } else if sk <= (cast_len * 3) / 4 {
+                                    ('▒', shadow_color)
+                                } else {
+                                    ('░', shadow_color)
+                                };
                                 self.push_glyph(
                                     shadow_ch,
                                     cell_pos(sc, ground_row),
                                     cell_size,
                                     0.0,
                                     0.052,
-                                    shadow_color,
+                                    s_col,
                                     0.0,
                                 );
+                                if sk <= (cast_len * 2) / 3 && ground_row + 1 < rows {
+                                    let sub_ch = if sk <= 3 { '▒' } else { '░' };
+                                    self.push_glyph(
+                                        sub_ch,
+                                        cell_pos(sc, ground_row + 1),
+                                        cell_size,
+                                        0.0,
+                                        0.051,
+                                        shadow_color,
+                                        0.0,
+                                    );
+                                }
                             }
                         }
                     }
@@ -805,7 +953,21 @@ impl LivingRookeryScene {
                             continue;
                         }
                         let tp = cell_pos(col_idx, rr);
-                        self.push_glyph('█', tp, cell_size, 0.0, 0.08, bark_bg, 0.0);
+
+                        // Directional lighting across trunk width: right side lit by moon, left side in shadow
+                        let trunk_lit = if span == 0 {
+                            0.62
+                        } else {
+                            let u = dx as f32 / span as f32; // -1.0 (left) .. +1.0 (right)
+                            let base_lit = 0.44 + u * 0.48;
+                            // Base of trunk near ground is slightly more occluded than upper trunk
+                            let height_boost = ((ground_row - rr) as f32 / 24.0).clamp(0.0, 0.10);
+                            (base_lit + height_boost).clamp(0.05, 1.0)
+                        };
+                        let col_bg = shade_color(bark_bg, trunk_lit);
+                        let col_fg = shade_color(bark_fg, trunk_lit);
+
+                        self.push_glyph('█', tp, cell_size, 0.0, 0.08, col_bg, 0.0);
 
                         // Apical shoot at the actively growing top of the trunk
                         if is_trunk_apical_tip && dx == 0 {
@@ -814,7 +976,15 @@ impl LivingRookeryScene {
                                 RookeryPalette::MidnightStarlight => [0.45, 0.92, 0.98, 0.98],
                                 _ => [0.48, 0.95, 0.42, 0.98],
                             };
-                            self.push_glyph('▲', tp, cell_size, 0.0, 0.12, shoot_fg, 0.0);
+                            self.push_glyph(
+                                '▲',
+                                tp,
+                                cell_size,
+                                0.0,
+                                0.12,
+                                shade_color(shoot_fg, 0.75),
+                                0.0,
+                            );
                             continue;
                         }
 
@@ -822,6 +992,10 @@ impl LivingRookeryScene {
                             ^ (rr as u32).wrapping_mul(2246822519);
                         let ch = if span == 0 {
                             '║'
+                        } else if dx == -span {
+                            '├' // Left shadow rim
+                        } else if dx == span {
+                            '┤' // Right moonlit rim
                         } else if dx == 0 {
                             if knot_hash.is_multiple_of(29) {
                                 'O' // Weathered knot
@@ -830,25 +1004,36 @@ impl LivingRookeryScene {
                             } else {
                                 '║'
                             }
-                        } else if dx == -span {
-                            '├'
-                        } else if dx == span {
-                            '┤'
+                        } else if dx < 0 {
+                            // Shaded left bark surface
+                            if knot_hash.is_multiple_of(37) {
+                                '░'
+                            } else {
+                                '▒'
+                            }
                         } else if knot_hash.is_multiple_of(37) {
-                            '0' // Striated wood grain
+                            '0' // Striated wood grain on lit side
+                        } else if dx == span - 1 && span >= 2 {
+                            '▓' // Moonlit inner highlight
                         } else {
                             '█'
                         };
-                        self.push_glyph(ch, tp, cell_size, 0.0, 0.10, bark_fg, 0.0);
+                        self.push_glyph(ch, tp, cell_size, 0.0, 0.10, col_fg, 0.0);
                     }
                 } else if branch.is_root {
-                    // 2.5D Ground Root Tendrils & Aerial Prop Roots
-                    let root_fg = [
-                        bark_fg[0] * 0.80,
-                        bark_fg[1] * 0.76,
-                        bark_fg[2] * 0.70,
-                        bark_fg[3],
-                    ];
+                    // 2.5D Ground Root Tendrils & Aerial Prop Roots (Moonlight Shaded + Contact Shadow)
+                    let rel_c = (cc - trunk_center_c) as f32;
+                    let root_lit = (0.46 + (rel_c / 10.0).clamp(-0.40, 0.44)).clamp(0.06, 0.95);
+                    let root_bg = shade_color(bark_bg, root_lit);
+                    let root_fg = shade_color(
+                        [
+                            bark_fg[0] * 0.85,
+                            bark_fg[1] * 0.80,
+                            bark_fg[2] * 0.74,
+                            bark_fg[3],
+                        ],
+                        root_lit,
+                    );
                     let is_tip = s == steps;
                     let dc = (c1 - c0).abs();
                     let dr = (r1 - r0).abs();
@@ -867,27 +1052,48 @@ impl LivingRookeryScene {
                     };
 
                     let pos = cell_pos(cc, rr);
-                    self.push_glyph('█', pos, cell_size, 0.0, 0.085, bark_bg, 0.0);
+                    self.push_glyph('█', pos, cell_size, 0.0, 0.085, root_bg, 0.0);
                     self.push_glyph(root_ch, pos, cell_size, 0.0, 0.105, root_fg, 0.0);
 
-                    // Thicker buttress collar near the trunk base tapers down into 1-cell tendrils
+                    // Buttress collar & ground contact shadow beneath roots
                     if local_thick >= 10.0 && !is_tip && rr + 1 < rows {
                         let sub_pos = cell_pos(cc, rr + 1);
-                        self.push_glyph('█', sub_pos, cell_size, 0.0, 0.08, bark_bg, 0.0);
+                        self.push_glyph('█', sub_pos, cell_size, 0.0, 0.08, root_bg, 0.0);
                         self.push_glyph('░', sub_pos, cell_size, 0.0, 0.095, root_fg, 0.0);
+                        let shadow_c = cc + shadow_dir;
+                        if shadow_c >= 0 && shadow_c < cols {
+                            self.push_glyph(
+                                '▒',
+                                cell_pos(shadow_c, rr + 1),
+                                cell_size,
+                                0.0,
+                                0.052,
+                                shadow_color,
+                                0.0,
+                            );
+                        }
+                    } else if rr >= ground_row && rr + 1 < rows {
+                        self.push_glyph(
+                            '░',
+                            cell_pos(cc, rr + 1),
+                            cell_size,
+                            0.0,
+                            0.051,
+                            shadow_color,
+                            0.0,
+                        );
                     }
                 } else {
-                    // Depth-based bough shading: Deeper background branches have subdued tone
-                    let branch_fg = if branch.depth >= 3 {
-                        [
-                            bark_fg[0] * 0.82,
-                            bark_fg[1] * 0.82,
-                            bark_fg[2] * 0.82,
-                            bark_fg[3],
-                        ]
+                    // Directional moonlight shading on branches (right/top lit, left/underside shaded)
+                    let pos_bias = ((cc - trunk_center_c) as f32 / 22.0).clamp(-0.36, 0.38);
+                    let depth_atten = if branch.depth >= 3 {
+                        0.16
+                    } else if branch.depth == 2 {
+                        0.08
                     } else {
-                        bark_fg
+                        0.0
                     };
+                    let branch_lit = (0.48 + pos_bias - depth_atten).clamp(0.08, 0.96);
 
                     let dc = (c1 - c0).abs();
                     let dr = (r1 - r0).abs();
@@ -916,7 +1122,15 @@ impl LivingRookeryScene {
                             '\\'
                         };
                         let pos = cell_pos(cc, rr);
-                        self.push_glyph(tip_ch, pos, cell_size, 0.0, 0.12, tip_fg, 0.0);
+                        self.push_glyph(
+                            tip_ch,
+                            pos,
+                            cell_size,
+                            0.0,
+                            0.12,
+                            shade_color(tip_fg, (branch_lit + 0.15).clamp(0.15, 1.0)),
+                            0.0,
+                        );
                     } else {
                         let box_ch = if is_tip {
                             if branch.children_spawned {
@@ -961,17 +1175,31 @@ impl LivingRookeryScene {
                             if tc < 0 || tc >= cols || tr < 0 || tr >= rows {
                                 continue;
                             }
+                            // Cross-section shading: top/right cell lit by moon, bottom/left in shadow
+                            let offset_bias = (ox as f32 * 0.28) - (oy as f32 * 0.28);
+                            let cell_lit = (branch_lit + offset_bias).clamp(0.05, 1.0);
+                            let cell_bg = shade_color(bark_bg, cell_lit);
+                            let cell_fg = shade_color(bark_fg, cell_lit);
+
                             let pos = cell_pos(tc, tr);
-                            self.push_glyph('█', pos, cell_size, 0.0, 0.09, bark_bg, 0.0);
-                            let ch = if ox == 0 && oy == 0 { box_ch } else { '█' };
-                            self.push_glyph(ch, pos, cell_size, 0.0, 0.11, branch_fg, 0.0);
+                            self.push_glyph('█', pos, cell_size, 0.0, 0.09, cell_bg, 0.0);
+                            let ch = if ox == 0 && oy == 0 {
+                                box_ch
+                            } else if cell_lit < 0.28 {
+                                '▒'
+                            } else if cell_lit > 0.74 {
+                                '▓'
+                            } else {
+                                '█'
+                            };
+                            self.push_glyph(ch, pos, cell_size, 0.0, 0.11, cell_fg, 0.0);
                         }
 
                         // Moss & lichen on shaded lower contours of older branches
                         if branch.depth <= 2 && (s as u32).is_multiple_of(4) && rr < ground_row - 1
                         {
                             let moss_offset = if local_thick >= 9.0 && dc >= dr { 2 } else { 1 };
-                            let moss_col = [0.28, 0.72, 0.36, 0.75];
+                            let moss_col = shade_color([0.28, 0.72, 0.36, 0.75], branch_lit * 0.75);
                             let moss_pos = cell_pos(cc, (rr + moss_offset).min(rows - 1));
                             self.push_glyph('░', moss_pos, cell_size, 0.0, 0.095, moss_col, 0.0);
                         }
@@ -979,7 +1207,7 @@ impl LivingRookeryScene {
                 }
             }
 
-            // 4. Roguelike Canopy Foliage Clusters & Cellular Bud Swelling
+            // 4. Roguelike Canopy Foliage Clusters & Cellular Bud Swelling (Moonlight Shaded)
             for (idx, bud) in branch.foliage.iter().enumerate() {
                 // Dormant bud: branch has not reached it yet, or barely sprouted
                 if bud.offset_along > branch.growth_progress || bud.bloom <= 0.03 {
@@ -993,6 +1221,13 @@ impl LivingRookeryScene {
                     continue;
                 }
 
+                // Directional foliage lighting: right/upper canopy lit, left/lower in shadow,
+                // with deeper branches slightly occluded behind foreground clusters
+                let horiz_lit = ((center_c - trunk_center_c) as f32 / 18.0).clamp(-0.36, 0.34);
+                let vert_lit = ((ground_row - center_r) as f32 / 40.0).clamp(0.0, 0.12);
+                let depth_occl = if branch.depth >= 3 { 0.08 } else { 0.0 };
+                let cluster_lit = (0.42 + horiz_lit + vert_lit - depth_occl).clamp(0.08, 0.88);
+
                 // Stage 1: Single-cell tiny bud dot (· / •)
                 if bud.bloom < 0.28 {
                     let bud_col = match palette {
@@ -1004,7 +1239,15 @@ impl LivingRookeryScene {
                     };
                     let ch = if idx % 2 == 0 { '·' } else { '•' };
                     let cp = cell_pos(center_c, center_r);
-                    self.push_glyph(ch, cp, cell_size, 0.0, 0.15, bud_col, 0.0);
+                    self.push_glyph(
+                        ch,
+                        cp,
+                        cell_size,
+                        0.0,
+                        0.15,
+                        shade_color(bud_col, cluster_lit),
+                        0.0,
+                    );
                     continue;
                 }
 
@@ -1024,8 +1267,24 @@ impl LivingRookeryScene {
                     };
                     let ch = if idx % 2 == 0 { '*' } else { '+' };
                     let cp = cell_pos(center_c, center_r);
-                    self.push_glyph('█', cp, cell_size, 0.0, 0.13, star_bg, 0.0);
-                    self.push_glyph(ch, cp, cell_size, 0.0, 0.15, star_fg, 0.0);
+                    self.push_glyph(
+                        '█',
+                        cp,
+                        cell_size,
+                        0.0,
+                        0.13,
+                        shade_color(star_bg, cluster_lit),
+                        0.0,
+                    );
+                    self.push_glyph(
+                        ch,
+                        cp,
+                        cell_size,
+                        0.0,
+                        0.15,
+                        shade_color(star_fg, cluster_lit),
+                        0.0,
+                    );
                     continue;
                 }
 
@@ -1086,30 +1345,93 @@ impl LivingRookeryScene {
                 };
 
                 // Stage 3 (0.62 <= bloom < 0.88): 2-cell expanding cluster
-                // Stage 4 (bloom >= 0.88): 4-cell mature canopy cross
+                // Stage 4 (bloom >= 0.88): 5-cell shaded canopy cluster (top-right lit, bottom-left shadow)
                 let is_expanding = bud.bloom < 0.88;
                 let offsets: &[(i32, i32)] = if is_expanding {
                     &[(0, 0), (0, -1)]
+                } else if idx.is_multiple_of(2) {
+                    &[(0, 0), (1, 0), (0, -1), (-1, 0), (-1, 1)]
                 } else {
-                    &[(0, 0), (-1, 0), (1, 0), (0, -1)]
+                    &[(0, 0), (1, 0), (0, -1), (-1, 0), (0, 1)]
                 };
 
                 for (oi, &(dc, dr)) in offsets.iter().enumerate() {
-                    if oi > 0 && idx % 2 != 0 && !is_expanding {
-                        continue;
-                    }
                     let (cc, rr) = (center_c + dc, center_r + dr);
                     if cc < 0 || cc >= cols || rr < 0 || rr >= rows {
                         continue;
                     }
                     let cp = cell_pos(cc, rr);
+                    // Strong per-cluster gradient: top-right (+dc, -dr) catches moonlight,
+                    // bottom-left (-dc, +dr) falls into deep underside shadow
+                    let cell_lit =
+                        (cluster_lit + (dc as f32 * 0.24) - (dr as f32 * 0.24)).clamp(0.05, 0.94);
                     let ch = if oi == 0 {
-                        if is_expanding { '▒' } else { tile_char }
+                        if is_expanding || cell_lit < 0.28 {
+                            '▒'
+                        } else {
+                            tile_char
+                        }
+                    } else if dc > 0 || dr < 0 {
+                        // Top-right lit rim
+                        if cell_lit > 0.62 { '▓' } else { tile_char }
                     } else {
-                        '░'
+                        // Bottom-left shaded underside
+                        if cell_lit < 0.24 { '░' } else { '▒' }
                     };
-                    self.push_glyph('█', cp, cell_size, 0.0, 0.14, bg_col, 0.0);
-                    self.push_glyph(ch, cp, cell_size, 0.0, 0.16, fg_col, 0.0);
+                    self.push_glyph(
+                        '█',
+                        cp,
+                        cell_size,
+                        0.0,
+                        0.14,
+                        shade_color(bg_col, cell_lit),
+                        0.0,
+                    );
+                    self.push_glyph(
+                        ch,
+                        cp,
+                        cell_size,
+                        0.0,
+                        0.16,
+                        shade_color(fg_col, cell_lit),
+                        0.0,
+                    );
+                }
+            }
+        }
+
+        // Dappled canopy shadow cast leftward onto the meadow floor
+        for sc_off in 2..=canopy_left_span {
+            let sc = trunk_center_c + shadow_dir * sc_off;
+            if sc < 0 || sc >= cols {
+                continue;
+            }
+            let dapple_hash = (sc as u32).wrapping_mul(1103515245) ^ 0x5bd1e995;
+            if dapple_hash % 10 < 6 {
+                let s_ch = if sc_off < canopy_left_span / 2 && dapple_hash.is_multiple_of(3) {
+                    '▒'
+                } else {
+                    '░'
+                };
+                self.push_glyph(
+                    s_ch,
+                    cell_pos(sc, ground_row),
+                    cell_size,
+                    0.0,
+                    0.050,
+                    shadow_color,
+                    0.0,
+                );
+                if ground_row + 1 < rows && dapple_hash.is_multiple_of(2) {
+                    self.push_glyph(
+                        '░',
+                        cell_pos(sc, ground_row + 1),
+                        cell_size,
+                        0.0,
+                        0.050,
+                        shadow_color,
+                        0.0,
+                    );
                 }
             }
         }
@@ -1123,7 +1445,11 @@ impl LivingRookeryScene {
             if center_c < -2 || center_c > cols + 2 || center_r < 0 || center_r >= rows {
                 continue;
             }
-            let col = Self::species_color(bird.species);
+            let bird_lit = (0.50
+                + ((center_c - trunk_center_c) as f32 / 24.0).clamp(-0.28, 0.35)
+                + ((ground_row - center_r) as f32 / 40.0).clamp(0.0, 0.12))
+            .clamp(0.22, 0.98);
+            let col = shade_color(Self::species_color(bird.species), bird_lit);
 
             match bird.state {
                 BirdState::Perched { .. }
@@ -1241,22 +1567,40 @@ impl LivingRookeryScene {
                 FaunaSpecies::Rabbit | FaunaSpecies::Squirrel | FaunaSpecies::Hedgehog => (3, 2),
             };
 
-            // Directional cast shadow on ground turf away from celestial moon
+            // Ground contact occlusion & directional cast shadow away from celestial moon
             if fauna.pos[1] >= 740.0 {
                 let col_offset_start = -1;
                 let col_offset_end = col_offset_start + width_cols;
                 for c_off in col_offset_start..col_offset_end {
                     let base_c = center_c + c_off;
-                    for sk in 1..=2 {
+                    // Ground contact shadow directly under paws/belly
+                    if base_c >= 0 && base_c < cols && shadow_r + 1 < rows {
+                        self.push_glyph(
+                            '▓',
+                            cell_pos(base_c, shadow_r + 1),
+                            cell_size,
+                            0.0,
+                            0.053,
+                            shadow_deep_color,
+                            0.0,
+                        );
+                    }
+                    // Directional cast shadow tapering leftward away from moon
+                    for sk in 1..=3 {
                         let sc = base_c + shadow_dir * sk;
                         if sc >= 0 && sc < cols {
+                            let (s_ch, s_col) = if sk == 1 {
+                                ('▒', shadow_deep_color)
+                            } else {
+                                ('░', shadow_color)
+                            };
                             self.push_glyph(
-                                '░',
+                                s_ch,
                                 cell_pos(sc, shadow_r),
                                 cell_size,
                                 0.0,
                                 0.052,
-                                shadow_color,
+                                s_col,
                                 0.0,
                             );
                         }
@@ -1295,11 +1639,25 @@ impl LivingRookeryScene {
                 );
             }
 
+            // Dim animals standing inside the tree's left-side moonlight shadow
+            let in_tree_shadow = shadow_dir < 0
+                && center_c < trunk_center_c
+                && center_c >= trunk_center_c - canopy_left_span
+                && center_r <= ground_row + 2;
+            let fauna_ambient = if in_tree_shadow { 0.36 } else { 0.54 };
+
             let mut draw_cell = |cc: i32, rr: i32, ch: char, fg: [f32; 4], bg: [f32; 4]| {
                 if cc >= 0 && cc < cols && rr >= 0 && rr < rows && ch != ' ' {
+                    // Self-shading: top-right cells catch moonlit rim, bottom-left cells are shaded
+                    let dx_lit = ((cc - center_c) as f32 * 0.16).clamp(-0.28, 0.30);
+                    let dy_lit = ((center_r - rr) as f32 * 0.14).clamp(-0.18, 0.28);
+                    let cell_lit = (fauna_ambient + dx_lit + dy_lit).clamp(0.14, 0.98);
+                    let shaded_bg = shade_color(bg, cell_lit);
+                    let shaded_fg = shade_color(fg, cell_lit);
+
                     let p = cell_pos(cc, rr);
-                    self.push_glyph('█', p, cell_size, 0.0, z_base, bg, 0.0);
-                    self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, fg, 0.0);
+                    self.push_glyph('█', p, cell_size, 0.0, z_base, shaded_bg, 0.0);
+                    self.push_glyph(ch, p, cell_size, 0.0, z_base + 0.02, shaded_fg, 0.0);
                 }
             };
 
@@ -1742,55 +2100,6 @@ impl LivingRookeryScene {
                 }
             }
         }
-
-        // 7. ANSI Double-Line Terminal Border & Status Bar at Bottom
-        let bottom_r = rows.saturating_sub(1);
-        for c in 1..cols.saturating_sub(1) {
-            let ch = if c == 1 {
-                '╚'
-            } else if c == cols - 2 {
-                '╝'
-            } else {
-                '═'
-            };
-            self.push_glyph(
-                ch,
-                cell_pos(c, bottom_r),
-                cell_size,
-                0.0,
-                0.50,
-                border_color,
-                0.0,
-            );
-        }
-
-        let active_species_name = world_guard
-            .trees
-            .iter()
-            .find(|t| t.id == world_guard.active_tree_id)
-            .map(|t| t.species.display_name())
-            .unwrap_or("Ancient Oak");
-        let active_tree_num = world_guard.trees.len();
-
-        let status_str = format!(
-            "╡ FORT SYLVAN · SEED #{} · TREE #{}: {} · BOUGHS:{} · BUDS:{} · FLOCK:{} · FAUNA:{} ╞",
-            world_guard.seed,
-            active_tree_num,
-            active_species_name,
-            world_guard.stats.total_branches,
-            world_guard.stats.total_foliage,
-            world_guard.birds.len(),
-            world_guard.fauna.len()
-        );
-        self.push_text(
-            &status_str,
-            cell_pos(4, bottom_r),
-            [cell_w * 0.85, cell_h * 0.85],
-            cell_w,
-            0.55,
-            [0.95, 0.92, 0.72, 0.98],
-            0.0,
-        );
 
         if world_guard.debug_mode {
             let active_tree = world_guard
