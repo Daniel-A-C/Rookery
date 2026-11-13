@@ -129,21 +129,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var col = mix(zenith, horizon, smoothstep(0.0, 0.80, uv.y));
 
-    // Subtle slow-moving clouds / haze in the upper sky
+    // Procedural multi-layer drifting clouds / haze in the upper sky
+    let moon_uv = vec2<f32>(0.92, 0.08);
+    let moon_delta = vec2<f32>((uv.x - moon_uv.x) * aspect, uv.y - moon_uv.y);
+    let moon_dist = length(moon_delta);
+
     if (uv.y < 0.65) {
         let sky_band = smoothstep(0.01, 0.14, uv.y) * (1.0 - smoothstep(0.28, 0.62, uv.y));
-        let cloud_uv = vec2<f32>(uv.x * aspect * 2.2 + u.time * 0.007, uv.y * 6.5 + u.time * 0.0012);
-        let cloud_n = fbm3(cloud_uv);
-        let cloud_wisp = smoothstep(0.46, 0.82, cloud_n) * sky_band;
+
+        // Slow domain-warped high-altitude haze layer (gently morphs over time)
+        let far_uv = vec2<f32>(uv.x * aspect * 1.6 + u.time * 0.014, uv.y * 5.2 + u.time * 0.0020);
+        let warp = vec2<f32>(
+            fbm3(far_uv * 0.65 + vec2<f32>(u.time * 0.005, 3.7)),
+            fbm3(far_uv * 0.65 + vec2<f32>(-u.time * 0.004, 11.3)),
+        ) - 0.5;
+        let far_n = fbm3(far_uv + warp * 0.55);
+        let far_wisp = smoothstep(0.44, 0.80, far_n);
+
+        // Slightly faster mid-sky wisp layer for subtle parallax & billowing
+        let near_uv = vec2<f32>(uv.x * aspect * 2.4 + u.time * 0.026, uv.y * 7.2 - u.time * 0.0018);
+        let near_n = fbm3(near_uv + vec2<f32>(far_n * 0.45, warp.y * 0.35));
+        let near_wisp = smoothstep(0.48, 0.83, near_n);
+
+        let cloud_wisp = (far_wisp * 0.45 + near_wisp * 0.75) * sky_band;
         let haze_col = mix(horizon * 1.45, moon_tint * 0.14, 0.25);
-        col += haze_col * cloud_wisp * 0.28;
+        let silver_lining = moon_tint * (0.085 * exp(-moon_dist * 2.6));
+        col += (haze_col * 0.28 + silver_lining) * cloud_wisp;
     }
 
     // Soft upper-right atmospheric moonlight bloom (smoothly fades to horizon with no hard cutoff)
     if (uv.y < 0.82) {
-        let moon_uv = vec2<f32>(0.92, 0.08);
-        let delta = vec2<f32>((uv.x - moon_uv.x) * aspect, uv.y - moon_uv.y);
-        let moon_dist = length(delta);
         let sky_fade = 1.0 - smoothstep(0.45, 0.80, uv.y);
         let moon_glow = (exp(-moon_dist * 4.2) * 0.055 + exp(-moon_dist * 1.6) * 0.020) * sky_fade;
         col += moon_tint * moon_glow;
