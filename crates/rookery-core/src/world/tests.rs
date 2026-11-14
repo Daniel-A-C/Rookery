@@ -1152,6 +1152,82 @@ fn test_woodland_fauna_migration_and_spawning() {
 }
 
 #[test]
+fn test_woodland_fauna_species_specific_behaviors() {
+    // 1. Hedgehog curls into a defensive ball on startle instead of sprinting
+    let mut world = WorldState::new(77);
+    let hedgehog_id = world.spawn_fauna_of_species(FaunaSpecies::Hedgehog);
+    let h_pos = world
+        .fauna
+        .iter()
+        .find(|f| f.id == hedgehog_id)
+        .unwrap()
+        .pos;
+    world.update_fauna(0.1, true, Some([h_pos[0] + 10.0, h_pos[1]]));
+    let h_after = world.fauna.iter().find(|f| f.id == hedgehog_id).unwrap();
+    assert!(
+        matches!(h_after.state, FaunaState::Curled { .. }),
+        "Hedgehog should curl into defensive ball on pointer startle"
+    );
+
+    // 2. Rabbit perks up into Alert when a Fox approaches within 115px
+    let mut world = WorldState::new(88);
+    world.fauna.clear();
+    world.fauna.push(WoodlandFauna {
+        id: 1,
+        species: FaunaSpecies::Fox,
+        pos: [400.0, 760.0],
+        vel: [0.0, 0.0],
+        facing_left: false,
+        state: FaunaState::Trotting {
+            target: [500.0, 760.0],
+            speed: 36.0,
+        },
+        anim_phase: 0.0,
+        size_scale: 1.0,
+    });
+    world.fauna.push(WoodlandFauna {
+        id: 2,
+        species: FaunaSpecies::Rabbit,
+        pos: [490.0, 760.0],
+        vel: [0.0, 0.0],
+        facing_left: false,
+        state: FaunaState::Resting {
+            remaining_secs: 4.0,
+        },
+        anim_phase: 0.0,
+        size_scale: 1.0,
+    });
+    world.update_fauna(0.1, false, None);
+    assert!(
+        matches!(world.fauna[1].state, FaunaState::Alert { .. }),
+        "Rabbit should become Alert when a Fox approaches within 115px"
+    );
+
+    // 3. Squirrel near tree trunk escapes upward when startled
+    let mut world = WorldState::new(99);
+    let trunk_x = world.trees[0].base_pos[0];
+    world.fauna.clear();
+    world.fauna.push(WoodlandFauna {
+        id: 3,
+        species: FaunaSpecies::Squirrel,
+        pos: [trunk_x + 15.0, 752.0],
+        vel: [0.0, 0.0],
+        facing_left: false,
+        state: FaunaState::Foraging {
+            remaining_secs: 3.0,
+            target_snack: None,
+        },
+        anim_phase: 0.0,
+        size_scale: 1.0,
+    });
+    world.update_fauna(0.1, true, Some([trunk_x + 25.0, 752.0]));
+    assert!(
+        matches!(world.fauna[0].state, FaunaState::ClimbingTrunk { .. }),
+        "Squirrel near trunk should climb up the tree when startled"
+    );
+}
+
+#[test]
 fn test_pan_forest_all_the_way_to_rightmost_tree() {
     let mut world = WorldState::new(42);
     // Simulate a grove of trees spaced far to the east (e.g. 51,900.0)

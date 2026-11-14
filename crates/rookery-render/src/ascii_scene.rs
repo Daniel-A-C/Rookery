@@ -2371,18 +2371,48 @@ impl LivingRookeryScene {
                 FaunaSpecies::Rabbit | FaunaSpecies::Squirrel | FaunaSpecies::Hedgehog => (3, 2),
             };
 
+            let is_startled = matches!(fauna.state, FaunaState::Startled { .. });
+            let is_sleeping = matches!(fauna.state, FaunaState::Sleeping { .. });
+            let is_sniffing = matches!(fauna.state, FaunaState::Sniffing { .. });
+            let is_foraging = matches!(fauna.state, FaunaState::Foraging { .. });
+            let is_resting = matches!(fauna.state, FaunaState::Resting { .. });
+            let is_alert = matches!(fauna.state, FaunaState::Alert { .. });
+            let is_grooming = matches!(fauna.state, FaunaState::Grooming { .. });
+            let is_digging = matches!(fauna.state, FaunaState::Digging { .. });
+            let is_prowling = matches!(fauna.state, FaunaState::Prowling { .. });
+            let is_pouncing = matches!(fauna.state, FaunaState::Pouncing { .. });
+            let is_curled = matches!(fauna.state, FaunaState::Curled { .. });
+            let is_moving = matches!(
+                fauna.state,
+                FaunaState::Trotting { .. } | FaunaState::Startled { .. }
+            );
+            let cycle =
+                (fauna.anim_phase.rem_euclid(std::f32::consts::TAU)) / std::f32::consts::TAU;
+            let is_airborne = (fauna.species == FaunaSpecies::Rabbit
+                && is_moving
+                && (0.22..0.78).contains(&cycle))
+                || is_pouncing;
+
             // Strong ground contact occlusion & organic directional cast shadow away from moon
             if fauna.pos[1] >= 740.0 {
                 let col_offset_start = -1;
                 let col_offset_end = col_offset_start + width_cols;
                 let shadow_z = (z_base - 0.05).clamp(0.065, 0.14);
+                let base_density = if is_airborne { 2 } else { 3 };
                 for c_off in col_offset_start..col_offset_end {
                     let base_c = center_c + c_off;
                     // Deep umbral contact shadow directly under paws/belly
                     self.push_shadow_cell(
-                        base_c, shadow_r, cols, rows, cell_size, 3, shadow_z, shadow_pal,
+                        base_c,
+                        shadow_r,
+                        cols,
+                        rows,
+                        cell_size,
+                        base_density,
+                        shadow_z,
+                        shadow_pal,
                     );
-                    if shadow_r + 1 < rows {
+                    if shadow_r + 1 < rows && !is_airborne {
                         self.push_shadow_cell(
                             base_c,
                             shadow_r + 1,
@@ -2402,10 +2432,15 @@ impl LivingRookeryScene {
                     center_c + col_offset_end - 1
                 };
                 let cast_len = if height_rows >= 3 { 5 } else { 4 };
+                let cast_len = if is_airborne {
+                    (cast_len - 1).max(2)
+                } else {
+                    cast_len
+                };
                 for sk in 1..=cast_len {
                     let sc = edge_c + shadow_dir * sk;
                     if sk <= 2 {
-                        let d_top = if sk == 1 { 3 } else { 2 };
+                        let d_top = if sk == 1 { base_density } else { 2 };
                         self.push_shadow_cell(
                             sc, shadow_r, cols, rows, cell_size, d_top, shadow_z, shadow_pal,
                         );
@@ -2441,11 +2476,7 @@ impl LivingRookeryScene {
                 }
             }
 
-            let is_startled = matches!(fauna.state, FaunaState::Startled { .. });
-            let is_sleeping = matches!(fauna.state, FaunaState::Sleeping { .. });
-            let is_sniffing = matches!(fauna.state, FaunaState::Sniffing { .. });
-
-            // Exclamation indicator when startled (positioned directly above creature head)
+            // Exclamation / curiosity indicator positioned directly above creature head
             let indicator_r = center_r - height_rows;
             if is_startled && indicator_r >= 0 {
                 self.push_glyph(
@@ -2455,6 +2486,16 @@ impl LivingRookeryScene {
                     0.0,
                     z_base + 0.05,
                     [0.98, 0.88, 0.25, 0.98],
+                    0.0,
+                );
+            } else if is_alert && indicator_r >= 0 {
+                self.push_glyph(
+                    '?',
+                    cell_pos(center_c, indicator_r),
+                    [cell_w * 0.78, cell_h * 0.78],
+                    0.0,
+                    z_base + 0.05,
+                    [0.90, 0.94, 0.98, 0.92],
                     0.0,
                 );
             }
@@ -2508,10 +2549,8 @@ impl LivingRookeryScene {
 
                     if is_sleeping {
                         // Cozy curled 3x4 sleeping fox ball
-                        draw_cell(c0, center_r - 2, ' ', coat_col, bg_col);
                         draw_cell(c1, center_r - 2, '/', coat_col, bg_col);
                         draw_cell(c2, center_r - 2, '\\', coat_col, bg_col);
-                        draw_cell(c3, center_r - 2, ' ', coat_col, bg_col);
 
                         draw_cell(c0, center_r - 1, '/', coat_col, bg_col);
                         draw_cell(c1, center_r - 1, '~', white_col, bg_col);
@@ -2522,65 +2561,140 @@ impl LivingRookeryScene {
                         draw_cell(c1, center_r, 'o', coat_col, bg_col);
                         draw_cell(c2, center_r, '█', coat_col, bg_col);
                         draw_cell(c3, center_r, '/', white_col, bg_col);
+                    } else if is_prowling {
+                        // Low crouched stalking silhouette
+                        let tail_ch = if cycle < 0.5 { '─' } else { '~' };
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 1, '<', white_col, bg_col);
+                            draw_cell(c1, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, tail_ch, white_col, bg_col);
+
+                            draw_cell(c0, center_r, '_', dark_col, bg_col);
+                            draw_cell(c2, center_r, '_', dark_col, bg_col);
+                        } else {
+                            draw_cell(c0, center_r - 1, tail_ch, white_col, bg_col);
+                            draw_cell(c1, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '>', white_col, bg_col);
+
+                            draw_cell(c1, center_r, '_', dark_col, bg_col);
+                            draw_cell(c3, center_r, '_', dark_col, bg_col);
+                        }
+                    } else if is_pouncing {
+                        // Arched airborne pounce leap (1 row higher)
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 3, '\\', coat_col, bg_col);
+                            draw_cell(c1, center_r - 3, '^', coat_col, bg_col);
+                            draw_cell(c0, center_r - 2, '<', white_col, bg_col);
+                            draw_cell(c1, center_r - 2, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r - 2, '/', white_col, bg_col);
+                            draw_cell(c0, center_r - 1, '/', dark_col, bg_col);
+                            draw_cell(c3, center_r - 1, '\\', white_col, bg_col);
+                        } else {
+                            draw_cell(c2, center_r - 3, '^', coat_col, bg_col);
+                            draw_cell(c3, center_r - 3, '/', coat_col, bg_col);
+                            draw_cell(c0, center_r - 2, '\\', white_col, bg_col);
+                            draw_cell(c1, center_r - 2, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, 'o', coat_col, bg_col);
+                            draw_cell(c3, center_r - 2, '>', white_col, bg_col);
+                            draw_cell(c0, center_r - 1, '/', white_col, bg_col);
+                            draw_cell(c3, center_r - 1, '\\', dark_col, bg_col);
+                        }
+                    } else if is_resting {
+                        // Upright sitting fox with white-tipped tail curled beside paws
+                        let ear_twitch = if cycle > 0.85 { '\'' } else { '^' };
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 2, ear_twitch, coat_col, bg_col);
+                            draw_cell(c1, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c0, center_r - 1, '<', white_col, bg_col);
+                            draw_cell(c1, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c1, center_r, '|', dark_col, bg_col);
+                            draw_cell(c2, center_r, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r, '~', white_col, bg_col);
+                        } else {
+                            draw_cell(c2, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c3, center_r - 2, ear_twitch, coat_col, bg_col);
+                            draw_cell(c1, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '>', white_col, bg_col);
+                            draw_cell(c0, center_r, '~', white_col, bg_col);
+                            draw_cell(c1, center_r, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r, '|', dark_col, bg_col);
+                        }
+                    } else if is_sniffing || is_foraging {
+                        // Nose-down sniffing posture
+                        let nose_ch = if cycle < 0.5 { '.' } else { ',' };
+                        if fauna.facing_left {
+                            draw_cell(c1, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c1, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '~', white_col, bg_col);
+                            draw_cell(c0, center_r, nose_ch, white_col, bg_col);
+                            draw_cell(c1, center_r, '\\', dark_col, bg_col);
+                            draw_cell(c2, center_r, '|', dark_col, bg_col);
+                        } else {
+                            draw_cell(c1, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '^', coat_col, bg_col);
+                            draw_cell(c0, center_r - 1, '~', white_col, bg_col);
+                            draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c1, center_r, '|', dark_col, bg_col);
+                            draw_cell(c2, center_r, '/', dark_col, bg_col);
+                            draw_cell(c3, center_r, nose_ch, white_col, bg_col);
+                        }
                     } else {
-                        // 3x4 Sleek Fox: Ears (top), Body & Tail (mid), Animated Legs (bottom)
-                        let step_fwd = fauna.anim_phase.sin() > 0.0;
-                        let tail_ch = if fauna.anim_phase.cos() > 0.0 {
-                            '~'
+                        // 4-phase undulating trot/gallop (or alert stance)
+                        let phase_idx = if is_moving {
+                            (cycle * 4.0) as usize % 4
                         } else {
-                            '-'
+                            0
                         };
-                        let head_ch = if is_sniffing { '.' } else { 'o' };
-                        let snout_ch = if is_sniffing {
-                            'v'
-                        } else if fauna.facing_left {
-                            '<'
+                        let back_arch = if is_moving && (phase_idx == 1 || phase_idx == 2) {
+                            '▀'
                         } else {
-                            '>'
+                            '█'
+                        };
+                        let tail_ch = match phase_idx {
+                            0 => '~',
+                            1 => '─',
+                            2 => '/',
+                            _ => '~',
+                        };
+                        let (front_leg, back_leg) = if !is_moving {
+                            ('|', '|')
+                        } else {
+                            match phase_idx {
+                                0 => ('/', '\\'),
+                                1 => ('|', '/'),
+                                2 => ('\\', '|'),
+                                _ => ('|', '\\'),
+                            }
                         };
 
                         if fauna.facing_left {
-                            // Row -2: Ears
                             draw_cell(c0, center_r - 2, '^', coat_col, bg_col);
                             draw_cell(c1, center_r - 2, '^', coat_col, bg_col);
-
-                            // Row -1: Snout, Head, Body, Tail
-                            draw_cell(c0, center_r - 1, snout_ch, white_col, bg_col);
-                            draw_cell(c1, center_r - 1, head_ch, coat_col, bg_col);
-                            draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c0, center_r - 1, '<', white_col, bg_col);
+                            draw_cell(c1, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, back_arch, coat_col, bg_col);
                             draw_cell(c3, center_r - 1, tail_ch, white_col, bg_col);
-
-                            // Row 0: Legs / Paws
-                            if step_fwd {
-                                draw_cell(c0, center_r, '/', dark_col, bg_col);
-                                draw_cell(c2, center_r, '\\', dark_col, bg_col);
-                                draw_cell(c3, center_r, '/', white_col, bg_col);
-                            } else {
-                                draw_cell(c0, center_r, '\\', dark_col, bg_col);
-                                draw_cell(c2, center_r, '|', dark_col, bg_col);
-                                draw_cell(c3, center_r, '/', white_col, bg_col);
-                            }
+                            draw_cell(c0, center_r, front_leg, dark_col, bg_col);
+                            draw_cell(c2, center_r, back_leg, dark_col, bg_col);
+                            draw_cell(c3, center_r, '/', white_col, bg_col);
                         } else {
-                            // Row -2: Ears
                             draw_cell(c2, center_r - 2, '^', coat_col, bg_col);
                             draw_cell(c3, center_r - 2, '^', coat_col, bg_col);
-
-                            // Row -1: Tail, Body, Head, Snout
                             draw_cell(c0, center_r - 1, tail_ch, white_col, bg_col);
-                            draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
-                            draw_cell(c2, center_r - 1, head_ch, coat_col, bg_col);
-                            draw_cell(c3, center_r - 1, snout_ch, white_col, bg_col);
-
-                            // Row 0: Legs / Paws
-                            if step_fwd {
-                                draw_cell(c0, center_r, '\\', white_col, bg_col);
-                                draw_cell(c1, center_r, '/', dark_col, bg_col);
-                                draw_cell(c3, center_r, '\\', dark_col, bg_col);
-                            } else {
-                                draw_cell(c0, center_r, '\\', white_col, bg_col);
-                                draw_cell(c1, center_r, '|', dark_col, bg_col);
-                                draw_cell(c3, center_r, '/', dark_col, bg_col);
-                            }
+                            draw_cell(c1, center_r - 1, back_arch, coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, 'o', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '>', white_col, bg_col);
+                            draw_cell(c0, center_r, '\\', white_col, bg_col);
+                            draw_cell(c1, center_r, back_leg, dark_col, bg_col);
+                            draw_cell(c3, center_r, front_leg, dark_col, bg_col);
                         }
                     }
                 }
@@ -2588,49 +2702,145 @@ impl LivingRookeryScene {
                     let coat_col = [0.78, 0.48, 0.22, 0.98];
                     let chest_col = [0.96, 0.90, 0.82, 0.98];
                     let nut_col = [0.98, 0.82, 0.25, 0.98];
+                    let dust_col = [0.68, 0.56, 0.42, 0.85];
                     let bg_col = [0.12, 0.08, 0.04, 0.88];
 
+                    let c0 = center_c - 1;
+                    let c1 = center_c;
+                    let c2 = center_c + 1;
+
                     if matches!(fauna.state, FaunaState::ClimbingTrunk { .. }) {
-                        // 3x2 Vertical trunk climbing posture
+                        // 2-frame alternating paw-reach vertical trunk climb
+                        let step_a = cycle < 0.5;
                         let c_l = center_c;
                         let c_r = center_c + 1;
-                        draw_cell(c_l, center_r - 2, '^', chest_col, bg_col);
-                        draw_cell(c_r, center_r - 2, '^', chest_col, bg_col);
-
+                        draw_cell(
+                            c_l,
+                            center_r - 2,
+                            if step_a { '^' } else { '\'' },
+                            chest_col,
+                            bg_col,
+                        );
+                        draw_cell(
+                            c_r,
+                            center_r - 2,
+                            if step_a { '\'' } else { '^' },
+                            chest_col,
+                            bg_col,
+                        );
                         draw_cell(c_l, center_r - 1, '(', coat_col, bg_col);
                         draw_cell(c_r, center_r - 1, ')', coat_col, bg_col);
-
-                        draw_cell(c_l, center_r, '"', coat_col, bg_col);
-                        draw_cell(c_r, center_r, '"', coat_col, bg_col);
-                    } else {
-                        // 2x3 Bushy-tailed Meadow Squirrel (Bushy tail, body, hands/nut)
-                        let c0 = center_c - 1;
-                        let c1 = center_c;
-                        let c2 = center_c + 1;
-                        let is_foraging = matches!(fauna.state, FaunaState::Foraging { .. });
-
+                        draw_cell(
+                            c_l,
+                            center_r,
+                            if step_a { '"' } else { '\'' },
+                            coat_col,
+                            bg_col,
+                        );
+                        draw_cell(
+                            c_r,
+                            center_r,
+                            if step_a { '\'' } else { '"' },
+                            coat_col,
+                            bg_col,
+                        );
+                    } else if is_foraging || is_grooming || is_digging {
+                        // Upright sitting squirrel: nibbling nut, grooming tail, or caching acorn
+                        let bob = cycle < 0.5;
+                        let tail_ch = if is_grooming && bob { 'S' } else { '?' };
                         if fauna.facing_left {
-                            // Row -1: Ears, Tail curve
                             draw_cell(c0, center_r - 1, '^', chest_col, bg_col);
-                            draw_cell(c2, center_r - 1, '?', coat_col, bg_col);
-
-                            // Row 0: Nose/Nut, Body, Tail base
-                            let front_ch = if is_foraging { '*' } else { '<' };
-                            let front_col = if is_foraging { nut_col } else { chest_col };
-                            draw_cell(c0, center_r, front_ch, front_col, bg_col);
+                            draw_cell(c2, center_r - 1, tail_ch, coat_col, bg_col);
+                            if is_foraging {
+                                draw_cell(
+                                    c0,
+                                    center_r,
+                                    if bob { '*' } else { '·' },
+                                    nut_col,
+                                    bg_col,
+                                );
+                            } else if is_digging {
+                                draw_cell(
+                                    c0,
+                                    center_r,
+                                    if bob { ',' } else { '·' },
+                                    dust_col,
+                                    bg_col,
+                                );
+                            } else {
+                                draw_cell(c0, center_r, '"', chest_col, bg_col);
+                            }
                             draw_cell(c1, center_r, 'o', coat_col, bg_col);
                             draw_cell(c2, center_r, '\\', coat_col, bg_col);
                         } else {
-                            // Row -1: Tail curve, Ears
-                            draw_cell(c0, center_r - 1, '?', coat_col, bg_col);
+                            draw_cell(c0, center_r - 1, tail_ch, coat_col, bg_col);
                             draw_cell(c2, center_r - 1, '^', chest_col, bg_col);
-
-                            // Row 0: Tail base, Body, Nose/Nut
-                            let front_ch = if is_foraging { '*' } else { '>' };
-                            let front_col = if is_foraging { nut_col } else { chest_col };
                             draw_cell(c0, center_r, '/', coat_col, bg_col);
                             draw_cell(c1, center_r, 'o', coat_col, bg_col);
-                            draw_cell(c2, center_r, front_ch, front_col, bg_col);
+                            if is_foraging {
+                                draw_cell(
+                                    c2,
+                                    center_r,
+                                    if bob { '*' } else { '·' },
+                                    nut_col,
+                                    bg_col,
+                                );
+                            } else if is_digging {
+                                draw_cell(
+                                    c2,
+                                    center_r,
+                                    if bob { ',' } else { '·' },
+                                    dust_col,
+                                    bg_col,
+                                );
+                            } else {
+                                draw_cell(c2, center_r, '"', chest_col, bg_col);
+                            }
+                        }
+                    } else if is_moving {
+                        // 3-frame bounding scamper with whipping bushy tail
+                        let frame = (cycle * 3.0) as usize % 3;
+                        let (tail_top, body_ch, dy) = match frame {
+                            0 => ('?', 'o', 0),
+                            1 => ('S', '▄', -1),
+                            _ => ('~', 'o', 0),
+                        };
+                        let r_top = center_r - 1 + dy;
+                        let r_bot = center_r + dy;
+                        if fauna.facing_left {
+                            draw_cell(c0, r_top, '^', chest_col, bg_col);
+                            draw_cell(c2, r_top, tail_top, coat_col, bg_col);
+                            draw_cell(c0, r_bot, '<', chest_col, bg_col);
+                            draw_cell(c1, r_bot, body_ch, coat_col, bg_col);
+                            draw_cell(c2, r_bot, '\\', coat_col, bg_col);
+                        } else {
+                            draw_cell(c0, r_top, tail_top, coat_col, bg_col);
+                            draw_cell(c2, r_top, '^', chest_col, bg_col);
+                            draw_cell(c0, r_bot, '/', coat_col, bg_col);
+                            draw_cell(c1, r_bot, body_ch, coat_col, bg_col);
+                            draw_cell(c2, r_bot, '>', chest_col, bg_col);
+                        }
+                    } else {
+                        // Alert / Resting / Sniffing
+                        let nose_ch = if is_sniffing {
+                            '.'
+                        } else if fauna.facing_left {
+                            '<'
+                        } else {
+                            '>'
+                        };
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 1, '^', chest_col, bg_col);
+                            draw_cell(c2, center_r - 1, '?', coat_col, bg_col);
+                            draw_cell(c0, center_r, nose_ch, chest_col, bg_col);
+                            draw_cell(c1, center_r, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r, '\\', coat_col, bg_col);
+                        } else {
+                            draw_cell(c0, center_r - 1, '?', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '^', chest_col, bg_col);
+                            draw_cell(c0, center_r, '/', coat_col, bg_col);
+                            draw_cell(c1, center_r, 'o', coat_col, bg_col);
+                            draw_cell(c2, center_r, nose_ch, chest_col, bg_col);
                         }
                     }
                 }
@@ -2639,6 +2849,7 @@ impl LivingRookeryScene {
                     let stripe_col = [0.98, 0.98, 1.0, 0.98];
                     let snout_col = [0.92, 0.82, 0.80, 0.98];
                     let dark_col = [0.15, 0.15, 0.18, 0.98];
+                    let dirt_col = [0.58, 0.44, 0.30, 0.88];
                     let bg_col = [0.08, 0.08, 0.10, 0.88];
 
                     let c0 = center_c - 1;
@@ -2659,55 +2870,91 @@ impl LivingRookeryScene {
                         draw_cell(c1, center_r, '█', coat_col, bg_col);
                         draw_cell(c2, center_r, 'o', snout_col, bg_col);
                         draw_cell(c3, center_r, '/', dark_col, bg_col);
+                    } else if is_digging {
+                        // Hunched forward rooting with kicked-up dirt flecks
+                        let dig_a = cycle < 0.5;
+                        let fleck = if dig_a { '·' } else { ',' };
+                        if fauna.facing_left {
+                            draw_cell(c1, center_r - 2, '▄', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
+                            draw_cell(c0, center_r - 1, '═', stripe_col, bg_col);
+                            draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c0, center_r, '.', snout_col, bg_col);
+                            draw_cell(
+                                c1,
+                                center_r,
+                                if dig_a { '/' } else { '\\' },
+                                dark_col,
+                                bg_col,
+                            );
+                            draw_cell(c2, center_r, '|', dark_col, bg_col);
+                            draw_cell(c3, center_r, fleck, dirt_col, bg_col);
+                        } else {
+                            draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, '▄', coat_col, bg_col);
+                            draw_cell(c1, center_r - 1, '▄', coat_col, bg_col);
+                            draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
+                            draw_cell(c3, center_r - 1, '═', stripe_col, bg_col);
+                            draw_cell(c0, center_r, fleck, dirt_col, bg_col);
+                            draw_cell(c1, center_r, '|', dark_col, bg_col);
+                            draw_cell(
+                                c2,
+                                center_r,
+                                if dig_a { '\\' } else { '/' },
+                                dark_col,
+                                bg_col,
+                            );
+                            draw_cell(c3, center_r, '.', snout_col, bg_col);
+                        }
                     } else {
-                        // 3x4 Stocky Badger: Arched Back (top), Facial Stripes (mid), Digging Claws (bottom)
-                        let step_fwd = fauna.anim_phase.sin() > 0.0;
-                        let muzzle_ch = if is_sniffing {
+                        // Heavy rolling 4-frame waddle or calm sniff/rest
+                        let phase_idx = if is_moving {
+                            (cycle * 4.0) as usize % 4
+                        } else {
+                            0
+                        };
+                        let back_ch = if is_moving && phase_idx % 2 == 1 {
+                            '▄'
+                        } else {
+                            '─'
+                        };
+                        let muzzle_ch = if is_sniffing || is_foraging {
                             '.'
                         } else if fauna.facing_left {
                             '<'
                         } else {
                             '>'
                         };
+                        let (l_leg, r_leg) = if !is_moving {
+                            ('|', '|')
+                        } else {
+                            match phase_idx {
+                                0 => ('/', '\\'),
+                                1 => ('|', '\\'),
+                                2 => ('\\', '/'),
+                                _ => ('/', '|'),
+                            }
+                        };
 
                         if fauna.facing_left {
-                            // Row -2: Back
-                            draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
-                            draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
-
-                            // Row -1: Snout, Stripe, Body, Tail
+                            draw_cell(c1, center_r - 2, back_ch, coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, back_ch, coat_col, bg_col);
                             draw_cell(c0, center_r - 1, muzzle_ch, snout_col, bg_col);
                             draw_cell(c1, center_r - 1, '═', stripe_col, bg_col);
                             draw_cell(c2, center_r - 1, '█', coat_col, bg_col);
                             draw_cell(c3, center_r - 1, '~', coat_col, bg_col);
-
-                            // Row 0: Claws / Legs
-                            if step_fwd {
-                                draw_cell(c0, center_r, '/', dark_col, bg_col);
-                                draw_cell(c2, center_r, '\\', dark_col, bg_col);
-                            } else {
-                                draw_cell(c0, center_r, '|', dark_col, bg_col);
-                                draw_cell(c2, center_r, '|', dark_col, bg_col);
-                            }
+                            draw_cell(c0, center_r, l_leg, dark_col, bg_col);
+                            draw_cell(c2, center_r, r_leg, dark_col, bg_col);
                         } else {
-                            // Row -2: Back
-                            draw_cell(c1, center_r - 2, '─', coat_col, bg_col);
-                            draw_cell(c2, center_r - 2, '─', coat_col, bg_col);
-
-                            // Row -1: Tail, Body, Stripe, Snout
+                            draw_cell(c1, center_r - 2, back_ch, coat_col, bg_col);
+                            draw_cell(c2, center_r - 2, back_ch, coat_col, bg_col);
                             draw_cell(c0, center_r - 1, '~', coat_col, bg_col);
                             draw_cell(c1, center_r - 1, '█', coat_col, bg_col);
                             draw_cell(c2, center_r - 1, '═', stripe_col, bg_col);
                             draw_cell(c3, center_r - 1, muzzle_ch, snout_col, bg_col);
-
-                            // Row 0: Claws / Legs
-                            if step_fwd {
-                                draw_cell(c1, center_r, '/', dark_col, bg_col);
-                                draw_cell(c3, center_r, '\\', dark_col, bg_col);
-                            } else {
-                                draw_cell(c1, center_r, '|', dark_col, bg_col);
-                                draw_cell(c3, center_r, '|', dark_col, bg_col);
-                            }
+                            draw_cell(c1, center_r, l_leg, dark_col, bg_col);
+                            draw_cell(c3, center_r, r_leg, dark_col, bg_col);
                         }
                     }
                 }
@@ -2720,19 +2967,29 @@ impl LivingRookeryScene {
                     let c1 = center_c;
                     let c2 = center_c + 1;
 
-                    if is_sleeping || (is_startled && fauna.anim_phase.sin() > 0.0) {
+                    if is_sleeping || is_curled || is_startled {
                         // 2x3 Prickly defensive curled ball
+                        let pulse = cycle < 0.5;
                         draw_cell(c0, center_r - 1, '○', quill_col, bg_col);
-                        draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
+                        draw_cell(
+                            c1,
+                            center_r - 1,
+                            if pulse { '*' } else { '^' },
+                            quill_col,
+                            bg_col,
+                        );
                         draw_cell(c2, center_r - 1, '○', quill_col, bg_col);
 
                         draw_cell(c0, center_r, '*', quill_col, bg_col);
                         draw_cell(c1, center_r, '●', quill_col, bg_col);
                         draw_cell(c2, center_r, '*', quill_col, bg_col);
                     } else {
-                        // 2x3 Prickly Snuffling Hedgehog: Quill crown (top), Snout & Body (bottom)
-                        let nose_ch = if is_sniffing {
-                            '.'
+                        // Rippling quill scuttle & nose-down snuffling
+                        let ripple = is_moving && cycle < 0.5;
+                        let q1 = if ripple { '^' } else { '*' };
+                        let q2 = if ripple { '*' } else { '^' };
+                        let nose_ch = if is_sniffing || is_foraging {
+                            if cycle < 0.5 { '.' } else { ',' }
                         } else if fauna.facing_left {
                             '<'
                         } else {
@@ -2740,24 +2997,32 @@ impl LivingRookeryScene {
                         };
 
                         if fauna.facing_left {
-                            // Row -1: Spines
                             draw_cell(c0, center_r - 1, '^', quill_col, bg_col);
-                            draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
-                            draw_cell(c2, center_r - 1, '*', quill_col, bg_col);
+                            draw_cell(c1, center_r - 1, q1, quill_col, bg_col);
+                            draw_cell(c2, center_r - 1, q2, quill_col, bg_col);
 
-                            // Row 0: Snout, Spiny Body, Tail tuft
                             draw_cell(c0, center_r, nose_ch, snout_col, bg_col);
-                            draw_cell(c1, center_r, '*', quill_col, bg_col);
+                            draw_cell(
+                                c1,
+                                center_r,
+                                if ripple { '~' } else { '*' },
+                                quill_col,
+                                bg_col,
+                            );
                             draw_cell(c2, center_r, '~', quill_col, bg_col);
                         } else {
-                            // Row -1: Spines
-                            draw_cell(c0, center_r - 1, '*', quill_col, bg_col);
-                            draw_cell(c1, center_r - 1, '*', quill_col, bg_col);
+                            draw_cell(c0, center_r - 1, q2, quill_col, bg_col);
+                            draw_cell(c1, center_r - 1, q1, quill_col, bg_col);
                             draw_cell(c2, center_r - 1, '^', quill_col, bg_col);
 
-                            // Row 0: Tail tuft, Spiny Body, Snout
                             draw_cell(c0, center_r, '~', quill_col, bg_col);
-                            draw_cell(c1, center_r, '*', quill_col, bg_col);
+                            draw_cell(
+                                c1,
+                                center_r,
+                                if ripple { '~' } else { '*' },
+                                quill_col,
+                                bg_col,
+                            );
                             draw_cell(c2, center_r, nose_ch, snout_col, bg_col);
                         }
                     }
@@ -2766,6 +3031,7 @@ impl LivingRookeryScene {
                     let fur_col = [0.94, 0.92, 0.88, 0.98];
                     let pink_col = [0.98, 0.74, 0.78, 0.98];
                     let tail_col = [1.0, 1.0, 1.0, 0.98];
+                    let dust_col = [0.76, 0.78, 0.70, 0.80];
                     let bg_col = [0.10, 0.08, 0.06, 0.88];
 
                     let c0 = center_c - 1;
@@ -2781,44 +3047,157 @@ impl LivingRookeryScene {
                         draw_cell(c0, center_r, '~', fur_col, bg_col);
                         draw_cell(c1, center_r, 'o', tail_col, bg_col);
                         draw_cell(c2, center_r, '~', fur_col, bg_col);
+                    } else if is_moving {
+                        // Full-silhouette 4-phase hop cycle: Crouch -> Stretch -> Apex -> Land
+                        if cycle < 0.22 {
+                            // Phase 1: Crouch / Coil (compressed low, ears angled back)
+                            if fauna.facing_left {
+                                draw_cell(c1, center_r - 1, '/', pink_col, bg_col);
+                                draw_cell(c0, center_r, 'o', fur_col, bg_col);
+                                draw_cell(c1, center_r, '8', fur_col, bg_col);
+                                draw_cell(c2, center_r, ')', tail_col, bg_col);
+                            } else {
+                                draw_cell(c1, center_r - 1, '\\', pink_col, bg_col);
+                                draw_cell(c0, center_r, '(', tail_col, bg_col);
+                                draw_cell(c1, center_r, '8', fur_col, bg_col);
+                                draw_cell(c2, center_r, 'o', fur_col, bg_col);
+                            }
+                        } else if cycle < 0.50 {
+                            // Phase 2: Launch / Stretch (elongated 4-col leap, ears swept back)
+                            let c3 = center_c + 2;
+                            if fauna.facing_left {
+                                draw_cell(c0, center_r - 1, '/', pink_col, bg_col);
+                                draw_cell(c1, center_r - 1, '\\', fur_col, bg_col);
+                                draw_cell(c0, center_r, '<', pink_col, bg_col);
+                                draw_cell(c1, center_r, '═', fur_col, bg_col);
+                                draw_cell(c2, center_r, 'o', fur_col, bg_col);
+                                draw_cell(c3, center_r, '\\', tail_col, bg_col);
+                            } else {
+                                draw_cell(c1, center_r - 1, '/', fur_col, bg_col);
+                                draw_cell(c2, center_r - 1, '\\', pink_col, bg_col);
+                                draw_cell(c0 - 1, center_r, '/', tail_col, bg_col);
+                                draw_cell(c0, center_r, 'o', fur_col, bg_col);
+                                draw_cell(c1, center_r, '═', fur_col, bg_col);
+                                draw_cell(c2, center_r, '>', pink_col, bg_col);
+                            }
+                        } else if cycle < 0.78 {
+                            // Phase 3: Apex / Tuck (1 row higher, compact airborne silhouette)
+                            let r_top = center_r - 2;
+                            let r_mid = center_r - 1;
+                            if fauna.facing_left {
+                                draw_cell(c0, r_top, '/', pink_col, bg_col);
+                                draw_cell(c1, r_top, '\\', fur_col, bg_col);
+                                draw_cell(c0, r_mid, '<', pink_col, bg_col);
+                                draw_cell(c1, r_mid, '8', fur_col, bg_col);
+                                draw_cell(c2, r_mid, 'o', tail_col, bg_col);
+                            } else {
+                                draw_cell(c1, r_top, '/', fur_col, bg_col);
+                                draw_cell(c2, r_top, '\\', pink_col, bg_col);
+                                draw_cell(c0, r_mid, 'o', tail_col, bg_col);
+                                draw_cell(c1, r_mid, '8', fur_col, bg_col);
+                                draw_cell(c2, r_mid, '>', pink_col, bg_col);
+                            }
+                        } else {
+                            // Phase 4: Land / Settle (front paws down, subtle turf dust)
+                            if fauna.facing_left {
+                                draw_cell(c0, center_r - 1, '|', fur_col, bg_col);
+                                draw_cell(c1, center_r - 1, '\\', pink_col, bg_col);
+                                draw_cell(c0, center_r, '<', pink_col, bg_col);
+                                draw_cell(c1, center_r, '8', fur_col, bg_col);
+                                draw_cell(c2, center_r, 'o', tail_col, bg_col);
+                                draw_cell(c2 + 1, center_r, '·', dust_col, bg_col);
+                            } else {
+                                draw_cell(c1, center_r - 1, '/', pink_col, bg_col);
+                                draw_cell(c2, center_r - 1, '|', fur_col, bg_col);
+                                draw_cell(c0 - 1, center_r, '·', dust_col, bg_col);
+                                draw_cell(c0, center_r, 'o', tail_col, bg_col);
+                                draw_cell(c1, center_r, '8', fur_col, bg_col);
+                                draw_cell(c2, center_r, '>', pink_col, bg_col);
+                            }
+                        }
+                    } else if is_grooming {
+                        // Upright sitting rabbit washing ears/face
+                        let wash_up = cycle < 0.5;
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(
+                                c1,
+                                center_r - 1,
+                                if wash_up { '/' } else { '\\' },
+                                pink_col,
+                                bg_col,
+                            );
+                            draw_cell(
+                                c0,
+                                center_r,
+                                if wash_up { '"' } else { 'o' },
+                                pink_col,
+                                bg_col,
+                            );
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(c2, center_r, 'o', tail_col, bg_col);
+                        } else {
+                            draw_cell(
+                                c1,
+                                center_r - 1,
+                                if wash_up { '\\' } else { '/' },
+                                pink_col,
+                                bg_col,
+                            );
+                            draw_cell(c2, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(c0, center_r, 'o', tail_col, bg_col);
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(
+                                c2,
+                                center_r,
+                                if wash_up { '"' } else { 'o' },
+                                pink_col,
+                                bg_col,
+                            );
+                        }
+                    } else if is_alert {
+                        // Tall periscope ears straight up
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 1, '|', pink_col, bg_col);
+                            draw_cell(c1, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(c0, center_r, '<', pink_col, bg_col);
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(c2, center_r, 'o', tail_col, bg_col);
+                        } else {
+                            draw_cell(c1, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(c2, center_r - 1, '|', pink_col, bg_col);
+                            draw_cell(c0, center_r, 'o', tail_col, bg_col);
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(c2, center_r, '>', pink_col, bg_col);
+                        }
                     } else {
-                        // 2x3 Hopping Cottontail: Tall Ears (top), Plump Body & Tail (bottom)
-                        let is_hop = fauna.anim_phase.sin() > 0.40;
-                        let hop_dy = if is_hop { -1 } else { 0 };
-                        let r_top = center_r - 1 + hop_dy;
-                        let r_mid = center_r + hop_dy;
-                        let nose_ch = if is_sniffing {
-                            '.'
+                        // Calm Resting / Sniffing / Foraging with gentle nose/ear twitch
+                        let nose_ch = if is_sniffing || is_foraging {
+                            if cycle < 0.5 { '.' } else { ',' }
                         } else if fauna.facing_left {
                             '<'
                         } else {
                             '>'
                         };
-
-                        if fauna.facing_left {
-                            let ear_ch = if is_hop { '\\' } else { '/' };
-                            draw_cell(c0, r_top, ear_ch, pink_col, bg_col);
-                            draw_cell(c1, r_top, '|', fur_col, bg_col);
-
-                            draw_cell(c0, r_mid, nose_ch, pink_col, bg_col);
-                            draw_cell(c1, r_mid, '8', fur_col, bg_col);
-                            draw_cell(c2, r_mid, 'o', tail_col, bg_col);
-
-                            if is_hop {
-                                draw_cell(c1, center_r, '\\', fur_col, bg_col);
-                            }
+                        let ear_twitch = if cycle > 0.85 {
+                            '|'
+                        } else if fauna.facing_left {
+                            '/'
                         } else {
-                            let ear_ch = if is_hop { '/' } else { '\\' };
-                            draw_cell(c1, r_top, '|', fur_col, bg_col);
-                            draw_cell(c2, r_top, ear_ch, pink_col, bg_col);
-
-                            draw_cell(c0, r_mid, 'o', tail_col, bg_col);
-                            draw_cell(c1, r_mid, '8', fur_col, bg_col);
-                            draw_cell(c2, r_mid, nose_ch, pink_col, bg_col);
-
-                            if is_hop {
-                                draw_cell(c1, center_r, '/', fur_col, bg_col);
-                            }
+                            '\\'
+                        };
+                        if fauna.facing_left {
+                            draw_cell(c0, center_r - 1, ear_twitch, pink_col, bg_col);
+                            draw_cell(c1, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(c0, center_r, nose_ch, pink_col, bg_col);
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(c2, center_r, 'o', tail_col, bg_col);
+                        } else {
+                            draw_cell(c1, center_r - 1, '|', fur_col, bg_col);
+                            draw_cell(c2, center_r - 1, ear_twitch, pink_col, bg_col);
+                            draw_cell(c0, center_r, 'o', tail_col, bg_col);
+                            draw_cell(c1, center_r, '8', fur_col, bg_col);
+                            draw_cell(c2, center_r, nose_ch, pink_col, bg_col);
                         }
                     }
                 }

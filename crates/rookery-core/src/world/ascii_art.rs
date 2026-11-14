@@ -141,13 +141,22 @@ impl WorldState {
                 && r < h
             {
                 let sprites: &[&str] = match f.species {
-                    FaunaSpecies::Fox => {
-                        if f.facing_left {
-                            &["^^  ", "<o█~", "/ \\ "]
-                        } else {
-                            &["  ^^", "~█o>", " / \\"]
+                    FaunaSpecies::Fox => match f.state {
+                        FaunaState::Prowling { .. } => {
+                            if f.facing_left {
+                                &["<o▄~", "_ _ "]
+                            } else {
+                                &["~▄o>", " _ _"]
+                            }
                         }
-                    }
+                        _ => {
+                            if f.facing_left {
+                                &["^^  ", "<o█~", "/ \\ "]
+                            } else {
+                                &["  ^^", "~█o>", " / \\"]
+                            }
+                        }
+                    },
                     FaunaSpecies::Badger => {
                         if f.facing_left {
                             &[" -- ", "<=█~", "/ \\ "]
@@ -155,13 +164,22 @@ impl WorldState {
                             &[" -- ", "~█=>", " / \\"]
                         }
                     }
-                    FaunaSpecies::Rabbit => {
-                        if f.facing_left {
-                            &["\\| ", "<8o"]
-                        } else {
-                            &[" |/", "o8>"]
+                    FaunaSpecies::Rabbit => match f.state {
+                        FaunaState::Alert { .. } => {
+                            if f.facing_left {
+                                &["|| ", "<8o"]
+                            } else {
+                                &[" ||", "o8>"]
+                            }
                         }
-                    }
+                        _ => {
+                            if f.facing_left {
+                                &["/| ", "<8o"]
+                            } else {
+                                &[" |\\", "o8>"]
+                            }
+                        }
+                    },
                     FaunaSpecies::Squirrel => {
                         if f.facing_left {
                             &["^ ?", "<o\\"]
@@ -169,13 +187,16 @@ impl WorldState {
                             &["? ^", "/o>"]
                         }
                     }
-                    FaunaSpecies::Hedgehog => {
-                        if f.facing_left {
-                            &["^**", "<*~"]
-                        } else {
-                            &["**^", "~*>"]
+                    FaunaSpecies::Hedgehog => match f.state {
+                        FaunaState::Curled { .. } | FaunaState::Sleeping { .. } => &["○*○", "*●*"],
+                        _ => {
+                            if f.facing_left {
+                                &["^**", "<*~"]
+                            } else {
+                                &["**^", "~*>"]
+                            }
                         }
-                    }
+                    },
                 };
 
                 let rows_cnt = sprites.len();

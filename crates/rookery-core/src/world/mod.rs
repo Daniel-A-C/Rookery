@@ -337,6 +337,11 @@ impl WorldState {
                 FaunaState::Trotting { .. }
                     | FaunaState::Startled { .. }
                     | FaunaState::ClimbingTrunk { .. }
+                    | FaunaState::Prowling { .. }
+                    | FaunaState::Pouncing { .. }
+                    | FaunaState::Digging { .. }
+                    | FaunaState::Grooming { .. }
+                    | FaunaState::Curled { .. }
             )
         });
 

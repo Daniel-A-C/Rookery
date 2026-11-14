@@ -306,6 +306,16 @@ pub enum FaunaState {
         speed: f32,
         ascending: bool,
     },
+    /// Sitting upright to groom ears, face, or tail (Rabbit, Squirrel).
+    Grooming { remaining_secs: f32 },
+    /// Stalking low and deliberately toward a snack or low-perched bird (Fox).
+    Prowling { target: [f32; 2], speed: f32 },
+    /// Short playful or curious arc leap (Fox).
+    Pouncing { remaining_secs: f32, dir: [f32; 2] },
+    /// Rooting/digging around tree buttresses or caching nuts (Badger, Squirrel).
+    Digging { remaining_secs: f32 },
+    /// Curled into a tight defensive spiky ball (Hedgehog).
+    Curled { remaining_secs: f32 },
 }
 
 /// Autonomous procedural woodland creature in the world.
