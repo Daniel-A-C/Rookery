@@ -794,8 +794,18 @@ pub fn execute_app_action(
                     }
                     crate::webview_sandbox::dispatch_control(&app, &action, val);
                 } else {
-                    crate::webview_sandbox::dispatch_action(&app, &action);
-                    state.with_renderer(|r| r.trigger_action());
+                    if other == "dynamic-wallpaper" && action == "open_media_folder" {
+                        let base_apps = state
+                            .apps_dir
+                            .clone()
+                            .unwrap_or_else(crate::webview_sandbox::get_apps_dir);
+                        let media_dir = base_apps.join("dynamic-wallpaper").join("media");
+                        let _ = std::fs::create_dir_all(&media_dir);
+                        open_directory_in_os(&media_dir);
+                    } else {
+                        crate::webview_sandbox::dispatch_action(&app, &action);
+                        state.with_renderer(|r| r.trigger_action());
+                    }
                 }
                 log::info!("executed action '{action}' on external app '{other}'");
             } else {
@@ -1011,4 +1021,17 @@ pub fn relaunch_app(app: AppHandle, state: State<'_, HostState>) {
 pub fn quit(app: AppHandle, state: State<'_, HostState>) {
     state.clean_shutdown();
     app.exit(0);
+}
+
+fn open_directory_in_os(dir: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let res = std::process::Command::new("open").arg(dir).spawn();
+    #[cfg(target_os = "windows")]
+    let res = std::process::Command::new("explorer").arg(dir).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let res = std::process::Command::new("xdg-open").arg(dir).spawn();
+
+    if let Err(e) = res {
+        log::warn!("failed to open directory {}: {e}", dir.display());
+    }
 }

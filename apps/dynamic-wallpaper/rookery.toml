@@ -1,0 +1,111 @@
+[metadata]
+id = "dynamic-wallpaper"
+name = "Dynamic Wallpaper"
+description = "Unobtrusively plays looping GIFs and video files from your media folder in the background."
+author = "Rookery"
+version = "1.0.0"
+archetype = "web_canvas"
+tags = ["wallpaper", "gif", "video", "media", "loop"]
+
+[theme]
+tagline = "Ambient Media Player"
+banner_title = "Dynamic Wallpaper Deck"
+icon = "film-strip"
+ornament = "sparkle"
+bg = "#0b1118"
+card = "rgba(17, 25, 36, 0.92)"
+border_outer = "#38bdf8"
+accent = "#38bdf8"
+accent_secondary = "#a78bfa"
+crest_gradient = ["#0284c7", "#7c3aed"]
+
+[[controls]]
+kind = "stat"
+id = "current_media"
+label = "Active Media"
+default_val = "Loading..."
+icon = "film-strip"
+
+[[controls]]
+kind = "stat"
+id = "library_count"
+label = "Library"
+default_val = "0 files"
+icon = "playlist"
+
+[[controls]]
+kind = "select"
+id = "fit_mode"
+label = "Fit Mode"
+options = ["cover", "contain", "fill"]
+default_val = "cover"
+
+[[controls]]
+kind = "slider"
+id = "playback_speed"
+label = "Video Speed"
+min = 0.25
+max = 2.0
+step = 0.05
+default_val = 1.0
+unit = "x"
+
+[[controls]]
+kind = "slider"
+id = "dim_opacity"
+label = "Dimming"
+min = 0.0
+max = 0.75
+step = 0.05
+default_val = 0.0
+unit = ""
+
+[[controls]]
+kind = "slider"
+id = "cycle_minutes"
+label = "Auto-Cycle (0 = Off)"
+min = 0.0
+max = 60.0
+step = 1.0
+default_val = 0.0
+unit = "m"
+
+[[controls]]
+kind = "button"
+id = "prev_media"
+label = "Previous"
+icon = "caret-left"
+tooltip = "Switch to the previous GIF or video in the media folder"
+
+[[controls]]
+kind = "button"
+id = "next_media"
+label = "Next"
+icon = "caret-right"
+tooltip = "Switch to the next GIF or video in the media folder"
+
+[[controls]]
+kind = "button"
+id = "toggle_play"
+label = "Play / Pause"
+icon = "play"
+tooltip = "Pause or resume video playback"
+
+[[controls]]
+kind = "button"
+id = "rescan_media"
+label = "Rescan Folder"
+icon = "arrow-clockwise"
+tooltip = "Reload the media folder to pick up newly dropped files"
+
+[[controls]]
+kind = "button"
+id = "open_media_folder"
+label = "Open Media Folder"
+icon = "folder-open"
+tooltip = "Open the drop folder for your GIFs and videos"
+
+[budgets]
+target_fps = 30
+max_cpu_ms = 1.5
+max_rss_mb = 120.0

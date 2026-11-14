@@ -8,3 +8,10 @@ localNotes.txt
 archivedLocalNotes*
 notes/
 
+# User-dropped dynamic wallpaper media (keep only the open-source default GIF and docs)
+apps/dynamic-wallpaper/media/*
+!apps/dynamic-wallpaper/media/.gitkeep
+!apps/dynamic-wallpaper/media/README.md
+!apps/dynamic-wallpaper/media/ambient-twilight-loop.gif
+
+

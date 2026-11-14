@@ -59,11 +59,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .register_uri_scheme_protocol("rookery-app", |ctx, request| {
-            crate::webview_sandbox::handle_custom_protocol_with_app(
-                Some(ctx.app_handle()),
-                &request,
-            )
+        .register_asynchronous_uri_scheme_protocol("rookery-app", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            std::thread::spawn(move || {
+                let response =
+                    crate::webview_sandbox::handle_custom_protocol_with_app(Some(&app), &request);
+                responder.respond(response);
+            });
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,

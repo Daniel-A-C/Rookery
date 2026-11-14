@@ -126,25 +126,108 @@ fn handle_custom_protocol_inner(
 
     let apps_dir = get_apps_dir();
     let app_dir = apps_dir.join(app_id);
-    let target = app_dir.join(file_subpath);
+    let decoded_subpath = percent_decode(file_subpath);
+    let target = app_dir.join(&decoded_subpath);
 
     // Security guard: verify target canonical path starts with canonical app_dir to prevent directory traversal
     if let (Ok(canon_app), Ok(canon_target)) = (app_dir.canonicalize(), target.canonicalize())
         && canon_target.starts_with(&canon_app)
         && canon_target.is_file()
-        && let Ok(bytes) = std::fs::read(&canon_target)
     {
-        let mime = mime_for_path(&canon_target);
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, mime)
-            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .body(bytes)
-            .unwrap_or_else(|_| not_found_response());
+        return serve_static_file(&canon_target, request);
     }
 
     not_found_response()
+}
+
+fn serve_static_file(path: &Path, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return not_found_response();
+    };
+    let Ok(meta) = file.metadata() else {
+        return not_found_response();
+    };
+    let total_len = meta.len();
+    let mime = mime_for_path(path);
+    let cache_control = if mime.starts_with("image/") || mime.starts_with("video/") {
+        "public, max-age=3600"
+    } else {
+        "no-cache"
+    };
+
+    if let Some(range_header) = request
+        .headers()
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        && let Some((start, end)) = parse_byte_range(range_header, total_len)
+    {
+        // Cap single range chunk to 2 MiB to keep memory & latency bounded for large videos
+        const MAX_CHUNK: u64 = 2 * 1024 * 1024;
+        let clamped_end = end
+            .min(start.saturating_add(MAX_CHUNK - 1))
+            .min(total_len - 1);
+        let len = clamped_end.saturating_sub(start) + 1;
+        let mut buf = vec![0u8; len as usize];
+        if file.seek(SeekFrom::Start(start)).is_ok() && file.read_exact(&mut buf).is_ok() {
+            return Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(header::CONTENT_TYPE, mime)
+                .header(header::ACCEPT_RANGES, "bytes")
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {start}-{clamped_end}/{total_len}"),
+                )
+                .header(header::CONTENT_LENGTH, len.to_string())
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .header(header::CACHE_CONTROL, cache_control)
+                .body(buf)
+                .unwrap_or_else(|_| not_found_response());
+        }
+    }
+
+    let Ok(bytes) = std::fs::read(path) else {
+        return not_found_response();
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_LENGTH, bytes.len().to_string())
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(bytes)
+        .unwrap_or_else(|_| not_found_response())
+}
+
+fn parse_byte_range(header_val: &str, total_len: u64) -> Option<(u64, u64)> {
+    if total_len == 0 {
+        return None;
+    }
+    let spec = header_val.strip_prefix("bytes=")?.split(',').next()?.trim();
+    let (start_str, end_str) = spec.split_once('-')?;
+    if start_str.is_empty() {
+        let suffix: u64 = end_str.parse().ok()?;
+        if suffix == 0 {
+            return None;
+        }
+        let start = total_len.saturating_sub(suffix);
+        return Some((start, total_len - 1));
+    }
+    let start: u64 = start_str.parse().ok()?;
+    if start >= total_len {
+        return None;
+    }
+    let end = if end_str.is_empty() {
+        total_len - 1
+    } else {
+        end_str.parse::<u64>().ok()?.min(total_len - 1)
+    };
+    if start > end {
+        return None;
+    }
+    Some((start, end))
 }
 
 fn handle_sdk_endpoint(
@@ -199,7 +282,113 @@ fn handle_sdk_endpoint(
                 json_ok_response(bytes)
             }
         }
+        "media" => {
+            let media_dir = get_apps_dir().join(app_id).join("media");
+            let payload = list_app_media_json(&media_dir);
+            json_ok_response(payload)
+        }
         _ => not_found_response(),
+    }
+}
+
+/// List supported GIF, image, and video files in `<app_dir>/media` as JSON bytes.
+pub fn list_app_media_json(media_dir: &Path) -> Vec<u8> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MediaEntry {
+        name: String,
+        kind: &'static str,
+        url: String,
+        size_bytes: u64,
+    }
+
+    #[derive(serde::Serialize)]
+    struct MediaListResponse {
+        folder: String,
+        files: Vec<MediaEntry>,
+    }
+
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(media_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let kind = match ext.to_ascii_lowercase().as_str() {
+                "gif" | "webp" | "png" | "jpg" | "jpeg" => "image",
+                "mp4" | "webm" | "mov" | "m4v" => "video",
+                _ => continue,
+            };
+            let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let url = format!("media/{}", percent_encode_component(name));
+            files.push(MediaEntry {
+                name: name.to_string(),
+                kind,
+                url,
+                size_bytes,
+            });
+        }
+    }
+    files.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    let resp = MediaListResponse {
+        folder: media_dir.display().to_string(),
+        files,
+    };
+    serde_json::to_vec(&resp).unwrap_or_else(|_| b"{\"folder\":\"\",\"files\":[]}".to_vec())
+}
+
+fn percent_encode_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for byte in input.as_bytes() {
+        let ch = *byte as char;
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '~') {
+            out.push(ch);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2]))
+        {
+            out.push((hi << 4) | lo);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -300,7 +489,12 @@ fn not_found_response() -> Response<Vec<u8>> {
 }
 
 fn mime_for_path(path: &Path) -> &'static str {
-    match path.extension().and_then(|s| s.to_str()).unwrap_or("") {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
         "html" | "htm" => "text/html; charset=utf-8",
         "js" | "mjs" => "application/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
@@ -314,7 +508,8 @@ fn mime_for_path(path: &Path) -> &'static str {
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "ogg" => "audio/ogg",
-        "mp4" => "video/mp4",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
         "webm" => "video/webm",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
@@ -630,5 +825,55 @@ mod tests {
         );
         assert!(script.contains("window.__ROOKERY_INITIAL_CONTROLS__ = initialControls;"));
         assert!(script.contains("getControl(id, fallback)"));
+    }
+
+    #[test]
+    fn list_app_media_filters_and_encodes_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let media_dir = temp.path().join("media");
+        std::fs::create_dir_all(&media_dir).unwrap();
+        std::fs::write(media_dir.join("space loop.gif"), b"gif").unwrap();
+        std::fs::write(media_dir.join("Alpha.MP4"), b"mp4").unwrap();
+        std::fs::write(media_dir.join("README.md"), b"ignore").unwrap();
+
+        let bytes = list_app_media_json(&media_dir);
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let files = parsed["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0]["name"], "Alpha.MP4");
+        assert_eq!(files[0]["kind"], "video");
+        assert_eq!(files[1]["name"], "space loop.gif");
+        assert_eq!(files[1]["kind"], "image");
+        assert_eq!(files[1]["url"], "media/space%20loop.gif");
+        assert_eq!(
+            percent_decode("media/space%20loop.gif"),
+            "media/space loop.gif"
+        );
+    }
+
+    #[test]
+    fn byte_range_parsing_and_partial_content() {
+        assert_eq!(parse_byte_range("bytes=0-9", 100), Some((0, 9)));
+        assert_eq!(parse_byte_range("bytes=50-", 100), Some((50, 99)));
+        assert_eq!(parse_byte_range("bytes=-10", 100), Some((90, 99)));
+        assert_eq!(parse_byte_range("bytes=100-", 100), None);
+        assert_eq!(parse_byte_range("bytes=20-10", 100), None);
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file_path = temp.path().join("clip.mp4");
+        std::fs::write(&file_path, b"0123456789abcdef").unwrap();
+
+        let req = Request::builder()
+            .uri("rookery-app://localhost/demo/clip.mp4")
+            .header(header::RANGE, "bytes=4-9")
+            .body(Vec::new())
+            .unwrap();
+        let res = serve_static_file(&file_path, &req);
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(res.body(), b"456789");
+        assert_eq!(
+            res.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 4-9/16"
+        );
     }
 }

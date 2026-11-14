@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Wallpaper</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #070b11;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #070b11;
+    }
+
+    .media-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+      pointer-events: none;
+    }
+
+    .media-layer.visible {
+      opacity: 1;
+    }
+
+    #dim-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    #empty-state {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: rgba(226, 232, 240, 0.72);
+      text-align: center;
+      padding: 32px;
+      pointer-events: none;
+    }
+
+    #empty-state.visible {
+      display: flex;
+    }
+
+    #empty-card {
+      max-width: 480px;
+      padding: 20px 24px;
+      border-radius: 12px;
+      background: rgba(15, 23, 34, 0.75);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    #empty-card strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #e2e8f0;
+    }
+
+    #empty-path {
+      display: block;
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      color: #7dd3fc;
+      word-break: break-all;
+    }
+
+    body.interactive::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      border: 2px solid rgba(56, 189, 248, 0.85);
+      box-shadow: inset 0 0 8px rgba(56, 189, 248, 0.25);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img id="img-layer" class="media-layer" alt="" decoding="async" />
+    <video id="video-layer" class="media-layer" autoplay loop muted playsinline preload="auto"></video>
+  </div>
+  <div id="dim-overlay"></div>
+  <div id="empty-state">
+    <div id="empty-card">
+      <strong>No Wallpapers Found</strong>
+      Drop `.gif`, `.mp4`, `.mov`, `.webm`, or image files into the media folder, then click Rescan Folder in Rookery.
+      <span id="empty-path"></span>
+    </div>
+  </div>
+
+  <script>
+    const imgLayer = document.getElementById('img-layer');
+    const videoLayer = document.getElementById('video-layer');
+    const dimOverlay = document.getElementById('dim-overlay');
+    const emptyState = document.getElementById('empty-state');
+    const emptyPath = document.getElementById('empty-path');
+
+    const sdkBase = window.location.origin + '/dynamic-wallpaper/__sdk';
+
+    let mediaFiles = [];
+    let currentIndex = 0;
+    let selectedName = null;
+    let fitMode = 'cover';
+    let playbackSpeed = 1.0;
+    let dimOpacity = 0.0;
+    let cycleMinutes = 0;
+    let isPaused = false;
+    let cycleTimer = null;
+
+    function applyInitialControls() {
+      if (!window.Rookery) return;
+      const fit = window.Rookery.getControl('fit_mode', 'cover');
+      if (fit === 'cover' || fit === 'contain' || fit === 'fill') {
+        fitMode = fit;
+      }
+      const speed = parseFloat(window.Rookery.getControl('playback_speed', '1.0'));
+      if (Number.isFinite(speed) && speed > 0) {
+        playbackSpeed = speed;
+      }
+      const dim = parseFloat(window.Rookery.getControl('dim_opacity', '0.0'));
+      if (Number.isFinite(dim) && dim >= 0) {
+        dimOpacity = Math.min(0.85, Math.max(0, dim));
+      }
+      const cycle = parseFloat(window.Rookery.getControl('cycle_minutes', '0'));
+      if (Number.isFinite(cycle) && cycle >= 0) {
+        cycleMinutes = cycle;
+      }
+      applyVisualSettings();
+    }
+
+    function applyVisualSettings() {
+      imgLayer.style.objectFit = fitMode;
+      videoLayer.style.objectFit = fitMode;
+      dimOverlay.style.opacity = String(dimOpacity);
+      try {
+        videoLayer.playbackRate = playbackSpeed;
+      } catch {}
+    }
+
+    function resetCycleTimer() {
+      if (cycleTimer !== null) {
+        clearInterval(cycleTimer);
+        cycleTimer = null;
+      }
+      if (cycleMinutes > 0 && mediaFiles.length > 1) {
+        const ms = Math.max(10000, Math.round(cycleMinutes * 60 * 1000));
+        cycleTimer = setInterval(() => {
+          if (!isPaused) stepMedia(1);
+        }, ms);
+      }
+    }
+
+    function updateStats() {
+      if (!window.Rookery) return;
+      const current = mediaFiles[currentIndex];
+      const name = current ? current.name : 'None';
+      const countLabel = mediaFiles.length === 1 ? '1 file' : `${mediaFiles.length} files`;
+      window.Rookery.setStats({
+        current_media: name,
+        library_count: countLabel,
+      });
+    }
+
+    async function persistState() {
+      if (!window.Rookery) return;
+      const current = mediaFiles[currentIndex];
+      await window.Rookery.saveState({
+        selectedName: current ? current.name : selectedName,
+        isPaused,
+      });
+    }
+
+    function showMediaAt(index) {
+      if (mediaFiles.length === 0) {
+        imgLayer.classList.remove('visible');
+        videoLayer.classList.remove('visible');
+        videoLayer.pause();
+        videoLayer.removeAttribute('src');
+        imgLayer.removeAttribute('src');
+        emptyState.classList.add('visible');
+        updateStats();
+        return;
+      }
+
+      emptyState.classList.remove('visible');
+      currentIndex = ((index % mediaFiles.length) + mediaFiles.length) % mediaFiles.length;
+      const item = mediaFiles[currentIndex];
+      selectedName = item.name;
+      const assetUrl = window.location.origin + '/dynamic-wallpaper/' + item.url;
+
+      if (item.kind === 'video') {
+        imgLayer.classList.remove('visible');
+        imgLayer.removeAttribute('src');
+        imgLayer.removeAttribute('data-current');
+        if (videoLayer.getAttribute('data-current') !== assetUrl) {
+          videoLayer.setAttribute('data-current', assetUrl);
+          videoLayer.src = assetUrl;
+          videoLayer.load();
+        }
+        videoLayer.muted = true;
+        videoLayer.loop = true;
+        videoLayer.playbackRate = playbackSpeed;
+        if (isPaused) {
+          videoLayer.pause();
+        } else {
+          videoLayer.play().catch(() => {});
+        }
+        videoLayer.classList.add('visible');
+      } else {
+        videoLayer.classList.remove('visible');
+        videoLayer.pause();
+        if (videoLayer.hasAttribute('src')) {
+          videoLayer.removeAttribute('src');
+          videoLayer.removeAttribute('data-current');
+          videoLayer.load();
+        }
+        if (imgLayer.getAttribute('data-current') !== assetUrl) {
+          imgLayer.setAttribute('data-current', assetUrl);
+          imgLayer.src = assetUrl;
+        }
+        imgLayer.classList.add('visible');
+      }
+
+      applyVisualSettings();
+      updateStats();
+      persistState();
+    }
+
+    function stepMedia(delta) {
+      if (mediaFiles.length === 0) return;
+      showMediaAt(currentIndex + delta);
+    }
+
+    async function refreshMediaList() {
+      try {
+        const res = await fetch(sdkBase + '/media');
+        if (!res.ok) return;
+        const data = await res.json();
+        emptyPath.textContent = data.folder || '';
+        const files = Array.isArray(data.files) ? data.files : [];
+        mediaFiles = files;
+
+        if (mediaFiles.length > 0 && selectedName) {
+          const foundIdx = mediaFiles.findIndex((f) => f.name === selectedName);
+          currentIndex = foundIdx >= 0 ? foundIdx : 0;
+        } else {
+          currentIndex = 0;
+        }
+        showMediaAt(currentIndex);
+        resetCycleTimer();
+      } catch {}
+    }
+
+    function wireRookeryEvents() {
+      if (!window.Rookery) return;
+
+      window.Rookery.onAction((action) => {
+        if (action === 'next_media') {
+          stepMedia(1);
+        } else if (action === 'prev_media') {
+          stepMedia(-1);
+        } else if (action === 'toggle_play') {
+          isPaused = !isPaused;
+          const item = mediaFiles[currentIndex];
+          if (item && item.kind === 'video') {
+            if (isPaused) {
+              videoLayer.pause();
+            } else {
+              videoLayer.play().catch(() => {});
+            }
+          }
+          persistState();
+        } else if (action === 'rescan_media') {
+          refreshMediaList();
+        }
+      });
+
+      window.Rookery.onControl((id, value) => {
+        if (id === 'fit_mode' && (value === 'cover' || value === 'contain' || value === 'fill')) {
+          fitMode = value;
+          applyVisualSettings();
+        } else if (id === 'playback_speed') {
+          const speed = Number(value);
+          if (Number.isFinite(speed) && speed > 0) {
+            playbackSpeed = speed;
+            applyVisualSettings();
+          }
+        } else if (id === 'dim_opacity') {
+          const dim = Number(value);
+          if (Number.isFinite(dim) && dim >= 0) {
+            dimOpacity = Math.min(0.85, Math.max(0, dim));
+            applyVisualSettings();
+          }
+        } else if (id === 'cycle_minutes') {
+          const mins = Number(value);
+          if (Number.isFinite(mins) && mins >= 0) {
+            cycleMinutes = mins;
+            resetCycleTimer();
+          }
+        }
+      });
+
+      window.Rookery.onInteractive((interactive) => {
+        document.body.classList.toggle('interactive', interactive);
+      });
+
+      window.Rookery.onWake(() => {
+        refreshMediaList();
+      });
+    }
+
+    async function boot() {
+      applyInitialControls();
+      wireRookeryEvents();
+
+      if (window.Rookery) {
+        const saved = await window.Rookery.loadState();
+        if (saved && typeof saved === 'object') {
+          if (typeof saved.selectedName === 'string') {
+            selectedName = saved.selectedName;
+          }
+          if (typeof saved.isPaused === 'boolean') {
+            isPaused = saved.isPaused;
+          }
+        }
+      }
+
+      await refreshMediaList();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
