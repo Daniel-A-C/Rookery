@@ -13,6 +13,7 @@ use rookery_core::manifest::{
 };
 use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
+use rookery_core::shinjuku::ShinjukuRainState;
 use rookery_core::world::WorldState;
 
 use crate::SceneFactory;
@@ -21,6 +22,7 @@ use crate::audio::AudioEngine;
 use crate::koi_scene::KoiPondScene;
 use crate::nebula_scene::CosmicNebulaScene;
 use crate::orbital_scene::OrbitalHavenScene;
+use crate::shinjuku_scene::ShinjukuRainScene;
 
 /// Shared `[f32; 4]` uniform parameter slot handle for an external shader app.
 pub type SharedShaderParams = Arc<Mutex<[f32; 4]>>;
@@ -35,6 +37,7 @@ pub struct CatalogState {
     pub koi: Arc<Mutex<KoiPondState>>,
     pub nebula: Arc<Mutex<CosmicNebulaState>>,
     pub orbital: Arc<Mutex<OrbitalHavenState>>,
+    pub shinjuku: Arc<Mutex<ShinjukuRainState>>,
     pub audio: Option<AudioEngine>,
     /// Per-app control values (`app_id -> control_id -> string_value`).
     pub custom_controls: Arc<Mutex<AppStringMap>>,
@@ -51,6 +54,7 @@ impl CatalogState {
             koi: Arc::new(Mutex::new(KoiPondState::new(seed))),
             nebula: Arc::new(Mutex::new(CosmicNebulaState::new(seed))),
             orbital: Arc::new(Mutex::new(OrbitalHavenState::new(seed))),
+            shinjuku: Arc::new(Mutex::new(ShinjukuRainState::new(seed))),
             audio: None,
             custom_controls: Arc::new(Mutex::new(BTreeMap::new())),
             custom_params: Arc::new(Mutex::new(BTreeMap::new())),
@@ -84,6 +88,9 @@ impl CatalogState {
         }
         if let Ok(mut o) = self.orbital.lock() {
             o.on_wake(elapsed_secs);
+        }
+        if let Ok(mut s) = self.shinjuku.lock() {
+            s.on_wake(elapsed_secs);
         }
     }
 
@@ -575,6 +582,106 @@ impl AppCatalog {
                     max_rss_mb: 120.0,
                 },
             },
+            AppManifest {
+                metadata: AppMetadata {
+                    id: "shinjuku-rain".into(),
+                    name: "Shinjuku Rain".into(),
+                    description: "A heavy-rain Japanese city street rendered in monospace ASCII and wet-asphalt neon reflections, with passing commuter trains, ramen shop steam, umbrella pedestrians, and stray alley cats.".into(),
+                    author: "Rookery Team".into(),
+                    version: "1.0.0".into(),
+                    archetype: AppArchetype::CozyEcosystem,
+                    tags: vec!["ascii".into(), "rain".into(), "japan".into(), "shinjuku".into(), "neon".into(), "cyberpunk".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Kabukicho Downpour · ASCII Realm".into()),
+                    banner_title: Some("Shinjuku Street Weather & Transit".into()),
+                    icon: Some("drop".into()),
+                    ornament: Some("sparkle".into()),
+                    bg: Some("#0d0a1a".into()),
+                    card: Some("rgba(20, 14, 38, 0.92)".into()),
+                    border_outer: Some("#be185d".into()),
+                    accent: Some("#f43f5e".into()),
+                    accent_secondary: Some("#22d3ee".into()),
+                    crest_gradient: Some(["#be185d".into(), "#0891b2".into()]),
+                },
+                controls: vec![
+                    AppControl::Stat {
+                        id: "rain_rate".into(),
+                        label: "Rainfall".into(),
+                        default_val: "46 mm/hr".into(),
+                        icon: Some("drop".into()),
+                    },
+                    AppControl::Stat {
+                        id: "pedestrians".into(),
+                        label: "Umbrellas".into(),
+                        default_val: "6".into(),
+                        icon: Some("compass".into()),
+                    },
+                    AppControl::Stat {
+                        id: "trains".into(),
+                        label: "Trains Passed".into(),
+                        default_val: "0".into(),
+                        icon: Some("gauge".into()),
+                    },
+                    AppControl::Stat {
+                        id: "palette".into(),
+                        label: "Palette".into(),
+                        default_val: "Shinjuku Neon (Kabukicho)".into(),
+                        icon: Some("palette".into()),
+                    },
+                    AppControl::Button {
+                        id: "splash".into(),
+                        label: "Splash Puddle".into(),
+                        icon: Some("drop".into()),
+                        tooltip: Some("Drop a heavy splash into the wet street puddles".into()),
+                    },
+                    AppControl::Button {
+                        id: "dispatch_train".into(),
+                        label: "Call Train".into(),
+                        icon: Some("arrow-clockwise".into()),
+                        tooltip: Some("Dispatch an elevated commuter train across the viaduct".into()),
+                    },
+                    AppControl::Button {
+                        id: "wind_gust".into(),
+                        label: "Wind Gust".into(),
+                        icon: Some("lightning".into()),
+                        tooltip: Some("Send a strong wind gust slanting the rain and swaying lanterns".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_signs".into(),
+                        label: "Toggle Neon".into(),
+                        icon: Some("sparkle".into()),
+                        tooltip: Some("Switch storefront neon signs and wet reflections on or off".into()),
+                    },
+                    AppControl::Button {
+                        id: "thunder".into(),
+                        label: "Distant Thunder".into(),
+                        icon: Some("lightning".into()),
+                        tooltip: Some("Trigger a distant storm flash and thunder roll".into()),
+                    },
+                    AppControl::Select {
+                        id: "color_palette".into(),
+                        label: "Color Palette".into(),
+                        options: rookery_core::shinjuku::SHINJUKU_PALETTE_NAMES
+                            .iter()
+                            .enumerate()
+                            .map(|(i, n)| format!("{i}: {n}"))
+                            .collect(),
+                        default_val: "0: Shinjuku Neon (Kabukicho)".into(),
+                    },
+                    AppControl::Button {
+                        id: "cycle_palette".into(),
+                        label: "Next Palette".into(),
+                        icon: Some("palette".into()),
+                        tooltip: Some("Cycle through the 4 curated rainy city palettes".into()),
+                    },
+                ],
+                budgets: AppBudgets {
+                    target_fps: 30,
+                    max_cpu_ms: 2.0,
+                    max_rss_mb: 120.0,
+                },
+            },
         ]
     }
 
@@ -638,6 +745,10 @@ impl AppCatalog {
                 OrbitalHavenScene::new(gpu, format, state.orbital.clone())
                     .with_audio(state.audio.clone()),
             ),
+            "shinjuku-rain" => Box::new(
+                ShinjukuRainScene::new(gpu, format, state.shinjuku.clone())
+                    .with_audio(state.audio.clone()),
+            ),
             "living-rookery" => Box::new(
                 LivingRookeryScene::new(gpu, format, state.rookery.clone())
                     .with_audio(state.audio.clone()),
@@ -693,6 +804,8 @@ impl AppCatalog {
             "cosmic-nebula" => [0.427, 0.157, 0.851],
             // #0284c7 (Orbital Haven --border-outer)
             "orbital-haven" => [0.008, 0.518, 0.780],
+            // #be185d (Shinjuku Rain --border-outer)
+            "shinjuku-rain" => [0.745, 0.094, 0.365],
             // #0d9488 (Aurora Waves --border-outer)
             "aurora-waves" => [0.051, 0.580, 0.533],
             // #65a30d (Twilight Fireflies --border-outer)

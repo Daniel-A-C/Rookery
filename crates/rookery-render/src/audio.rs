@@ -42,6 +42,14 @@ pub enum SoundEffect {
     ModuleConstruct,
     /// Subspace sensor scan & telemetry ping in Orbital Haven
     OrbitalScan,
+    /// Puddle splash in Shinjuku Rain
+    RainSplash,
+    /// Elevated commuter train pass-by in Shinjuku Rain
+    TrainPass,
+    /// Distant rolling thunder in Shinjuku Rain
+    ThunderRumble,
+    /// Neon storefront sign click & hum in Shinjuku Rain
+    SignToggle,
 }
 
 enum AudioCommand {
@@ -403,6 +411,22 @@ pub fn synth_ambient_loop(app_id: &str) -> Vec<f32> {
                 *sample = (s * 0.45 + hum + fifth + octave + telemetry) * 0.22;
             }
         }
+        "shinjuku-rain" => {
+            // Heavy city downpour: dual-band filtered rain patter + warm awning/city resonance
+            let mut lcg: u32 = 2468135;
+            let mut low = 0.0f32;
+            let mut mid = 0.0f32;
+            for (i, sample) in buffer.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                let gust = 0.78 + 0.22 * (2.0 * PI * 0.16 * t).sin();
+                low += 0.025 * (white - low);
+                mid += (0.14 * gust) * (white - mid);
+                let city_hum = 0.03 * (2.0 * PI * 60.0 * t).sin();
+                *sample = ((low * 0.55 + mid * 0.45) * 0.36 + city_hum).clamp(-0.95, 0.95);
+            }
+        }
         _ => {
             // Default warm ambient room tone
             for (i, sample) in buffer.iter_mut().enumerate() {
@@ -617,6 +641,67 @@ pub fn synth_sfx(sfx: SoundEffect) -> Vec<f32> {
             }
             out
         }
+        SoundEffect::RainSplash => {
+            let len = (0.18 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut lcg: u32 = 13579;
+            let mut lp = 0.0f32;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                lp += 0.18 * (white - lp);
+                let env = (-24.0 * t).exp();
+                let plink =
+                    (2.0 * PI * (680.0 + 380.0 * (-28.0 * t).exp()) * t).sin() * (-30.0 * t).exp();
+                *sample = ((lp * 0.55 + plink * 0.35) * env * 0.45).clamp(-0.95, 0.95);
+            }
+            out
+        }
+        SoundEffect::TrainPass => {
+            let len = (0.75 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut lcg: u32 = 97531;
+            let mut lp = 0.0f32;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                lp += 0.045 * (white - lp);
+                let env = (PI * (t / 0.75)).sin();
+                let clack = (2.0 * PI * 9.5 * t).sin().powi(8);
+                let rumble = 0.25 * (2.0 * PI * 72.0 * t).sin();
+                *sample = ((lp * 0.5 + rumble + lp * clack * 0.35) * env * 0.38).clamp(-0.95, 0.95);
+            }
+            out
+        }
+        SoundEffect::ThunderRumble => {
+            let len = (1.1 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut lcg: u32 = 54321;
+            let mut lp = 0.0f32;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                lp += 0.015 * (white - lp);
+                let env = (1.0 - (-18.0 * t).exp()) * (-2.6 * t).exp();
+                let sub = 0.30 * (2.0 * PI * 42.0 * t).sin();
+                *sample = ((lp * 1.4 + sub) * env * 0.42).clamp(-0.95, 0.95);
+            }
+            out
+        }
+        SoundEffect::SignToggle => {
+            let len = (0.14 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let click = (2.0 * PI * 1100.0 * t).sin() * (-55.0 * t).exp();
+                let hum = (2.0 * PI * 120.0 * t).sin() * (-16.0 * t).exp();
+                *sample = ((click * 0.35 + hum * 0.25) * 0.4).clamp(-0.95, 0.95);
+            }
+            out
+        }
     }
 }
 
@@ -637,6 +722,10 @@ mod tests {
             SoundEffect::ShuttleLaunch,
             SoundEffect::ModuleConstruct,
             SoundEffect::OrbitalScan,
+            SoundEffect::RainSplash,
+            SoundEffect::TrainPass,
+            SoundEffect::ThunderRumble,
+            SoundEffect::SignToggle,
         ];
 
         for sfx in all_sfx {
@@ -660,6 +749,7 @@ mod tests {
             "koi-pond",
             "cosmic-nebula",
             "orbital-haven",
+            "shinjuku-rain",
             "unknown-app",
         ];
 

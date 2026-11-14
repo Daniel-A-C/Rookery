@@ -325,6 +325,19 @@ impl HostState {
                 focus: o.focus.name().to_string(),
             });
 
+        if let Ok(s) = self.catalog_state.shinjuku.lock() {
+            let st = s.stats();
+            let mut map = std::collections::BTreeMap::new();
+            map.insert(
+                "rain_rate".to_string(),
+                format!("{} mm/hr", st.rain_rate_mm_hr),
+            );
+            map.insert("pedestrians".to_string(), st.pedestrian_count.to_string());
+            map.insert("trains".to_string(), st.trains_passed.to_string());
+            map.insert("palette".to_string(), st.palette_name);
+            self.catalog_state.set_stats("shinjuku-rain", map);
+        }
+
         let inner = self.inner.lock().expect("host state poisoned");
         let active_app = inner.settings.active_app.clone();
         let schedule_mode = inner.settings.schedule_mode;

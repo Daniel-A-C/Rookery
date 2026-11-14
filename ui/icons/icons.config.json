@@ -83,7 +83,8 @@
       "living-rookery": { "background": "#13261b", "text": "#f2ecd9", "secondary": "#eab308" },
       "koi-pond": { "background": "#0c2733", "text": "#f7f3eb", "secondary": "#2dd4bf" },
       "cosmic-nebula": { "background": "#180d34", "text": "#f5f0ff", "secondary": "#38bdf8" },
-      "orbital-haven": { "background": "#0e1e2e", "text": "#e0f2fe", "secondary": "#f59e0b" }
+      "orbital-haven": { "background": "#0e1e2e", "text": "#e0f2fe", "secondary": "#f59e0b" },
+      "shinjuku-rain": { "background": "#0d0a1a", "text": "#ffe4e6", "secondary": "#22d3ee" }
     }
   }
 }

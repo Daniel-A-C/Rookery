@@ -15,11 +15,13 @@ use anyhow::{Context, Result};
 use rookery_core::koi::KoiPondState;
 use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
+use rookery_core::shinjuku::ShinjukuRainState;
 use rookery_core::world::WorldState;
 use rookery_render::capture::write_png;
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
 use rookery_render::{
     CosmicNebulaScene, Gpu, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene, SceneInput,
+    ShinjukuRainScene,
 };
 use serde::{Deserialize, Serialize};
 
@@ -305,8 +307,12 @@ fn run_bench(config: &BenchConfig) -> Result<TelemetryReport> {
             let station = Arc::new(Mutex::new(OrbitalHavenState::new(config.seed)));
             Box::new(OrbitalHavenScene::new(&gpu, OFFSCREEN_FORMAT, station))
         }
+        "shinjuku-rain" => {
+            let shinjuku = Arc::new(Mutex::new(ShinjukuRainState::new(config.seed)));
+            Box::new(ShinjukuRainScene::new(&gpu, OFFSCREEN_FORMAT, shinjuku))
+        }
         other => anyhow::bail!(
-            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', or 'all')"
+            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', 'shinjuku-rain', or 'all')"
         ),
     };
 
@@ -519,6 +525,7 @@ fn main() -> Result<()> {
             "koi-pond".into(),
             "cosmic-nebula".into(),
             "orbital-haven".into(),
+            "shinjuku-rain".into(),
         ]
     } else {
         vec![config.app.clone()]

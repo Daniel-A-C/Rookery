@@ -23,6 +23,7 @@ pub mod offscreen;
 pub mod orbital_scene;
 mod renderer;
 mod scene;
+pub mod shinjuku_scene;
 mod vignette;
 
 pub use ascii_scene::LivingRookeryScene;
@@ -35,3 +36,4 @@ pub use nebula_scene::CosmicNebulaScene;
 pub use orbital_scene::OrbitalHavenScene;
 pub use renderer::{DisplayStats, Renderer, SceneFactory, SurfaceSize};
 pub use scene::{BlankScene, Pointer, PointerAction, RawPointer, Scene, SceneInput};
+pub use shinjuku_scene::ShinjukuRainScene;

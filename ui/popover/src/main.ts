@@ -175,6 +175,13 @@ const appThemes: Record<string, AppThemeMeta> = {
     glyph: "satellite",
     ornament: "hexagon",
   },
+  "shinjuku-rain": {
+    title: "Shinjuku Rain",
+    tagline: "Kabukicho Downpour · ASCII Realm",
+    bannerTitle: "Shinjuku Street Weather & Transit",
+    glyph: "drop",
+    ornament: "sparkle",
+  },
   "aurora-waves": {
     title: "Aurora Waves",
     tagline: "Borealis Sky Observatory",

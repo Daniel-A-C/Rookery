@@ -713,6 +713,60 @@ pub fn execute_app_action(
             }
             let _ = o.save_atomic(&state.orbital_path);
         }
+        "shinjuku-rain" => {
+            let mut s = state
+                .catalog_state
+                .shinjuku
+                .lock()
+                .map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "splash" => {
+                    let rx = s.rng.range(180.0, 820.0);
+                    let ry = s.rng.range(780.0, 940.0);
+                    s.splash_at(rx, ry);
+                    state.audio.play_sfx(SoundEffect::RainSplash);
+                }
+                "dispatch_train" => {
+                    s.dispatch_train();
+                    state.audio.play_sfx(SoundEffect::TrainPass);
+                }
+                "wind_gust" => {
+                    s.trigger_wind_gust();
+                }
+                "toggle_signs" => {
+                    s.toggle_signs();
+                    state.audio.play_sfx(SoundEffect::SignToggle);
+                }
+                "thunder" => {
+                    s.trigger_lightning();
+                    state.audio.play_sfx(SoundEffect::ThunderRumble);
+                }
+                "cycle_palette" => {
+                    s.cycle_palette();
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "color_palette" | "set_palette" => {
+                    if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                        let parsed_idx = match val {
+                            serde_json::Value::Number(n) => n.as_u64().map(|v| v as u8),
+                            serde_json::Value::String(str_val) => str_val
+                                .split(':')
+                                .next()
+                                .and_then(|prefix| prefix.trim().parse::<u8>().ok()),
+                            _ => None,
+                        };
+                        if let Some(idx) = parsed_idx {
+                            s.set_palette(rookery_core::shinjuku::ShinjukuPalette::from_u8(idx));
+                            state.audio.play_sfx(SoundEffect::PaletteCycle);
+                        }
+                    } else {
+                        s.cycle_palette();
+                        state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    }
+                }
+                other => return Err(format!("Unknown shinjuku-rain action '{other}'")),
+            }
+        }
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
             if let Some(manifest) = all.into_iter().find(|m| m.metadata.id == other) {

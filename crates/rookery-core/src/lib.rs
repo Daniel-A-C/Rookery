@@ -20,6 +20,7 @@ pub mod nebula;
 pub mod occlusion;
 pub mod orbital;
 pub mod settings;
+pub mod shinjuku;
 pub mod world;
 
 pub use geometry::{DisplayId, Rect};
@@ -37,6 +38,10 @@ pub use orbital::{
     Shuttle, ShuttleState, SparkParticle, StationEpoch, StationModule,
 };
 pub use settings::{AudioSettings, Settings};
+pub use shinjuku::{
+    AlleyCat, ElevatedTrain, Pedestrian, PuddleSplash, RainLayer, Raindrop, SHINJUKU_PALETTE_NAMES,
+    ShinjukuPalette, ShinjukuRainState, ShinjukuStats, SteamParticle, Vehicle, VehicleKind,
+};
 pub use world::{
     Bird, BirdBath, BirdHouse, BirdSpecies, BirdState, Branch, FOREST_TREE_SPACING, FaunaSpecies,
     FaunaState, FoliageBud, Lantern, Nest, Perch, PlantSign, Snack, SnackType, TreeRecord,
