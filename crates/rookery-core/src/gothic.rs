@@ -721,7 +721,7 @@ impl GothicAirship {
     pub fn pos_and_forward(&self, time: f32) -> ([f32; 3], [f32; 2]) {
         let x = self.orbit_center[0] + self.angle.cos() * self.orbit_rx;
         let z = self.orbit_center[1] + self.angle.sin() * self.orbit_rz;
-        let bob = (time * 0.9 + self.id as f32 * 1.7).sin() * 0.14;
+        let bob = (time * 0.30 + self.id as f32 * 1.7).sin() * 0.08;
         let vx = -self.angle.sin() * self.orbit_rx * self.angular_speed;
         let vz = self.angle.cos() * self.orbit_rz * self.angular_speed;
         let len = (vx * vx + vz * vz).sqrt().max(0.0001);
@@ -905,7 +905,7 @@ impl GothicMetropolisState {
                 orbit_rz: 5.4,
                 altitude: 10.4,
                 angle: 0.65,
-                angular_speed: 0.095,
+                angular_speed: 0.024,
                 hull_length: 2.15,
                 searchlight_phase: 0.0,
             },
@@ -916,7 +916,7 @@ impl GothicMetropolisState {
                 orbit_rz: 6.2,
                 altitude: 11.6,
                 angle: 3.8,
-                angular_speed: -0.075,
+                angular_speed: -0.019,
                 hull_length: 1.85,
                 searchlight_phase: 2.1,
             },
@@ -929,7 +929,7 @@ impl GothicMetropolisState {
                 origin: [-4.6, 7.55, -4.6],
                 base_yaw: 0.8,
                 sweep_amp: 0.95,
-                sweep_speed: 0.55,
+                sweep_speed: 0.14,
                 tilt_from_vertical: 0.34,
                 length: 6.2,
                 phase_offset: 0.0,
@@ -939,7 +939,7 @@ impl GothicMetropolisState {
                 origin: [4.3, 8.75, -0.2],
                 base_yaw: 2.6,
                 sweep_amp: 0.85,
-                sweep_speed: 0.48,
+                sweep_speed: 0.12,
                 tilt_from_vertical: 0.30,
                 length: 6.6,
                 phase_offset: 1.7,
@@ -949,7 +949,7 @@ impl GothicMetropolisState {
                 origin: [-0.2, 7.35, 4.3],
                 base_yaw: -1.4,
                 sweep_amp: 0.90,
-                sweep_speed: 0.62,
+                sweep_speed: 0.16,
                 tilt_from_vertical: 0.32,
                 length: 5.8,
                 phase_offset: 3.3,
@@ -959,7 +959,7 @@ impl GothicMetropolisState {
                 origin: [-0.2, 9.15, -4.6],
                 base_yaw: 1.5,
                 sweep_amp: 0.78,
-                sweep_speed: 0.42,
+                sweep_speed: 0.11,
                 tilt_from_vertical: 0.28,
                 length: 6.4,
                 phase_offset: 4.8,
@@ -1071,7 +1071,7 @@ impl GothicMetropolisState {
         // 4. Advance high-altitude patrol airships
         for ship in &mut self.airships {
             ship.angle = (ship.angle + ship.angular_speed * dt) % TAU;
-            ship.searchlight_phase = (ship.searchlight_phase + dt * 0.85) % TAU;
+            ship.searchlight_phase = (ship.searchlight_phase + dt * 0.22) % TAU;
         }
 
         // 5. Update and spawn rising steam/smoke plumes
@@ -1165,13 +1165,13 @@ impl GothicMetropolisState {
                 orbit_rz: 5.2 + (new_id as f32 * 0.45),
                 altitude: 9.6 + (new_id as f32 * 0.65),
                 angle: self.rng.range(0.0, TAU),
-                angular_speed: dir * 0.11,
+                angular_speed: dir * 0.026,
                 hull_length: 2.0,
                 searchlight_phase: self.rng.range(0.0, TAU),
             });
         } else {
             for ship in &mut self.airships {
-                ship.angle = (ship.angle + 0.45) % TAU;
+                ship.angle = (ship.angle + 0.18) % TAU;
             }
         }
     }
