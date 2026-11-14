@@ -12,6 +12,7 @@
 //! OS-specific code lives in `rookery-platform`; rendering lives in `rookery-render`.
 
 pub mod geometry;
+pub mod gothic;
 pub mod governor;
 pub mod interaction;
 pub mod koi;
@@ -24,6 +25,12 @@ pub mod shinjuku;
 pub mod world;
 
 pub use geometry::{DisplayId, Rect};
+pub use gothic::{
+    BuildingArchetype, BuildingPlacement, CityBlueprint, ElevatedGothicTrain, GOTHIC_PALETTE_NAMES,
+    GothicAirship, GothicMetropolisState, GothicMetropolisStats, GothicPalette, GothicVehicle,
+    GothicVehicleKind, SearchlightBeam, SteamPlume, StreetAvenue, WalkwayPedestrian, WalkwaySpan,
+    WalkwayStyle,
+};
 pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
 pub use manifest::{
     AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, AppTheme, DayNightMapping,

@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use rookery_core::gothic::GothicMetropolisState;
 use rookery_core::koi::KoiPondState;
 use rookery_core::manifest::{
     AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, AppTheme,
@@ -19,6 +20,7 @@ use rookery_core::world::WorldState;
 use crate::SceneFactory;
 use crate::ascii_scene::LivingRookeryScene;
 use crate::audio::AudioEngine;
+use crate::gothic_scene::GothicMetropolisScene;
 use crate::koi_scene::KoiPondScene;
 use crate::nebula_scene::CosmicNebulaScene;
 use crate::orbital_scene::OrbitalHavenScene;
@@ -38,6 +40,7 @@ pub struct CatalogState {
     pub nebula: Arc<Mutex<CosmicNebulaState>>,
     pub orbital: Arc<Mutex<OrbitalHavenState>>,
     pub shinjuku: Arc<Mutex<ShinjukuRainState>>,
+    pub gothic: Arc<Mutex<GothicMetropolisState>>,
     pub audio: Option<AudioEngine>,
     /// Per-app control values (`app_id -> control_id -> string_value`).
     pub custom_controls: Arc<Mutex<AppStringMap>>,
@@ -55,6 +58,7 @@ impl CatalogState {
             nebula: Arc::new(Mutex::new(CosmicNebulaState::new(seed))),
             orbital: Arc::new(Mutex::new(OrbitalHavenState::new(seed))),
             shinjuku: Arc::new(Mutex::new(ShinjukuRainState::new(seed))),
+            gothic: Arc::new(Mutex::new(GothicMetropolisState::new(seed))),
             audio: None,
             custom_controls: Arc::new(Mutex::new(BTreeMap::new())),
             custom_params: Arc::new(Mutex::new(BTreeMap::new())),
@@ -91,6 +95,9 @@ impl CatalogState {
         }
         if let Ok(mut s) = self.shinjuku.lock() {
             s.on_wake(elapsed_secs);
+        }
+        if let Ok(mut g) = self.gothic.lock() {
+            g.on_wake(elapsed_secs);
         }
     }
 
@@ -682,6 +689,100 @@ impl AppCatalog {
                     max_rss_mb: 120.0,
                 },
             },
+            AppManifest {
+                metadata: AppMetadata {
+                    id: "gothic-metropolis".into(),
+                    name: "Gothic Metropolis".into(),
+                    description: "An exaggerated 1990s-Batman gothic art-deco city in simplified 3D isometric perspective, featuring multi-tiered skybridges, an elevated train viaduct, canyon coupes, sweeping searchlights, and patrol airships in a stark black void.".into(),
+                    author: "Rookery Team".into(),
+                    version: "1.0.0".into(),
+                    archetype: AppArchetype::CozyEcosystem,
+                    tags: vec!["gothic".into(), "isometric".into(), "city".into(), "3d".into(), "noir".into(), "train".into(), "airship".into()],
+                },
+                theme: AppTheme {
+                    tagline: Some("Noir Spire Citadel · Isometric 3D Realm".into()),
+                    banner_title: Some("Metropolis Transit & Spire Telemetry".into()),
+                    icon: Some("diamond".into()),
+                    ornament: Some("star-four".into()),
+                    bg: Some("#0c0a0e".into()),
+                    card: Some("rgba(22, 18, 26, 0.94)".into()),
+                    border_outer: Some("#d97706".into()),
+                    accent: Some("#f59e0b".into()),
+                    accent_secondary: Some("#fbbf24".into()),
+                    crest_gradient: Some(["#b45309".into(), "#78350f".into()]),
+                },
+                controls: vec![
+                    AppControl::Stat {
+                        id: "trains".into(),
+                        label: "Elevated Rail".into(),
+                        default_val: "2 Active".into(),
+                        icon: Some("gauge".into()),
+                    },
+                    AppControl::Stat {
+                        id: "airships".into(),
+                        label: "Sky & Streets".into(),
+                        default_val: "2 Blimps · 10 Cars".into(),
+                        icon: Some("compass".into()),
+                    },
+                    AppControl::Stat {
+                        id: "walkways".into(),
+                        label: "Skybridges".into(),
+                        default_val: "27 Walkers".into(),
+                        icon: Some("squares-four".into()),
+                    },
+                    AppControl::Stat {
+                        id: "palette".into(),
+                        label: "Palette".into(),
+                        default_val: "1989 Furst Amber & Obsidian".into(),
+                        icon: Some("palette".into()),
+                    },
+                    AppControl::Button {
+                        id: "dispatch_train".into(),
+                        label: "Dispatch Train".into(),
+                        icon: Some("arrow-clockwise".into()),
+                        tooltip: Some("Dispatch an express elevated train along the viaduct loop".into()),
+                    },
+                    AppControl::Button {
+                        id: "summon_airship".into(),
+                        label: "Summon Airship".into(),
+                        icon: Some("rocket".into()),
+                        tooltip: Some("Deploy a high-altitude gothic patrol dirigible above the spires".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_searchlights".into(),
+                        label: "Searchlights".into(),
+                        icon: Some("sun".into()),
+                        tooltip: Some("Toggle sweeping rooftop and airship searchlight beams".into()),
+                    },
+                    AppControl::Button {
+                        id: "rotate_camera".into(),
+                        label: "Rotate View".into(),
+                        icon: Some("compass".into()),
+                        tooltip: Some("Rotate the isometric camera 90° around the city island".into()),
+                    },
+                    AppControl::Select {
+                        id: "color_palette".into(),
+                        label: "Color Palette".into(),
+                        options: rookery_core::gothic::GOTHIC_PALETTE_NAMES
+                            .iter()
+                            .enumerate()
+                            .map(|(i, n)| format!("{i}: {n}"))
+                            .collect(),
+                        default_val: "0: 1989 Furst Amber & Obsidian".into(),
+                    },
+                    AppControl::Button {
+                        id: "cycle_palette".into(),
+                        label: "Next Palette".into(),
+                        icon: Some("palette".into()),
+                        tooltip: Some("Cycle through the 4 curated gothic metropolis palettes".into()),
+                    },
+                ],
+                budgets: AppBudgets {
+                    target_fps: 30,
+                    max_cpu_ms: 2.0,
+                    max_rss_mb: 120.0,
+                },
+            },
         ]
     }
 
@@ -749,6 +850,10 @@ impl AppCatalog {
                 ShinjukuRainScene::new(gpu, format, state.shinjuku.clone())
                     .with_audio(state.audio.clone()),
             ),
+            "gothic-metropolis" => Box::new(
+                GothicMetropolisScene::new(gpu, format, state.gothic.clone())
+                    .with_audio(state.audio.clone()),
+            ),
             "living-rookery" => Box::new(
                 LivingRookeryScene::new(gpu, format, state.rookery.clone())
                     .with_audio(state.audio.clone()),
@@ -806,6 +911,8 @@ impl AppCatalog {
             "orbital-haven" => [0.008, 0.518, 0.780],
             // #be185d (Shinjuku Rain --border-outer)
             "shinjuku-rain" => [0.745, 0.094, 0.365],
+            // #d97706 (Gothic Metropolis --border-outer)
+            "gothic-metropolis" => [0.851, 0.467, 0.024],
             // #0d9488 (Aurora Waves --border-outer)
             "aurora-waves" => [0.051, 0.580, 0.533],
             // #65a30d (Twilight Fireflies --border-outer)

@@ -167,3 +167,45 @@ fn living_rookery_all_aesthetic_styles_render_and_export() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn gothic_metropolis_all_palettes_and_angles_render() {
+    let gpu = Gpu::new_blocking().expect("GPU");
+    let state = Arc::new(Mutex::new(rookery_core::GothicMetropolisState::new(42)));
+
+    let width = 1280u32;
+    let height = 720u32;
+    let mut scene =
+        rookery_render::GothicMetropolisScene::new(&gpu, OFFSCREEN_FORMAT, state.clone());
+    scene.resize(&gpu, width, height, 1.0);
+    let off = Offscreen::new(&gpu, width, height);
+    let dt = Duration::from_millis(33);
+
+    let snapshot_dir = std::env::var("ROOKERY_SNAPSHOT_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(ref dir) = snapshot_dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    for palette_idx in 0..4u8 {
+        if let Ok(mut g) = state.lock() {
+            g.set_palette(rookery_core::GothicPalette::from_u8(palette_idx));
+            if palette_idx == 2 {
+                g.rotate_camera_quarter_turn();
+            }
+        }
+        let frame = off.run(&gpu, &mut scene, 8, dt).unwrap();
+        let luma = mean_luma(&frame);
+        assert!(
+            luma > 5.0 && luma < 180.0,
+            "Gothic palette {palette_idx} mean luma {luma} out of expected range"
+        );
+
+        if let Some(ref dir) = snapshot_dir {
+            let png_path = dir.join(format!("gothic_palette_{palette_idx}.png"));
+            rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
+        }
+    }
+}

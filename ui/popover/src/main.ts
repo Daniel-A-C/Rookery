@@ -182,6 +182,13 @@ const appThemes: Record<string, AppThemeMeta> = {
     glyph: "drop",
     ornament: "sparkle",
   },
+  "gothic-metropolis": {
+    title: "Gothic Metropolis",
+    tagline: "Noir Spire Citadel · Isometric 3D Realm",
+    bannerTitle: "Metropolis Transit & Spire Telemetry",
+    glyph: "diamond",
+    ornament: "star-four",
+  },
   "aurora-waves": {
     title: "Aurora Waves",
     tagline: "Borealis Sky Observatory",

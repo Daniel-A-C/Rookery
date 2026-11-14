@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use rookery_core::gothic::GothicMetropolisState;
 use rookery_core::koi::KoiPondState;
 use rookery_core::nebula::CosmicNebulaState;
 use rookery_core::orbital::OrbitalHavenState;
@@ -20,8 +21,8 @@ use rookery_core::world::WorldState;
 use rookery_render::capture::write_png;
 use rookery_render::offscreen::{OFFSCREEN_FORMAT, Offscreen};
 use rookery_render::{
-    CosmicNebulaScene, Gpu, KoiPondScene, LivingRookeryScene, OrbitalHavenScene, Scene, SceneInput,
-    ShinjukuRainScene,
+    CosmicNebulaScene, GothicMetropolisScene, Gpu, KoiPondScene, LivingRookeryScene,
+    OrbitalHavenScene, Scene, SceneInput, ShinjukuRainScene,
 };
 use serde::{Deserialize, Serialize};
 
@@ -311,8 +312,12 @@ fn run_bench(config: &BenchConfig) -> Result<TelemetryReport> {
             let shinjuku = Arc::new(Mutex::new(ShinjukuRainState::new(config.seed)));
             Box::new(ShinjukuRainScene::new(&gpu, OFFSCREEN_FORMAT, shinjuku))
         }
+        "gothic-metropolis" => {
+            let gothic = Arc::new(Mutex::new(GothicMetropolisState::new(config.seed)));
+            Box::new(GothicMetropolisScene::new(&gpu, OFFSCREEN_FORMAT, gothic))
+        }
         other => anyhow::bail!(
-            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', 'shinjuku-rain', or 'all')"
+            "unknown app '{other}' (expected 'living-rookery', 'koi-pond', 'cosmic-nebula', 'orbital-haven', 'shinjuku-rain', 'gothic-metropolis', or 'all')"
         ),
     };
 
@@ -526,6 +531,7 @@ fn main() -> Result<()> {
             "cosmic-nebula".into(),
             "orbital-haven".into(),
             "shinjuku-rain".into(),
+            "gothic-metropolis".into(),
         ]
     } else {
         vec![config.app.clone()]

@@ -338,6 +338,28 @@ impl HostState {
             self.catalog_state.set_stats("shinjuku-rain", map);
         }
 
+        if let Ok(g) = self.catalog_state.gothic.lock() {
+            let st = g.stats();
+            let mut map = std::collections::BTreeMap::new();
+            map.insert(
+                "trains".to_string(),
+                format!("{} Active · #{}", st.active_trains, st.trains_dispatched),
+            );
+            map.insert(
+                "airships".to_string(),
+                format!(
+                    "{} Blimps · {} Cars",
+                    st.active_airships, st.street_vehicles
+                ),
+            );
+            map.insert(
+                "walkways".to_string(),
+                format!("{} Walkers", st.walkway_pedestrians),
+            );
+            map.insert("palette".to_string(), st.palette_name);
+            self.catalog_state.set_stats("gothic-metropolis", map);
+        }
+
         let inner = self.inner.lock().expect("host state poisoned");
         let active_app = inner.settings.active_app.clone();
         let schedule_mode = inner.settings.schedule_mode;

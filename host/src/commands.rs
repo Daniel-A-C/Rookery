@@ -767,6 +767,55 @@ pub fn execute_app_action(
                 other => return Err(format!("Unknown shinjuku-rain action '{other}'")),
             }
         }
+        "gothic-metropolis" => {
+            let mut g = state
+                .catalog_state
+                .gothic
+                .lock()
+                .map_err(|_| "lock poisoned")?;
+            match action.as_str() {
+                "dispatch_train" => {
+                    g.dispatch_train();
+                    state.audio.play_sfx(SoundEffect::TrainPass);
+                }
+                "summon_airship" => {
+                    g.summon_airship();
+                    state.audio.play_sfx(SoundEffect::ShuttleLaunch);
+                }
+                "toggle_searchlights" => {
+                    g.toggle_searchlights();
+                    state.audio.play_sfx(SoundEffect::SignToggle);
+                }
+                "rotate_camera" => {
+                    g.rotate_camera_quarter_turn();
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
+                "cycle_palette" => {
+                    g.cycle_palette();
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "color_palette" | "set_palette" => {
+                    if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                        let parsed_idx = match val {
+                            serde_json::Value::Number(n) => n.as_u64().map(|v| v as u8),
+                            serde_json::Value::String(str_val) => str_val
+                                .split(':')
+                                .next()
+                                .and_then(|prefix| prefix.trim().parse::<u8>().ok()),
+                            _ => None,
+                        };
+                        if let Some(idx) = parsed_idx {
+                            g.set_palette(rookery_core::gothic::GothicPalette::from_u8(idx));
+                            state.audio.play_sfx(SoundEffect::PaletteCycle);
+                        }
+                    } else {
+                        g.cycle_palette();
+                        state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    }
+                }
+                other => return Err(format!("Unknown gothic-metropolis action '{other}'")),
+            }
+        }
         other => {
             let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
             if let Some(manifest) = all.into_iter().find(|m| m.metadata.id == other) {
