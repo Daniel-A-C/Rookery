@@ -181,12 +181,43 @@ impl WalkwaySpan {
     }
 }
 
-/// A street-level canyon avenue where gothic vehicles cruise.
+/// A street-level canyon avenue or outer perimeter highway segment where gothic vehicles cruise.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreetAvenue {
     pub start: [f32; 2],
     pub end: [f32; 2],
     pub width: f32,
+    /// True if this road segment is part of the outer perimeter ring highway.
+    #[serde(default)]
+    pub is_highway: bool,
+}
+
+/// An underground parking garage entrance recessed into the base of a building,
+/// connected to an adjacent street avenue or highway via a sloped driveway apron across the sidewalk.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GaragePortal {
+    pub id: u32,
+    pub building_id: u32,
+    /// Point `[x, z]` on the street centerline where vehicles turn into/out of the garage.
+    pub street_entry: [f32; 2],
+    /// Point `[x, z]` at the building facade portal mouth where the ramp descends underground.
+    pub portal_pos: [f32; 2],
+    /// Unit inward direction `[dx, dz]` pointing from the street into the building garage.
+    pub inward_dir: [f32; 2],
+    /// Width of the garage portal tunnel and ramp.
+    pub width: f32,
+}
+
+/// A connected multi-segment route for street and highway vehicles.
+///
+/// Either forms a continuous closed circuit around the connected avenues & outer ring highway
+/// (`is_closed_loop = true`) or connects two underground building parking garages
+/// (`is_closed_loop = false`), ensuring vehicles never drive off the edge or vanish in open air.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VehicleRoute {
+    pub id: u32,
+    pub waypoints: Vec<[f32; 2]>,
+    pub is_closed_loop: bool,
 }
 
 /// A steam emitter source (either a street grate or a high rooftop smokestack/vent).
@@ -215,48 +246,55 @@ pub struct CityBlueprint {
     /// Index of the waypoint segment where the `ViaductStation` platform is located.
     pub station_waypoint_idx: usize,
     pub avenues: Vec<StreetAvenue>,
+    #[serde(default)]
+    pub garages: Vec<GaragePortal>,
+    #[serde(default)]
+    pub vehicle_routes: Vec<VehicleRoute>,
     pub steam_sources: Vec<SteamSource>,
 }
 
 impl CityBlueprint {
     /// Construct the canonical Gothic Metropolis layout.
     ///
-    /// Arranged around two intersecting deep canyon avenues (`x = -2.2`, `x = 2.4`, `z = -2.2`, `z = 2.4`)
-    /// with a towering central Cathedral & Ziggurat core, a mid-level elevated train loop at `y = 2.6`
-    /// passing directly through the west `ViaductStation`, and 9 multi-tiered elevated walkways
-    /// spanning across three vertical tiers (`y = 1.65`, `y = 3.55`, `y = 5.35`).
+    /// Arranged around a 3x3 city block grid bounded by two intersecting North-South canyon
+    /// avenues (`x = -2.4`, `x = 2.1`), two East-West canyon avenues (`z = -2.4`, `z = 2.1`),
+    /// and a 4-sided outer perimeter ring highway (`x = ±8.2`, `z = ±8.2`) on an expanded
+    /// foundation floor plate (`plinth_half_extent = 9.8`), with 8 subterranean building
+    /// parking garage entrances and raised stone sidewalks around every block.
     pub fn default_gothic_metropolis() -> Self {
         let buildings = vec![
-            // --- Central Crown District ---
+            // --- Central Crown District (Center Block) ---
             BuildingPlacement {
                 id: 1,
                 archetype: BuildingArchetype::CathedralKeep,
-                x: -0.2,
-                z: -0.2,
-                width: 2.7,
-                depth: 2.7,
+                x: -0.15,
+                z: -0.15,
+                width: 2.6,
+                depth: 2.6,
                 height: 9.8,
                 quarter_turns: 0,
                 style_variant: 0,
             },
+            // --- East-Center District ---
             BuildingPlacement {
                 id: 2,
                 archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: 4.3,
-                z: -0.2,
-                width: 2.5,
-                depth: 2.5,
+                x: 4.20,
+                z: -0.15,
+                width: 2.2,
+                depth: 2.4,
                 height: 8.6,
                 quarter_turns: 1,
                 style_variant: 1,
             },
+            // --- West-Center District ---
             BuildingPlacement {
                 id: 3,
                 archetype: BuildingArchetype::ViaductStation,
-                x: -4.6,
-                z: -0.2,
-                width: 2.4,
-                depth: 3.0,
+                x: -4.55,
+                z: -0.15,
+                width: 2.2,
+                depth: 2.6,
                 height: 6.4,
                 quarter_turns: 0,
                 style_variant: 2,
@@ -265,10 +303,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 4,
                 archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: -0.2,
-                z: -4.6,
-                width: 2.6,
-                depth: 2.4,
+                x: -0.15,
+                z: -4.45,
+                width: 2.4,
+                depth: 2.1,
                 height: 9.0,
                 quarter_turns: 0,
                 style_variant: 3,
@@ -276,10 +314,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 5,
                 archetype: BuildingArchetype::SyndicateTower,
-                x: -4.6,
-                z: -4.6,
-                width: 2.3,
-                depth: 2.3,
+                x: -4.55,
+                z: -4.55,
+                width: 2.2,
+                depth: 2.2,
                 height: 7.4,
                 quarter_turns: 0,
                 style_variant: 0,
@@ -287,10 +325,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 6,
                 archetype: BuildingArchetype::ClockworkBelfry,
-                x: 4.3,
-                z: -4.6,
-                width: 2.1,
-                depth: 2.1,
+                x: 4.20,
+                z: -4.55,
+                width: 2.0,
+                depth: 2.0,
                 height: 8.2,
                 quarter_turns: 2,
                 style_variant: 1,
@@ -299,10 +337,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 7,
                 archetype: BuildingArchetype::SyndicateTower,
-                x: -0.2,
-                z: 4.3,
-                width: 2.4,
-                depth: 2.3,
+                x: -0.15,
+                z: 4.25,
+                width: 2.3,
+                depth: 2.2,
                 height: 7.2,
                 quarter_turns: 2,
                 style_variant: 2,
@@ -310,10 +348,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 8,
                 archetype: BuildingArchetype::IndustrialFoundry,
-                x: -4.6,
-                z: 4.3,
-                width: 2.4,
-                depth: 2.3,
+                x: -4.55,
+                z: 4.30,
+                width: 2.2,
+                depth: 2.1,
                 height: 5.8,
                 quarter_turns: 1,
                 style_variant: 3,
@@ -321,44 +359,44 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 9,
                 archetype: BuildingArchetype::ClockworkBelfry,
-                x: 4.3,
-                z: 4.3,
-                width: 2.1,
-                depth: 2.1,
+                x: 4.20,
+                z: 4.25,
+                width: 2.0,
+                depth: 2.0,
                 height: 6.9,
                 quarter_turns: 3,
                 style_variant: 0,
             },
-            // --- Outer Perimeter Bastions & Flanking Spires ---
+            // --- Outer Perimeter Highway Bastions (Inside Outer Block Plots) ---
             BuildingPlacement {
                 id: 10,
                 archetype: BuildingArchetype::IndustrialFoundry,
-                x: -7.7,
-                z: -2.4,
-                width: 1.9,
+                x: -6.40,
+                z: -0.15,
+                width: 1.4,
                 depth: 2.1,
-                height: 4.9,
+                height: 5.0,
                 quarter_turns: 0,
                 style_variant: 1,
             },
             BuildingPlacement {
                 id: 11,
                 archetype: BuildingArchetype::SyndicateTower,
-                x: 7.5,
-                z: -2.4,
-                width: 1.9,
+                x: 6.50,
+                z: -0.15,
+                width: 1.2,
                 depth: 2.1,
-                height: 5.6,
+                height: 5.8,
                 quarter_turns: 1,
                 style_variant: 2,
             },
             BuildingPlacement {
                 id: 12,
                 archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: -2.4,
-                z: -7.6,
+                x: -0.15,
+                z: -6.35,
                 width: 2.1,
-                depth: 1.9,
+                depth: 1.4,
                 height: 6.8,
                 quarter_turns: 0,
                 style_variant: 0,
@@ -366,10 +404,10 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 13,
                 archetype: BuildingArchetype::CathedralKeep,
-                x: 2.1,
-                z: -7.6,
-                width: 2.2,
-                depth: 2.0,
+                x: 6.10,
+                z: -6.10,
+                width: 1.9,
+                depth: 1.9,
                 height: 7.5,
                 quarter_turns: 2,
                 style_variant: 1,
@@ -377,24 +415,35 @@ impl CityBlueprint {
             BuildingPlacement {
                 id: 14,
                 archetype: BuildingArchetype::ClockworkBelfry,
-                x: -7.7,
-                z: 2.1,
-                width: 1.8,
-                depth: 1.8,
-                height: 5.4,
+                x: -6.35,
+                z: -6.25,
+                width: 1.5,
+                depth: 1.6,
+                height: 5.6,
                 quarter_turns: 1,
                 style_variant: 3,
             },
             BuildingPlacement {
                 id: 15,
                 archetype: BuildingArchetype::IndustrialFoundry,
-                x: 7.5,
-                z: 2.1,
-                width: 1.9,
-                depth: 2.0,
-                height: 4.8,
+                x: -6.35,
+                z: 6.20,
+                width: 1.5,
+                depth: 1.6,
+                height: 5.0,
                 quarter_turns: 3,
                 style_variant: 2,
+            },
+            BuildingPlacement {
+                id: 16,
+                archetype: BuildingArchetype::SyndicateTower,
+                x: 6.50,
+                z: 4.25,
+                width: 1.2,
+                depth: 1.9,
+                height: 5.5,
+                quarter_turns: 2,
+                style_variant: 1,
             },
         ];
 
@@ -403,24 +452,24 @@ impl CityBlueprint {
             // Tier 1: Lower Plaza Bridges (y = 1.65)
             WalkwaySpan {
                 id: 1,
-                start: [-3.4, -0.2],
-                end: [-1.5, -0.2],
+                start: [-3.45, -0.15],
+                end: [-1.45, -0.15],
                 elevation: 1.65,
                 width: 0.42,
                 style: WalkwayStyle::StoneArchBridge,
             },
             WalkwaySpan {
                 id: 2,
-                start: [1.1, -0.2],
-                end: [3.0, -0.2],
+                start: [1.15, -0.15],
+                end: [3.10, -0.15],
                 elevation: 1.65,
                 width: 0.42,
                 style: WalkwayStyle::StoneArchBridge,
             },
             WalkwaySpan {
                 id: 3,
-                start: [-0.2, 1.1],
-                end: [-0.2, 3.1],
+                start: [-0.15, 1.15],
+                end: [-0.15, 3.15],
                 elevation: 1.65,
                 width: 0.42,
                 style: WalkwayStyle::StoneArchBridge,
@@ -428,40 +477,40 @@ impl CityBlueprint {
             // Tier 2: Mid-Level Gothic Skybridges (y = 3.65, clearing the y = 2.6 elevated train!)
             WalkwaySpan {
                 id: 4,
-                start: [-0.2, -3.4],
-                end: [-0.2, -1.5],
+                start: [-0.15, -3.40],
+                end: [-0.15, -1.45],
                 elevation: 3.65,
                 width: 0.38,
                 style: WalkwayStyle::CoveredGallery,
             },
             WalkwaySpan {
                 id: 5,
-                start: [-3.4, -4.6],
-                end: [-1.5, -4.6],
+                start: [-3.45, -4.50],
+                end: [-1.35, -4.50],
                 elevation: 3.65,
                 width: 0.36,
                 style: WalkwayStyle::IronTrussSkybridge,
             },
             WalkwaySpan {
                 id: 6,
-                start: [1.1, -4.6],
-                end: [3.2, -4.6],
+                start: [1.05, -4.50],
+                end: [3.20, -4.50],
                 elevation: 3.65,
                 width: 0.36,
                 style: WalkwayStyle::IronTrussSkybridge,
             },
             WalkwaySpan {
                 id: 7,
-                start: [-3.4, 4.3],
-                end: [-1.4, 4.3],
+                start: [-3.45, 4.28],
+                end: [-1.30, 4.28],
                 elevation: 3.55,
                 width: 0.36,
                 style: WalkwayStyle::IronTrussSkybridge,
             },
             WalkwaySpan {
                 id: 8,
-                start: [1.0, 4.3],
-                end: [3.2, 4.3],
+                start: [1.00, 4.25],
+                end: [3.20, 4.25],
                 elevation: 3.55,
                 width: 0.36,
                 style: WalkwayStyle::StoneArchBridge,
@@ -469,32 +518,32 @@ impl CityBlueprint {
             // Tier 3: High Spire Skybridges (y = 5.45)
             WalkwaySpan {
                 id: 9,
-                start: [1.1, 0.35],
-                end: [3.0, 0.35],
+                start: [1.15, 0.35],
+                end: [3.10, 0.35],
                 elevation: 5.45,
                 width: 0.34,
                 style: WalkwayStyle::CoveredGallery,
             },
             WalkwaySpan {
                 id: 10,
-                start: [-0.75, -3.4],
-                end: [-0.75, -1.5],
+                start: [-0.70, -3.40],
+                end: [-0.70, -1.45],
                 elevation: 5.65,
                 width: 0.34,
                 style: WalkwayStyle::IronTrussSkybridge,
             },
             WalkwaySpan {
                 id: 11,
-                start: [4.3, -3.5],
-                end: [4.3, -1.4],
+                start: [4.20, -3.55],
+                end: [4.20, -1.35],
                 elevation: 4.85,
                 width: 0.34,
                 style: WalkwayStyle::IronTrussSkybridge,
             },
             WalkwaySpan {
                 id: 12,
-                start: [4.3, 1.0],
-                end: [4.3, 3.2],
+                start: [4.20, 1.05],
+                end: [4.20, 3.25],
                 elevation: 4.65,
                 width: 0.34,
                 style: WalkwayStyle::StoneArchBridge,
@@ -502,69 +551,281 @@ impl CityBlueprint {
         ];
 
         // Closed elevated train viaduct loop at y = 2.6.
-        // Passes straight through the ViaductStation at x = -4.6, z = -2.2 .. 2.0,
-        // then weaves through the southern canyon (z = 2.1), up the eastern avenue (x = 2.1),
-        // across the northern canyon (z = -2.4), and back into the station approach!
-        let viaduct_waypoints = vec![
-            [-4.6, -2.4], // 0: North portal of ViaductStation
-            [-4.6, 2.1],  // 1: South portal of ViaductStation (platform segment 0 -> 1)
-            [-3.8, 2.1],  // 2: Turn into south canyon
-            [2.1, 2.1],   // 3: Eastward along south canyon
-            [2.1, 6.4],   // 4: South-east outer loop extension
-            [6.1, 6.4],   // 5: Outer south-east corner
-            [6.1, -2.4],  // 6: Outer east viaduct run
-            [2.1, -2.4],  // 7: Re-enter inner north-east junction
-            [-4.6, -2.4], // 8: Close loop at North station portal (handled cyclically)
+        // Passes straight through the ViaductStation at x = -4.55, z = -2.4 .. 2.1,
+        // then weaves through the southern canyon (z = 2.1), down x = 2.1 to z = 6.25,
+        // up the eastern tower corridor (x = 5.60), and across the northern canyon (z = -2.4).
+        let unique_viaduct_waypoints = vec![
+            [-4.55, -2.4], // 0: North portal of ViaductStation
+            [-4.55, 2.1],  // 1: South portal of ViaductStation (platform segment 0 -> 1)
+            [-3.8, 2.1],   // 2: Turn into south canyon
+            [2.1, 2.1],    // 3: Eastward along south canyon
+            [2.1, 6.25],   // 4: South-east outer loop extension
+            [5.60, 6.25],  // 5: Outer south-east corner
+            [5.60, -2.4],  // 6: Outer east viaduct corridor between inner and outer east towers
+            [2.1, -2.4],   // 7: Re-enter inner north-east junction
         ];
-        // Note: We store the unique vertices of the closed polygon (0..8).
-        let unique_viaduct_waypoints = viaduct_waypoints[..8].to_vec();
 
-        // Deep street-level avenues for gothic vehicles
+        // Connected street network: 4 inner canyon avenues + 4 outer perimeter highway segments
         let avenues = vec![
-            // North-South Avenues
+            // Inner North-South Canyon Avenues (terminating into the outer ring highway at z = ±8.2)
             StreetAvenue {
-                start: [-2.4, -7.8],
-                end: [-2.4, 7.8],
-                width: 1.1,
+                start: [-2.4, -8.2],
+                end: [-2.4, 8.2],
+                width: 1.10,
+                is_highway: false,
             },
             StreetAvenue {
-                start: [2.1, -7.8],
-                end: [2.1, 7.8],
-                width: 1.1,
+                start: [2.1, -8.2],
+                end: [2.1, 8.2],
+                width: 1.10,
+                is_highway: false,
             },
-            // East-West Avenues
+            // Inner East-West Canyon Avenues (terminating into the outer ring highway at x = ±8.2)
             StreetAvenue {
-                start: [-7.8, -2.4],
-                end: [7.8, -2.4],
-                width: 1.1,
+                start: [-8.2, -2.4],
+                end: [8.2, -2.4],
+                width: 1.10,
+                is_highway: false,
             },
             StreetAvenue {
-                start: [-7.8, 2.1],
-                end: [7.8, 2.1],
-                width: 1.1,
+                start: [-8.2, 2.1],
+                end: [8.2, 2.1],
+                width: 1.10,
+                is_highway: false,
+            },
+            // Outer Perimeter Ring Highway (4-sided loop encircling the city at ±8.2)
+            StreetAvenue {
+                start: [-8.2, -8.2],
+                end: [8.2, -8.2],
+                width: 1.28,
+                is_highway: true,
+            },
+            StreetAvenue {
+                start: [8.2, -8.2],
+                end: [8.2, 8.2],
+                width: 1.28,
+                is_highway: true,
+            },
+            StreetAvenue {
+                start: [8.2, 8.2],
+                end: [-8.2, 8.2],
+                width: 1.28,
+                is_highway: true,
+            },
+            StreetAvenue {
+                start: [-8.2, 8.2],
+                end: [-8.2, -8.2],
+                width: 1.28,
+                is_highway: true,
+            },
+        ];
+
+        // 8 Subterranean Parking Garage Entrances recessed into major building bases
+        let garages = vec![
+            // Garage 1: CathedralKeep (Building 1) West facade onto West Avenue (x = -2.4)
+            GaragePortal {
+                id: 1,
+                building_id: 1,
+                street_entry: [-2.4, 0.48],
+                portal_pos: [-1.45, 0.48],
+                inward_dir: [1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 2: ArtDecoZiggurat (Building 2) South facade onto South Avenue (z = 2.1)
+            GaragePortal {
+                id: 2,
+                building_id: 2,
+                street_entry: [3.65, 2.1],
+                portal_pos: [3.65, 1.05],
+                inward_dir: [0.0, -1.0],
+                width: 0.68,
+            },
+            // Garage 3: ArtDecoZiggurat (Building 4) East facade onto East Avenue (x = 2.1)
+            GaragePortal {
+                id: 3,
+                building_id: 4,
+                street_entry: [2.1, -3.85],
+                portal_pos: [1.05, -3.85],
+                inward_dir: [-1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 4: SyndicateTower (Building 5) South facade onto North Avenue (z = -2.4)
+            GaragePortal {
+                id: 4,
+                building_id: 5,
+                street_entry: [-3.95, -2.4],
+                portal_pos: [-3.95, -3.45],
+                inward_dir: [0.0, -1.0],
+                width: 0.68,
+            },
+            // Garage 5: SyndicateTower (Building 7) West facade onto West Avenue (x = -2.4)
+            GaragePortal {
+                id: 5,
+                building_id: 7,
+                street_entry: [-2.4, 3.65],
+                portal_pos: [-1.30, 3.65],
+                inward_dir: [1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 6: IndustrialFoundry (Building 8) East facade onto West Avenue (x = -2.4)
+            GaragePortal {
+                id: 6,
+                building_id: 8,
+                street_entry: [-2.4, 5.05],
+                portal_pos: [-3.45, 5.05],
+                inward_dir: [-1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 7: SyndicateTower (Building 11) East facade onto Outer East Highway (x = 8.2)
+            GaragePortal {
+                id: 7,
+                building_id: 11,
+                street_entry: [8.2, -0.15],
+                portal_pos: [7.10, -0.15],
+                inward_dir: [-1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 8: CathedralKeep (Building 13) North facade onto Outer North Highway (z = -8.2)
+            GaragePortal {
+                id: 8,
+                building_id: 13,
+                street_entry: [6.10, -8.2],
+                portal_pos: [6.10, -7.05],
+                inward_dir: [0.0, 1.0],
+                width: 0.68,
+            },
+        ];
+
+        // 8 Connected Vehicle Routes:
+        // - Routes 0..4 are continuous closed loops around the Outer Perimeter Highway & Inner Avenues.
+        // - Routes 4..8 are Garage-to-Garage commuter routes that emerge from one building's
+        //   underground parking garage, traverse the connected avenues/highway, and descend into
+        //   another building's underground parking garage!
+        let vehicle_routes = vec![
+            // Route 0: Outer Perimeter Ring Highway (Clockwise Loop)
+            VehicleRoute {
+                id: 1,
+                waypoints: vec![[-8.2, -8.2], [8.2, -8.2], [8.2, 8.2], [-8.2, 8.2]],
+                is_closed_loop: true,
+            },
+            // Route 1: Outer Perimeter Ring Highway (Counter-Clockwise Loop)
+            VehicleRoute {
+                id: 2,
+                waypoints: vec![[-8.2, -8.2], [-8.2, 8.2], [8.2, 8.2], [8.2, -8.2]],
+                is_closed_loop: true,
+            },
+            // Route 2: Grand Metropolis Figure-8 (Inner Avenues + Outer Highway Loop)
+            VehicleRoute {
+                id: 3,
+                waypoints: vec![
+                    [-2.4, 2.1],
+                    [-2.4, -8.2],
+                    [2.1, -8.2],
+                    [2.1, 2.1],
+                    [8.2, 2.1],
+                    [8.2, 8.2],
+                    [-2.4, 8.2],
+                ],
+                is_closed_loop: true,
+            },
+            // Route 3: Cross-Town Canyon & West/North Highway Circuit
+            VehicleRoute {
+                id: 4,
+                waypoints: vec![
+                    [-8.2, -2.4],
+                    [8.2, -2.4],
+                    [8.2, -8.2],
+                    [2.1, -8.2],
+                    [2.1, 8.2],
+                    [-8.2, 8.2],
+                ],
+                is_closed_loop: true,
+            },
+            // Route 4: Underground Garage 1 (CathedralKeep) <-> Underground Garage 7 (East Highway Tower)
+            VehicleRoute {
+                id: 5,
+                waypoints: vec![
+                    [-0.80, 0.48], // Inside Garage 1 subterranean vault
+                    [-1.45, 0.48], // Garage 1 portal mouth
+                    [-2.4, 0.48],  // Turn onto West Avenue
+                    [-2.4, -2.4],  // Intersection with North Avenue
+                    [8.2, -2.4],   // Turn onto Outer East Highway
+                    [8.2, -0.15],  // Turn into Garage 7 ramp
+                    [7.10, -0.15], // Garage 7 portal mouth
+                    [6.45, -0.15], // Inside Garage 7 subterranean vault
+                ],
+                is_closed_loop: false,
+            },
+            // Route 5: Underground Garage 2 (East Ziggurat) <-> Underground Garage 4 (NW Syndicate Tower)
+            VehicleRoute {
+                id: 6,
+                waypoints: vec![
+                    [3.65, 0.40],   // Inside Garage 2 subterranean vault
+                    [3.65, 1.05],   // Garage 2 portal mouth
+                    [3.65, 2.1],    // Turn onto South Avenue
+                    [-2.4, 2.1],    // Intersection with West Avenue
+                    [-2.4, -2.4],   // Intersection with North Avenue
+                    [-3.95, -2.4],  // Turn into Garage 4 ramp
+                    [-3.95, -3.45], // Garage 4 portal mouth
+                    [-3.95, -4.10], // Inside Garage 4 subterranean vault
+                ],
+                is_closed_loop: false,
+            },
+            // Route 6: Underground Garage 3 (North Ziggurat) <-> Underground Garage 8 (NE Cathedral Highway)
+            VehicleRoute {
+                id: 7,
+                waypoints: vec![
+                    [0.40, -3.85], // Inside Garage 3 subterranean vault
+                    [1.05, -3.85], // Garage 3 portal mouth
+                    [2.1, -3.85],  // Turn onto East Avenue
+                    [2.1, 2.1],    // Intersection with South Avenue
+                    [8.2, 2.1],    // Turn onto Outer East Highway
+                    [8.2, -8.2],   // Outer NE Highway corner
+                    [6.10, -8.2],  // Turn into Garage 8 ramp
+                    [6.10, -7.05], // Garage 8 portal mouth
+                    [6.10, -6.40], // Inside Garage 8 subterranean vault
+                ],
+                is_closed_loop: false,
+            },
+            // Route 7: Underground Garage 6 (SW Foundry) <-> Underground Garage 5 (South Syndicate Tower)
+            VehicleRoute {
+                id: 8,
+                waypoints: vec![
+                    [-4.10, 5.05], // Inside Garage 6 subterranean vault
+                    [-3.45, 5.05], // Garage 6 portal mouth
+                    [-2.4, 5.05],  // Turn onto West Avenue
+                    [-2.4, 8.2],   // Turn onto Outer South Highway
+                    [-8.2, 8.2],   // Outer SW Highway corner
+                    [-8.2, 2.1],   // Turn onto South Avenue
+                    [-2.4, 2.1],   // Turn onto West Avenue
+                    [-2.4, 3.65],  // Turn into Garage 5 ramp
+                    [-1.30, 3.65], // Garage 5 portal mouth
+                    [-0.65, 3.65], // Inside Garage 5 subterranean vault
+                ],
+                is_closed_loop: false,
             },
         ];
 
         // Street-level steam grates and rooftop industrial smokestacks
         let steam_sources = vec![
-            // Rooftop foundry smokestacks
+            // Rooftop foundry smokestacks (aligned with Buildings 8, 10, 15)
             SteamSource {
-                pos: [-5.1, 6.6, 4.7],
+                pos: [-5.08, 7.05, 4.00],
                 rate_scale: 1.25,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [-4.1, 6.6, 3.9],
+                pos: [-4.02, 7.05, 4.60],
                 rate_scale: 1.1,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [-8.1, 5.6, -2.7],
+                pos: [-6.74, 6.10, -0.45],
                 rate_scale: 1.0,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [7.9, 5.5, 2.4],
+                pos: [-5.99, 6.10, 6.43],
                 rate_scale: 1.0,
                 is_rooftop: true,
             },
@@ -588,15 +849,225 @@ impl CityBlueprint {
 
         Self {
             name: "Gotham Spire Core".into(),
-            plinth_half_extent: 8.4,
+            plinth_half_extent: 9.8,
             buildings,
             walkways,
             viaduct_waypoints: unique_viaduct_waypoints,
             viaduct_elevation: 2.6,
             station_waypoint_idx: 0,
             avenues,
+            garages,
+            vehicle_routes,
             steam_sources,
         }
+    }
+
+    /// Sample a vehicle's 3D world position `[x, y, z]`, unit forward tangent `[fx, fz]`,
+    /// and whether the vehicle is currently deep inside a subterranean parking garage vault
+    /// (`is_subterranean_hidden`).
+    ///
+    /// Applies right-hand lane offsets along street and highway segments, centers vehicles on
+    /// underground garage ramps, and rounds 90-degree corners with smooth Quadratic Bezier curves.
+    pub fn sample_vehicle_pose(&self, veh: &GothicVehicle) -> Option<([f32; 3], [f32; 2], bool)> {
+        if self.vehicle_routes.is_empty() {
+            // Fallback for custom minimal blueprints with only straight `avenues`
+            let ave = self.avenues.get(veh.avenue_idx)?;
+            let dx = ave.end[0] - ave.start[0];
+            let dz = ave.end[1] - ave.start[1];
+            let len = (dx * dx + dz * dz).sqrt().max(0.1);
+            let u_fwd = [dx / len, dz / len];
+            let u_right = [-u_fwd[1], u_fwd[0]];
+            let lane_offset = if veh.dir >= 0.0 { 0.22 } else { -0.22 };
+            let vx = ave.start[0] + dx * veh.progress + u_right[0] * lane_offset;
+            let vz = ave.start[1] + dz * veh.progress + u_right[1] * lane_offset;
+            let car_fwd = [u_fwd[0] * veh.dir.signum(), u_fwd[1] * veh.dir.signum()];
+            return Some(([vx, 0.025, vz], car_fwd, false));
+        }
+
+        let route = self
+            .vehicle_routes
+            .get(veh.avenue_idx % self.vehicle_routes.len())?;
+        let n = route.waypoints.len();
+        if n < 2 {
+            return None;
+        }
+
+        let dir_sign = if veh.dir >= 0.0 { 1.0f32 } else { -1.0f32 };
+        let lane_mag = 0.23f32 * dir_sign;
+
+        // Build lane-offset waypoints so vehicles stay in their right-hand lane on roads
+        // and align with the ramp centerline when entering/exiting underground garages.
+        let mut pts = Vec::with_capacity(n);
+        for i in 0..n {
+            let p = route.waypoints[i];
+            let is_garage_pt = !route.is_closed_loop && (i <= 1 || i + 2 >= n);
+            if is_garage_pt {
+                pts.push(p);
+                continue;
+            }
+
+            let prev = if i > 0 {
+                route.waypoints[i - 1]
+            } else if route.is_closed_loop {
+                route.waypoints[n - 1]
+            } else {
+                p
+            };
+            let next = if i + 1 < n {
+                route.waypoints[i + 1]
+            } else if route.is_closed_loop {
+                route.waypoints[0]
+            } else {
+                p
+            };
+
+            let d_in = [p[0] - prev[0], p[1] - prev[1]];
+            let l_in = (d_in[0] * d_in[0] + d_in[1] * d_in[1]).sqrt();
+            let r_in = if l_in > 0.01 {
+                [-d_in[1] / l_in, d_in[0] / l_in]
+            } else {
+                [0.0, 0.0]
+            };
+
+            let d_out = [next[0] - p[0], next[1] - p[1]];
+            let l_out = (d_out[0] * d_out[0] + d_out[1] * d_out[1]).sqrt();
+            let r_out = if l_out > 0.01 {
+                [-d_out[1] / l_out, d_out[0] / l_out]
+            } else {
+                [0.0, 0.0]
+            };
+
+            // For garage turnoff waypoints (i == 2 or i == n - 3), only offset perpendicular to the street
+            let offset = if !route.is_closed_loop && i == 2 {
+                [r_out[0] * lane_mag, r_out[1] * lane_mag]
+            } else if !route.is_closed_loop && i + 3 == n {
+                [r_in[0] * lane_mag, r_in[1] * lane_mag]
+            } else {
+                [
+                    (r_in[0] + r_out[0]) * lane_mag,
+                    (r_in[1] + r_out[1]) * lane_mag,
+                ]
+            };
+
+            pts.push([p[0] + offset[0], p[1] + offset[1]]);
+        }
+
+        let seg_count = if route.is_closed_loop { n } else { n - 1 };
+        let mut seg_lens = Vec::with_capacity(seg_count);
+        let mut total_len = 0.0f32;
+        for i in 0..seg_count {
+            let a = pts[i];
+            let b = pts[(i + 1) % n];
+            let len = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2))
+                .sqrt()
+                .max(0.001);
+            seg_lens.push(len);
+            total_len += len;
+        }
+
+        let target_dist = if route.is_closed_loop {
+            veh.progress.rem_euclid(1.0) * total_len
+        } else {
+            veh.progress.clamp(0.0, 1.0) * total_len
+        };
+
+        // Hide the vehicle while it is deep inside the subterranean building garage vault
+        if !route.is_closed_loop {
+            let start_vault_len = seg_lens[0] * 0.68;
+            let end_vault_len = seg_lens[seg_count - 1] * 0.68;
+            if target_dist < start_vault_len || target_dist > total_len - end_vault_len {
+                return Some(([pts[0][0], -0.10, pts[0][1]], [1.0, 0.0], true));
+            }
+        }
+
+        // Locate segment and apply Quadratic Bezier corner rounding near intersections
+        let mut rem = target_dist;
+        let mut seg_idx = 0;
+        for (i, &slen) in seg_lens.iter().enumerate() {
+            if rem <= slen || i + 1 == seg_count {
+                seg_idx = i;
+                break;
+            }
+            rem -= slen;
+        }
+
+        let a = pts[seg_idx];
+        let b = pts[(seg_idx + 1) % n];
+        let slen = seg_lens[seg_idx];
+        let dir_curr = [(b[0] - a[0]) / slen, (b[1] - a[1]) / slen];
+
+        let corner_r = 0.36f32;
+        let can_round_start = route.is_closed_loop || seg_idx > 0;
+        let can_round_end = route.is_closed_loop || (seg_idx + 1 < seg_count);
+
+        let (mut pos_xz, mut tangent) = if can_round_start && rem < corner_r.min(slen * 0.45) {
+            let prev_idx = (seg_idx + n - 1) % n;
+            let prev_len = seg_lens[if seg_idx > 0 {
+                seg_idx - 1
+            } else {
+                seg_count - 1
+            }];
+            let r = corner_r.min(slen * 0.45).min(prev_len * 0.45);
+            let p_prev = pts[prev_idx];
+            let dir_prev = [(a[0] - p_prev[0]) / prev_len, (a[1] - p_prev[1]) / prev_len];
+            let p0 = [a[0] - dir_prev[0] * r, a[1] - dir_prev[1] * r];
+            let p1 = a;
+            let p2 = [a[0] + dir_curr[0] * r, a[1] + dir_curr[1] * r];
+            let u = 0.5 + 0.5 * (rem / r.max(0.001)).clamp(0.0, 1.0);
+            let om = 1.0 - u;
+            let px = om * om * p0[0] + 2.0 * om * u * p1[0] + u * u * p2[0];
+            let pz = om * om * p0[1] + 2.0 * om * u * p1[1] + u * u * p2[1];
+            let tx = (1.0 - u) * dir_prev[0] + u * dir_curr[0];
+            let tz = (1.0 - u) * dir_prev[1] + u * dir_curr[1];
+            let tlen = (tx * tx + tz * tz).sqrt().max(0.001);
+            ([px, pz], [tx / tlen, tz / tlen])
+        } else if can_round_end && (slen - rem) < corner_r.min(slen * 0.45) {
+            let next_seg = (seg_idx + 1) % seg_count;
+            let next_len = seg_lens[next_seg];
+            let r = corner_r.min(slen * 0.45).min(next_len * 0.45);
+            let c = pts[(seg_idx + 2) % n];
+            let dir_next = [(c[0] - b[0]) / next_len, (c[1] - b[1]) / next_len];
+            let p0 = [b[0] - dir_curr[0] * r, b[1] - dir_curr[1] * r];
+            let p1 = b;
+            let p2 = [b[0] + dir_next[0] * r, b[1] + dir_next[1] * r];
+            let u = 0.5 * ((rem - (slen - r)) / r.max(0.001)).clamp(0.0, 1.0);
+            let om = 1.0 - u;
+            let px = om * om * p0[0] + 2.0 * om * u * p1[0] + u * u * p2[0];
+            let pz = om * om * p0[1] + 2.0 * om * u * p1[1] + u * u * p2[1];
+            let tx = (1.0 - u) * dir_curr[0] + u * dir_next[0];
+            let tz = (1.0 - u) * dir_curr[1] + u * dir_next[1];
+            let tlen = (tx * tx + tz * tz).sqrt().max(0.001);
+            ([px, pz], [tx / tlen, tz / tlen])
+        } else {
+            let t = (rem / slen).clamp(0.0, 1.0);
+            (
+                [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t],
+                dir_curr,
+            )
+        };
+
+        if !route.is_closed_loop && dir_sign < 0.0 {
+            tangent = [-tangent[0], -tangent[1]];
+        }
+
+        // Smoothly slope elevation down (`y = 0.025 -> -0.06`) when on a subterranean garage ramp
+        let mut y = 0.025f32;
+        if !route.is_closed_loop {
+            let ramp_span = seg_lens[0] + seg_lens[1];
+            let end_ramp_span = seg_lens[seg_count - 1] + seg_lens[seg_count - 2];
+            if target_dist < ramp_span {
+                let ramp_t = (1.0 - (target_dist / ramp_span.max(0.01))).clamp(0.0, 1.0);
+                y = 0.025 - ramp_t * 0.09;
+            } else if target_dist > total_len - end_ramp_span {
+                let ramp_t = ((target_dist - (total_len - end_ramp_span))
+                    / end_ramp_span.max(0.01))
+                .clamp(0.0, 1.0);
+                y = 0.025 - ramp_t * 0.09;
+            }
+        }
+        let _ = &mut pos_xz;
+
+        Some(([pos_xz[0], y, pos_xz[1]], tangent, false))
     }
 
     /// Total length of the closed viaduct track loop.
@@ -861,39 +1332,44 @@ impl GothicMetropolisState {
             }
         }
 
-        // Spawn 10 gothic street vehicles across the 4 deep canyon avenues
+        // Spawn 16 gothic vehicles across the 8 connected vehicle routes
+        // (4 continuous highway/canyon loops + 4 subterranean garage-to-garage commuter routes)
         let mut vehicles = Vec::new();
         let mut veh_id = 1u32;
-        for ave_idx in 0..blueprint.avenues.len() {
+        let route_count = blueprint.vehicle_routes.len().max(1);
+        for route_idx in 0..route_count {
+            let is_closed = blueprint
+                .vehicle_routes
+                .get(route_idx)
+                .map(|r| r.is_closed_loop)
+                .unwrap_or(true);
             for slot in 0..2 {
-                let dir = if slot == 0 { 1.0 } else { -1.0 };
-                let kind = match (ave_idx + slot) % 3 {
+                let dir = if is_closed || slot == 0 { 1.0 } else { -1.0 };
+                let kind = match (route_idx + slot) % 3 {
                     0 => GothicVehicleKind::NoirCoupe,
                     1 => GothicVehicleKind::ArmoredCruiser,
                     _ => GothicVehicleKind::TransitOmnibus,
                 };
+                let base_prog = if slot == 0 {
+                    0.18 + rng.f32() * 0.22
+                } else {
+                    0.62 + rng.f32() * 0.22
+                };
+                let speed = if is_closed {
+                    rng.range(0.026, 0.040)
+                } else {
+                    rng.range(0.052, 0.078)
+                };
                 vehicles.push(GothicVehicle {
                     id: veh_id,
-                    avenue_idx: ave_idx,
-                    progress: rng.f32(),
+                    avenue_idx: route_idx,
+                    progress: base_prog.fract(),
                     dir,
-                    speed: rng.range(0.065, 0.105),
+                    speed,
                     kind,
                 });
                 veh_id += 1;
             }
-        }
-        // Add 2 extra Noir Coupes on the main central avenues
-        for ave_idx in 0..2 {
-            vehicles.push(GothicVehicle {
-                id: veh_id,
-                avenue_idx: ave_idx,
-                progress: (rng.f32() + 0.5).fract(),
-                dir: 1.0,
-                speed: rng.range(0.085, 0.115),
-                kind: GothicVehicleKind::NoirCoupe,
-            });
-            veh_id += 1;
         }
 
         // Spawn 2 gothic patrol airships cruising above the upper spires
@@ -924,9 +1400,9 @@ impl GothicMetropolisState {
 
         // Authored rooftop searchlights on the high towers
         let searchlights = vec![
-            // SyndicateTower NW rooftop beacon
+            // SyndicateTower NW rooftop beacon (Building 5)
             SearchlightBeam {
-                origin: [-4.6, 7.55, -4.6],
+                origin: [-4.55, 7.55, -4.55],
                 base_yaw: 0.8,
                 sweep_amp: 0.95,
                 sweep_speed: 0.14,
@@ -934,9 +1410,9 @@ impl GothicMetropolisState {
                 length: 6.2,
                 phase_offset: 0.0,
             },
-            // ArtDecoZiggurat East crown beacon
+            // ArtDecoZiggurat East crown beacon (Building 2)
             SearchlightBeam {
-                origin: [4.3, 8.75, -0.2],
+                origin: [4.20, 8.75, -0.15],
                 base_yaw: 2.6,
                 sweep_amp: 0.85,
                 sweep_speed: 0.12,
@@ -944,9 +1420,9 @@ impl GothicMetropolisState {
                 length: 6.6,
                 phase_offset: 1.7,
             },
-            // SyndicateTower South rooftop beacon
+            // SyndicateTower South rooftop beacon (Building 7)
             SearchlightBeam {
-                origin: [-0.2, 7.35, 4.3],
+                origin: [-0.15, 7.35, 4.25],
                 base_yaw: -1.4,
                 sweep_amp: 0.90,
                 sweep_speed: 0.16,
@@ -954,9 +1430,9 @@ impl GothicMetropolisState {
                 length: 5.8,
                 phase_offset: 3.3,
             },
-            // North ArtDecoZiggurat beacon
+            // North ArtDecoZiggurat beacon (Building 4)
             SearchlightBeam {
-                origin: [-0.2, 9.15, -4.6],
+                origin: [-0.15, 9.15, -4.45],
                 base_yaw: 1.5,
                 sweep_amp: 0.78,
                 sweep_speed: 0.11,
@@ -1058,13 +1534,32 @@ impl GothicMetropolisState {
             }
         }
 
-        // 3. Advance canyon street vehicles
+        // 3. Advance canyon street & highway vehicles along connected routes and garage tunnels
+        let route_count = self.blueprint.vehicle_routes.len();
         for veh in &mut self.vehicles {
-            veh.progress += veh.dir * veh.speed * dt;
-            if veh.progress > 0.96 {
-                veh.progress = 0.04;
-            } else if veh.progress < 0.04 {
-                veh.progress = 0.96;
+            let is_closed = if route_count > 0 {
+                self.blueprint
+                    .vehicle_routes
+                    .get(veh.avenue_idx % route_count)
+                    .map(|r| r.is_closed_loop)
+                    .unwrap_or(true)
+            } else {
+                true
+            };
+
+            if is_closed {
+                veh.progress = (veh.progress + veh.dir * veh.speed * dt).rem_euclid(1.0);
+            } else {
+                veh.progress += veh.dir * veh.speed * dt;
+                if veh.progress >= 1.0 {
+                    // Reached destination subterranean garage vault inside building; reverse for return trip
+                    veh.progress = 1.0;
+                    veh.dir = -1.0;
+                } else if veh.progress <= 0.0 {
+                    // Reached origin subterranean garage vault inside building; reverse for outbound trip
+                    veh.progress = 0.0;
+                    veh.dir = 1.0;
+                }
             }
         }
 
@@ -1255,8 +1750,44 @@ mod tests {
         assert!(bp1.buildings.len() >= 12);
         assert!(bp1.walkways.len() >= 10);
         assert!(bp1.viaduct_waypoints.len() >= 6);
-        assert!(bp1.avenues.len() >= 4);
+        assert!(bp1.avenues.len() >= 8);
+        assert_eq!(bp1.avenues.iter().filter(|a| a.is_highway).count(), 4);
+        assert!(bp1.garages.len() >= 6);
+        assert!(bp1.vehicle_routes.len() >= 6);
         assert!(bp1.viaduct_total_length() > 20.0);
+    }
+
+    #[test]
+    fn vehicles_stay_within_plinth_and_use_garages_and_highway() {
+        let mut state = GothicMetropolisState::new(42);
+        let max_bound = state.blueprint.plinth_half_extent - 0.5;
+        let mut saw_garage_subterranean = false;
+
+        for _ in 0..240 {
+            state.tick(0.1);
+            for veh in &state.vehicles {
+                let (pos, fwd, is_subterranean) = state
+                    .blueprint
+                    .sample_vehicle_pose(veh)
+                    .expect("valid vehicle pose");
+                if is_subterranean {
+                    saw_garage_subterranean = true;
+                } else {
+                    assert!(
+                        pos[0].abs() <= max_bound && pos[2].abs() <= max_bound,
+                        "Vehicle {} left city bounds at {:?}",
+                        veh.id,
+                        pos
+                    );
+                    let flen = (fwd[0] * fwd[0] + fwd[1] * fwd[1]).sqrt();
+                    assert!((flen - 1.0).abs() < 0.05);
+                }
+            }
+        }
+        assert!(
+            saw_garage_subterranean,
+            "Garage commuter vehicles should enter and exit subterranean building garages"
+        );
     }
 
     #[test]

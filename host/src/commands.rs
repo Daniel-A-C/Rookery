@@ -17,42 +17,40 @@ use crate::hotkey;
 use crate::state::{HostState, HostStatus, SettingsPatch};
 
 #[tauri::command]
-pub fn get_status(state: State<'_, HostState>) -> HostStatus {
-    state.status()
+pub async fn get_status(state: State<'_, HostState>) -> Result<HostStatus, String> {
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn set_paused(app: AppHandle, state: State<'_, HostState>, paused: bool) -> HostStatus {
+pub async fn set_paused(state: State<'_, HostState>, paused: bool) -> Result<HostStatus, String> {
     if let Ok(mut inner) = state.inner.lock() {
         inner.user_paused = paused;
     }
     state.recompute_budgets();
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn set_interactive(
+pub async fn set_interactive(
     app: AppHandle,
     state: State<'_, HostState>,
     interactive: bool,
-) -> HostStatus {
+) -> Result<HostStatus, String> {
     state.apply_interaction_event(&app, InteractionEvent::SetInteractive(interactive));
-    state.status()
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, HostState>) -> Settings {
-    state
+pub async fn get_settings(state: State<'_, HostState>) -> Result<Settings, String> {
+    Ok(state
         .inner
         .lock()
         .map(|g| g.settings.clone())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 #[tauri::command]
-pub fn update_settings(
+pub async fn update_settings(
     app: AppHandle,
     state: State<'_, HostState>,
     patch: SettingsPatch,
@@ -149,12 +147,9 @@ pub fn update_settings(
         inner.settings.frame = inner.settings.frame.clamped();
         inner.settings.audio = inner.settings.audio.clamped();
         state.audio.update_settings(inner.settings.audio);
-        inner
-            .settings
-            .save(&state.settings_path)
-            .map_err(|e| e.to_string())?;
         inner.settings.clone()
     };
+    state.mark_settings_dirty();
 
     if let Some(dbg) = patch.debug_mode
         && let Ok(mut w) = state.world.lock()
@@ -186,12 +181,13 @@ fn apply_popover_blur_on_main_thread(app: &AppHandle, blur: u32) {
 }
 
 #[tauri::command]
-pub fn set_popover_blur(app: AppHandle, blur: u32) {
+pub async fn set_popover_blur(app: AppHandle, blur: u32) -> Result<(), String> {
     apply_popover_blur_on_main_thread(&app, blur);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn start_drag(app: AppHandle) {
+pub async fn start_drag(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(crate::state::POPOVER_LABEL) {
         #[cfg(target_os = "macos")]
         {
@@ -205,48 +201,44 @@ pub fn start_drag(app: AppHandle) {
             let _ = win.start_dragging();
         }
     }
+    Ok(())
 }
 
 #[tauri::command]
-pub fn plant_seed(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) -> HostStatus {
+pub async fn plant_seed(state: State<'_, HostState>, pos: [f32; 2]) -> Result<HostStatus, String> {
     if let Ok(mut w) = state.world.lock() {
         w.plant_seed(pos);
     }
+    state.mark_world_dirty();
     state.audio.play_sfx(SoundEffect::PlantSeed);
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn prune_branch(
-    app: AppHandle,
+pub async fn prune_branch(
     state: State<'_, HostState>,
     pos: [f32; 2],
     radius: Option<f32>,
-) -> HostStatus {
+) -> Result<HostStatus, String> {
     if let Ok(mut w) = state.world.lock() {
         w.prune_nearest(pos, radius.unwrap_or(80.0));
     }
+    state.mark_world_dirty();
     state.audio.play_sfx(SoundEffect::Prune);
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn feed_birds(app: AppHandle, state: State<'_, HostState>, pos: [f32; 2]) -> HostStatus {
+pub async fn feed_birds(state: State<'_, HostState>, pos: [f32; 2]) -> Result<HostStatus, String> {
     if let Ok(mut w) = state.world.lock() {
         w.drop_snack(pos);
     }
     state.audio.play_sfx(SoundEffect::BirdChirp);
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn get_world_seed(state: State<'_, HostState>) -> String {
+pub async fn get_world_seed(state: State<'_, HostState>) -> Result<String, String> {
     let active_app = state
         .inner
         .lock()
@@ -255,17 +247,17 @@ pub fn get_world_seed(state: State<'_, HostState>) -> String {
     if active_app == "orbital-haven"
         && let Ok(o) = state.catalog_state.orbital.lock()
     {
-        return o.seed_uri();
+        return Ok(o.seed_uri());
     }
     if let Ok(w) = state.world.lock() {
-        w.seed_uri()
+        Ok(w.seed_uri())
     } else {
-        "rookery://tree/seed-unknown".into()
+        Ok("rookery://tree/seed-unknown".into())
     }
 }
 
 #[tauri::command]
-pub fn get_world_state_string(state: State<'_, HostState>) -> Result<String, String> {
+pub async fn get_world_state_string(state: State<'_, HostState>) -> Result<String, String> {
     let active_app = state
         .inner
         .lock()
@@ -284,7 +276,7 @@ pub fn get_world_state_string(state: State<'_, HostState>) -> Result<String, Str
 }
 
 #[tauri::command]
-pub fn import_world_string(
+pub async fn import_world_string(
     app: AppHandle,
     state: State<'_, HostState>,
     input: String,
@@ -294,35 +286,31 @@ pub fn import_world_string(
         let new_orb = OrbitalHavenState::from_share_string(trimmed)?;
         if let Ok(mut o) = state.catalog_state.orbital.lock() {
             *o = new_orb;
-            let _ = o.save_atomic(&state.orbital_path);
         }
+        state.mark_orbital_dirty();
         let _ = state.switch_app(&app, "orbital-haven");
-        let status = state.status();
-        state.emit_status_if_popover_open(&app);
-        return Ok(status);
+        return Ok(state.status());
     }
 
     let new_world = WorldState::from_share_string(trimmed)?;
     if let Ok(mut w) = state.world.lock() {
         *w = new_world;
-        let _ = w.save_atomic(&state.world_path);
     }
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    Ok(status)
+    state.mark_world_dirty();
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn get_catalog(state: State<'_, HostState>) -> Vec<AppManifest> {
-    AppCatalog::all_manifests(state.apps_dir.as_deref())
+pub async fn get_catalog(state: State<'_, HostState>) -> Result<Vec<AppManifest>, String> {
+    Ok(state.manifests())
 }
 
 #[tauri::command]
-pub fn reload_catalog(
+pub async fn reload_catalog(
     app: AppHandle,
     state: State<'_, HostState>,
 ) -> Result<Vec<AppManifest>, String> {
-    let manifests = AppCatalog::all_manifests(state.apps_dir.as_deref());
+    let manifests = state.refresh_manifests();
     let active_app = state
         .inner
         .lock()
@@ -337,30 +325,26 @@ pub fn reload_catalog(
 }
 
 #[tauri::command]
-pub fn switch_app(
+pub async fn switch_app(
     app: AppHandle,
     state: State<'_, HostState>,
     app_id: String,
 ) -> Result<HostStatus, String> {
     log::info!("IPC switch_app: requested switch to '{app_id}'");
     state.switch_app(&app, &app_id)?;
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    Ok(status)
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn pan_forest(app: AppHandle, state: State<'_, HostState>, delta_x: f32) -> HostStatus {
+pub async fn pan_forest(state: State<'_, HostState>, delta_x: f32) -> Result<HostStatus, String> {
     if let Ok(mut w) = state.world.lock() {
         w.pan_forest(delta_x);
     }
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn execute_app_action(
+pub async fn execute_app_action(
     app: AppHandle,
     state: State<'_, HostState>,
     app_id: String,
@@ -610,7 +594,7 @@ pub fn execute_app_action(
                     let was_debug = w.debug_mode;
                     *w = rookery_core::world::WorldState::new(seed);
                     w.debug_mode = was_debug;
-                    let _ = w.save_atomic(&state.world_path);
+                    state.mark_world_dirty();
                     state.audio.play_sfx(SoundEffect::PlantSeed);
                 }
                 other => return Err(format!("Unknown rookery action '{other}'")),
@@ -711,7 +695,8 @@ pub fn execute_app_action(
                 }
                 other => return Err(format!("Unknown orbital action '{other}'")),
             }
-            let _ = o.save_atomic(&state.orbital_path);
+            drop(o);
+            state.mark_orbital_dirty();
         }
         "shinjuku-rain" => {
             let mut s = state
@@ -817,7 +802,7 @@ pub fn execute_app_action(
             }
         }
         other => {
-            let all = AppCatalog::all_manifests(state.apps_dir.as_deref());
+            let all = state.manifests();
             if let Some(manifest) = all.into_iter().find(|m| m.metadata.id == other) {
                 if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
                     let val_str = match val {
@@ -837,10 +822,8 @@ pub fn execute_app_action(
                             .entry(other.to_string())
                             .or_default()
                             .insert(action.clone(), val_str);
-                        if let Err(e) = inner.settings.save(&state.settings_path) {
-                            log::warn!("failed to save control setting: {e}");
-                        }
                     }
+                    state.mark_settings_dirty();
                     crate::webview_sandbox::dispatch_control(&app, &action, val);
                 } else {
                     if other == "dynamic-wallpaper" && action == "open_media_folder" {
@@ -862,13 +845,14 @@ pub fn execute_app_action(
             }
         }
     }
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    Ok(status)
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
+pub async fn capture_snapshot(
+    app: AppHandle,
+    state: State<'_, HostState>,
+) -> Result<String, String> {
     let active_app = state
         .inner
         .lock()
@@ -922,7 +906,7 @@ pub fn capture_snapshot(app: AppHandle, state: State<'_, HostState>) -> Result<S
 }
 
 #[tauri::command]
-pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
+pub async fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
     let active_app = state
         .inner
         .lock()
@@ -991,7 +975,7 @@ pub fn record_loop(app: AppHandle, state: State<'_, HostState>) -> Result<String
 }
 
 #[tauri::command]
-pub fn record_video(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
+pub async fn record_video(app: AppHandle, state: State<'_, HostState>) -> Result<String, String> {
     let active_app = state
         .inner
         .lock()
@@ -1050,26 +1034,25 @@ pub fn record_video(app: AppHandle, state: State<'_, HostState>) -> Result<Strin
 }
 
 #[tauri::command]
-pub fn set_world_seed(app: AppHandle, state: State<'_, HostState>, seed: u64) -> HostStatus {
+pub async fn set_world_seed(state: State<'_, HostState>, seed: u64) -> Result<HostStatus, String> {
     if let Ok(mut w) = state.world.lock() {
         *w = rookery_core::world::WorldState::new(seed);
-        let _ = w.save_atomic(&state.world_path);
     }
-    let status = state.status();
-    state.emit_status_if_popover_open(&app);
-    status
+    state.mark_world_dirty();
+    Ok(state.status())
 }
 
 #[tauri::command]
-pub fn relaunch_app(app: AppHandle, state: State<'_, HostState>) {
+pub async fn relaunch_app(app: AppHandle, state: State<'_, HostState>) -> Result<(), String> {
     state.clean_shutdown();
     app.restart();
 }
 
 #[tauri::command]
-pub fn quit(app: AppHandle, state: State<'_, HostState>) {
+pub async fn quit(app: AppHandle, state: State<'_, HostState>) -> Result<(), String> {
     state.clean_shutdown();
     app.exit(0);
+    Ok(())
 }
 
 fn open_directory_in_os(dir: &std::path::Path) {

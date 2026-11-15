@@ -419,9 +419,16 @@ pub fn glyph_uv_bounds(glyph_idx: u32) -> [f32; 4] {
     [u0, v0, u1, v1]
 }
 
+static SDF_ATLAS_CACHE: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(generate_sdf_atlas);
+
+/// Returns a reference to the process-wide cached 512x512 SDF glyph atlas bytes.
+pub fn cached_sdf_atlas() -> &'static [u8] {
+    &SDF_ATLAS_CACHE
+}
+
 /// Creates the wgpu Texture and TextureView for the SDF glyph atlas.
 pub fn create_glyph_atlas(gpu: &Gpu) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
-    let sdf_data = generate_sdf_atlas();
+    let sdf_data = cached_sdf_atlas();
 
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("glyph-sdf-atlas"),
@@ -445,7 +452,7 @@ pub fn create_glyph_atlas(gpu: &Gpu) -> (wgpu::Texture, wgpu::TextureView, wgpu:
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        &sdf_data,
+        sdf_data,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(ATLAS_WIDTH),
@@ -1252,7 +1259,8 @@ mod tests {
         assert_eq!(char_to_glyph_index('✦'), 128);
         assert_eq!(char_to_glyph_index('☾'), 129);
 
-        let sdf = generate_sdf_atlas();
+        let sdf = cached_sdf_atlas();
         assert_eq!(sdf.len(), (ATLAS_WIDTH * ATLAS_HEIGHT) as usize);
+        assert!(std::ptr::eq(sdf, cached_sdf_atlas()));
     }
 }

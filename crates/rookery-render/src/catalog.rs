@@ -831,8 +831,25 @@ impl AppCatalog {
         external_dir: Option<&Path>,
     ) -> SceneFactory {
         let id_string = app_id.to_string();
-        let external_path = external_dir.map(|p| p.join(&id_string));
-        let manifest = Self::find_manifest(app_id, external_dir);
+        let is_builtin = matches!(
+            app_id,
+            "koi-pond"
+                | "cosmic-nebula"
+                | "orbital-haven"
+                | "shinjuku-rain"
+                | "gothic-metropolis"
+                | "living-rookery"
+        );
+        let external_path = if is_builtin {
+            None
+        } else {
+            external_dir.map(|p| p.join(&id_string))
+        };
+        let manifest = if is_builtin {
+            None
+        } else {
+            Self::find_manifest(app_id, external_dir)
+        };
 
         Box::new(move |gpu, format| match id_string.as_str() {
             "koi-pond" => Box::new(

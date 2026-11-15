@@ -246,13 +246,8 @@ impl LivingRookeryScene {
         [x, y]
     }
 
-    /// Converts screen pixel pointer coordinates to world coordinates.
-    fn screen_to_world(&self, pt: Pointer) -> [f32; 2] {
-        let offset_x = self
-            .world
-            .lock()
-            .map(|w| w.viewport_offset_x)
-            .unwrap_or(0.0);
+    /// Converts screen pixel pointer coordinates to world coordinates using a known camera offset.
+    fn screen_to_world_with_offset(&self, pt: Pointer, offset_x: f32) -> [f32; 2] {
         let x = (pt.x / self.width) * 1000.0 + offset_x;
         let ground_y = self.height * 0.80;
         let tree_scale = (self.height / 960.0).clamp(0.6, 2.0);
@@ -3365,9 +3360,10 @@ impl Scene for LivingRookeryScene {
         self.time += dt.as_secs_f64();
         self.interactive_mode = input.interactive;
 
-        let pointer_world = input.pointer.map(|p| self.screen_to_world(p));
-
         let (activity, current_palette) = if let Ok(mut w) = self.world.lock() {
+            let pointer_world = input
+                .pointer
+                .map(|p| self.screen_to_world_with_offset(p, w.viewport_offset_x));
             if input.interactive {
                 if let Some(sp) = input.pointer {
                     if input.action == PointerAction::RightClick

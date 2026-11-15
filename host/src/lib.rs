@@ -194,11 +194,13 @@ pub fn run() {
 
             let initial_hotkey = settings.hotkey.clone();
             let initial_popover_hotkey = settings.popover_hotkey.clone();
+            let initial_manifests = AppCatalog::all_manifests(apps_dir.as_deref());
             let host_state = HostState {
                 settings_path,
                 world_path,
                 orbital_path,
                 apps_dir,
+                cached_manifests: Mutex::new(initial_manifests),
                 world: world_arc,
                 catalog_state,
                 audio,
@@ -213,6 +215,10 @@ pub fn run() {
                     screens_asleep: false,
                     displays: BTreeMap::new(),
                 }),
+                popover_visible: AtomicBool::new(false),
+                settings_dirty: AtomicBool::new(false),
+                world_dirty: AtomicBool::new(false),
+                orbital_dirty: AtomicBool::new(false),
                 shutting_down: AtomicBool::new(false),
             };
             app.manage(host_state);
@@ -220,6 +226,7 @@ pub fn run() {
             let handle = app.handle();
             monitors::reconcile_on_main_thread(handle);
             tray::setup_tray(handle)?;
+            popover::prewarm(handle);
 
             if let Err(e) = hotkey::register_interaction_hotkey(handle, &initial_hotkey) {
                 log::warn!("{e:#}");
@@ -330,6 +337,9 @@ fn spawn_governor_thread(app: AppHandle) {
                     });
                 }
 
+                // Flush any deferred settings or world/orbital state saves from UI actions
+                state.flush_dirty_state();
+
                 // 1-minute periodic world & orbital autosave
                 if ticks.is_multiple_of(60) {
                     if let Ok(mut w) = state.world.lock()
@@ -370,8 +380,7 @@ fn spawn_governor_thread(app: AppHandle) {
                     ScheduleMode::Interval => {
                         let interval_secs = (interval_mins.max(1) * 60) as u64;
                         if ticks.is_multiple_of(interval_secs) {
-                            let all_manifests =
-                                AppCatalog::all_manifests(state.apps_dir.as_deref());
+                            let all_manifests = state.manifests();
                             let mut pool: Vec<String> = all_manifests
                                 .iter()
                                 .filter(|m| favs.is_empty() || favs.contains(&m.metadata.id))

@@ -1,8 +1,12 @@
-//! On-demand tray popover window.
+//! Persistent, pre-warmed tray popover window.
 //!
-//! To keep idle RAM well below the `< 120 MB` budget, no WebView exists while the popover is
-//! closed. Clicking the tray icon builds the `popover` `WebviewWindow`, positions it next to
-//! the tray icon via `tauri-plugin-positioner`, and destroys it as soon as it loses focus.
+//! Keeping a single hidden `popover` `WebviewWindow` alive across toggles avoids the 300–600ms
+//! WebView cold-start and synchronous teardown on every tray click, making menu open and close
+//! instantaneous (< 5ms).
+
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use tauri::{
     AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -10,16 +14,29 @@ use tauri::{
 };
 use tauri_plugin_positioner::{Position, WindowExt};
 
-use crate::state::POPOVER_LABEL;
+use crate::state::{HostState, POPOVER_LABEL};
 
 const POPOVER_WIDTH: f64 = 384.0;
 const POPOVER_HEIGHT: f64 = 388.0;
 const POPOVER_CORNER_RADIUS: f64 = 20.0;
 
+static PROCESS_START: LazyLock<Instant> = LazyLock::new(Instant::now);
+static LAST_OPENED_MS: AtomicU64 = AtomicU64::new(0);
+static IS_FOCUSED: AtomicBool = AtomicBool::new(false);
+
+fn now_ms() -> u64 {
+    PROCESS_START.elapsed().as_millis() as u64
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PopoverAnchor {
     Tray,
     Cursor,
+}
+
+/// Pre-build the popover WebView hidden in the background during startup so the first open is instant.
+pub fn prewarm(app: &AppHandle) {
+    let _ = ensure_popover_window(app);
 }
 
 pub fn toggle(app: &AppHandle) {
@@ -30,10 +47,29 @@ pub fn toggle_at_cursor(app: &AppHandle) {
     toggle_with_anchor(app, PopoverAnchor::Cursor);
 }
 
-fn toggle_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
+pub fn hide(app: &AppHandle) {
+    if let Some(state) = app.try_state::<HostState>() {
+        state.popover_visible.store(false, Ordering::SeqCst);
+    }
+    IS_FOCUSED.store(false, Ordering::SeqCst);
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {
-        log::info!("popover toggle: closing existing popover window");
-        let _ = existing.destroy();
+        let _ = existing.hide();
+    }
+}
+
+fn toggle_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
+    let is_visible = app
+        .try_state::<HostState>()
+        .map(|s| s.popover_visible.load(Ordering::SeqCst))
+        .unwrap_or_else(|| {
+            app.get_webview_window(POPOVER_LABEL)
+                .and_then(|w| w.is_visible().ok())
+                .unwrap_or(false)
+        });
+
+    if is_visible {
+        log::info!("popover toggle: hiding popover window");
+        hide(app);
         return;
     }
     open_with_anchor(app, anchor);
@@ -47,17 +83,12 @@ pub fn open_at_cursor(app: &AppHandle) {
     open_with_anchor(app, PopoverAnchor::Cursor);
 }
 
-fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
+fn ensure_popover_window(app: &AppHandle) -> Option<WebviewWindow> {
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {
-        log::info!("popover open: focusing existing popover window");
-        if anchor == PopoverAnchor::Cursor {
-            position_window_at_cursor(app, &existing);
-        }
-        let _ = existing.set_focus();
-        return;
+        return Some(existing);
     }
 
-    log::info!("popover open ({anchor:?}): building popover webview window");
+    log::info!("building persistent popover webview window");
     let window =
         match WebviewWindowBuilder::new(app, POPOVER_LABEL, WebviewUrl::App("index.html".into()))
             .title("Rookery")
@@ -69,23 +100,80 @@ fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
             .always_on_top(true)
             .skip_taskbar(true)
             .visible_on_all_workspaces(true)
-            .focused(true)
+            .visible(false)
+            .focused(false)
             .devtools(cfg!(debug_assertions))
             .build()
         {
             Ok(w) => w,
             Err(e) => {
                 log::error!("failed to build popover webview window: {e}");
-                return;
+                return None;
             }
         };
 
     let _ = rookery_platform::style_popover_window(&window, POPOVER_CORNER_RADIUS);
-    if let Some(state) = app.try_state::<crate::state::HostState>()
+    if let Some(state) = app.try_state::<HostState>()
         && let Ok(inner) = state.inner.lock()
     {
         let _ = rookery_platform::set_popover_blur(&window, inner.settings.popover_blur);
     }
+
+    let app_for_ev = app.clone();
+    window.on_window_event(move |ev| match ev {
+        WindowEvent::Focused(true) => {
+            IS_FOCUSED.store(true, Ordering::SeqCst);
+        }
+        WindowEvent::Focused(false) => {
+            IS_FOCUSED.store(false, Ordering::SeqCst);
+            let is_vis = app_for_ev
+                .try_state::<HostState>()
+                .map(|s| s.popover_visible.load(Ordering::SeqCst))
+                .unwrap_or(false);
+            if !is_vis {
+                return;
+            }
+
+            let opened_at = LAST_OPENED_MS.load(Ordering::SeqCst);
+            let elapsed_ms = now_ms().saturating_sub(opened_at);
+            // Ignore transient focus bounce during tray icon mouse release (< 160ms)
+            if elapsed_ms < 160 {
+                return;
+            }
+
+            let app_check = app_for_ev.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(45));
+                if IS_FOCUSED.load(Ordering::SeqCst) {
+                    return;
+                }
+                if rookery_platform::mouse_buttons().left {
+                    return;
+                }
+                let app_main = app_check.clone();
+                let _ = app_check.run_on_main_thread(move || {
+                    if let Some(win) = app_main.get_webview_window(POPOVER_LABEL)
+                        && !win.is_focused().unwrap_or(false)
+                    {
+                        hide(&app_main);
+                    }
+                });
+            });
+        }
+        WindowEvent::CloseRequested { api, .. } => {
+            api.prevent_close();
+            hide(&app_for_ev);
+        }
+        _ => {}
+    });
+
+    Some(window)
+}
+
+fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
+    let Some(window) = ensure_popover_window(app) else {
+        return;
+    };
 
     match anchor {
         PopoverAnchor::Cursor => {
@@ -103,66 +191,19 @@ fn open_with_anchor(app: &AppHandle, anchor: PopoverAnchor) {
         }
     }
 
+    LAST_OPENED_MS.store(now_ms(), Ordering::SeqCst);
+    IS_FOCUSED.store(true, Ordering::SeqCst);
+    if let Some(state) = app.try_state::<HostState>() {
+        state.popover_visible.store(true, Ordering::SeqCst);
+    }
+
+    let _ = window.show();
     let _ = window.set_focus();
     let _ = rookery_platform::activate_app_and_focus_window(&window);
 
-    let win_for_ev = window.clone();
-    let created_at = std::time::Instant::now();
-    let has_focused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let has_focused_clone = has_focused.clone();
-    let is_focused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let is_focused_clone = is_focused.clone();
-
-    window.on_window_event(move |ev| match ev {
-        WindowEvent::Focused(true) => {
-            log::info!("popover window gained focus");
-            has_focused_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-            is_focused_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-        WindowEvent::Focused(false) => {
-            is_focused_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-            let elapsed = created_at.elapsed();
-            let had_focus = has_focused_clone.load(std::sync::atomic::Ordering::SeqCst);
-            // Ignore transient focus loss events during the initial mounting window (macOS status item release)
-            if elapsed > std::time::Duration::from_millis(1500) && had_focus {
-                let win_clone = win_for_ev.clone();
-                let is_f_check = is_focused_clone.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                    if is_f_check.load(std::sync::atomic::Ordering::SeqCst) {
-                        log::debug!(
-                            "popover regained focus after transient loss, keeping window open"
-                        );
-                        return;
-                    }
-                    if rookery_platform::mouse_buttons().left {
-                        log::debug!("left mouse button held down, keeping popover window open");
-                        return;
-                    }
-                    let win_main = win_clone.clone();
-                    let _ = win_clone.run_on_main_thread(move || {
-                        if let Ok(focused) = win_main.is_focused() {
-                            if !focused {
-                                log::info!(
-                                    "popover window lost focus confirmed after {elapsed:?}: closing window"
-                                );
-                                let _ = win_main.destroy();
-                            } else {
-                                log::debug!(
-                                    "popover is_focused() returned true, keeping window open"
-                                );
-                            }
-                        }
-                    });
-                });
-            } else {
-                log::debug!(
-                    "ignoring transient focus loss {elapsed:?} after creation (had_focus={had_focus})"
-                );
-            }
-        }
-        _ => {}
-    });
+    if let Some(state) = app.try_state::<HostState>() {
+        state.emit_status_if_popover_open(app);
+    }
 }
 
 fn position_window_at_cursor(app: &AppHandle, window: &WebviewWindow) {

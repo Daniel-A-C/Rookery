@@ -27,9 +27,9 @@ pub mod world;
 pub use geometry::{DisplayId, Rect};
 pub use gothic::{
     BuildingArchetype, BuildingPlacement, CityBlueprint, ElevatedGothicTrain, GOTHIC_PALETTE_NAMES,
-    GothicAirship, GothicMetropolisState, GothicMetropolisStats, GothicPalette, GothicVehicle,
-    GothicVehicleKind, SearchlightBeam, SteamPlume, StreetAvenue, WalkwayPedestrian, WalkwaySpan,
-    WalkwayStyle,
+    GaragePortal, GothicAirship, GothicMetropolisState, GothicMetropolisStats, GothicPalette,
+    GothicVehicle, GothicVehicleKind, SearchlightBeam, SteamPlume, StreetAvenue, VehicleRoute,
+    WalkwayPedestrian, WalkwaySpan, WalkwayStyle,
 };
 pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
 pub use manifest::{

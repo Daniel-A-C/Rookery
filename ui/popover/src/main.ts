@@ -205,7 +205,78 @@ const appThemes: Record<string, AppThemeMeta> = {
   },
 };
 
-function applyThemeForApp(appId: string): void {
+let lastAppliedThemeApp: string | null = null;
+let lastStatusCacheWriteMs = 0;
+let lastDisplaysSignature = "";
+let lastTreesSignature = "";
+
+/**
+ * Coalesces high-frequency async calls (such as slider `input` events) so at most one
+ * IPC request is in flight at a time, trailing with the most recent value.
+ */
+function createCoalescedCaller<T>(fn: (arg: T) => Promise<void>): (arg: T) => void {
+  let inFlight = false;
+  let hasPending = false;
+  let latestArg: T;
+
+  const pump = async () => {
+    if (inFlight || !hasPending) return;
+    inFlight = true;
+    hasPending = false;
+    const arg = latestArg;
+    try {
+      await fn(arg);
+    } finally {
+      inFlight = false;
+      if (hasPending) {
+        void pump();
+      }
+    }
+  };
+
+  return (arg: T) => {
+    latestArg = arg;
+    hasPending = true;
+    void pump();
+  };
+}
+
+/**
+ * Provides immediate tactile visual feedback on a button and displays an optimistic
+ * notification before awaiting the backend IPC call.
+ */
+function runActionWithFeedback(
+  btn: HTMLButtonElement,
+  iconName: IconName | string,
+  optimisticMsg: string | null,
+  ipcCall: () => Promise<HostStatus>,
+  resolvedMsg?: (s: HostStatus) => string | null,
+): void {
+  btn.classList.add("is-pressed");
+  window.setTimeout(() => btn.classList.remove("is-pressed"), 140);
+
+  if (optimisticMsg) {
+    showNotification(iconName, optimisticMsg);
+  }
+
+  ipcCall()
+    .then((s) => {
+      renderStatus(s);
+      if (resolvedMsg) {
+        const msg = resolvedMsg(s);
+        if (msg) showNotification(iconName, msg);
+      }
+    })
+    .catch((err) => {
+      console.error("action error:", err);
+    });
+}
+
+function applyThemeForApp(appId: string, force = false): void {
+  if (!force && lastAppliedThemeApp === appId) {
+    return;
+  }
+  lastAppliedThemeApp = appId;
   popoverRoot.setAttribute("data-theme", appId);
   const meta = appThemes[appId];
 
@@ -249,20 +320,27 @@ function applyThemeForApp(appId: string): void {
     brandTitle.textContent = appId.replace(/-/g, " ");
     appTagline.textContent = "Custom Rookery Realm";
   }
-}
 
-async function selectRealm(appId: string): Promise<void> {
   for (const [id, cardEl] of Object.entries(cards)) {
     cardEl.hidden = id !== appId;
   }
-  applyThemeForApp(appId);
+}
+
+async function selectRealm(appId: string): Promise<void> {
+  if (currentStatus) {
+    currentStatus.active_app = appId;
+  }
+  applyThemeForApp(appId, true);
   setActiveView("realm");
+  popoverRoot.classList.add("is-switching-realm");
 
   try {
     const s = await api.switchApp(appId);
     renderStatus(s);
   } catch (err) {
     console.error("switchApp error:", err);
+  } finally {
+    popoverRoot.classList.remove("is-switching-realm");
   }
 }
 
@@ -766,22 +844,22 @@ function applyCatalog(): void {
         input.max = String(sl.max ?? 100);
         input.step = String(sl.step ?? 1);
         input.value = String(existingVal ?? sl.default_val ?? 0);
-        const sendSliderUpdate = async () => {
+        const sendSliderUpdate = createCoalescedCaller(async (val: number) => {
           try {
             const s = await api.executeAppAction(m.metadata.id, sl.id, {
-              value: Number(input.value),
+              value: val,
             });
             renderStatus(s);
           } catch (e) {
             console.error("slider action error:", e);
           }
-        };
+        });
         input.addEventListener("input", () => {
           valBadge.textContent = `${input.value}${sl.unit ?? ""}`;
-          void sendSliderUpdate();
+          sendSliderUpdate(Number(input.value));
         });
         input.addEventListener("change", () => {
-          void sendSliderUpdate();
+          sendSliderUpdate(Number(input.value));
         });
         card.appendChild(input);
       }
@@ -835,14 +913,13 @@ function applyCatalog(): void {
           btn.type = "button";
           if (b.tooltip) btn.title = b.tooltip;
           iconLabel(btn, b.icon, b.label);
-          btn.addEventListener("click", async () => {
-            try {
-              const res = await api.executeAppAction(m.metadata.id, b.id);
-              renderStatus(res);
-              showNotification(b.icon || "check-circle", `${b.label} activated!`);
-            } catch (err) {
-              console.error("action error:", err);
-            }
+          btn.addEventListener("click", () => {
+            runActionWithFeedback(
+              btn,
+              b.icon || "check-circle",
+              `${b.label} activated!`,
+              () => api.executeAppAction(m.metadata.id, b.id),
+            );
           });
           actionsDiv.appendChild(btn);
         });
@@ -858,10 +935,7 @@ function applyCatalog(): void {
 
   if (currentStatus) {
     const active = currentStatus.active_app || "living-rookery";
-    applyThemeForApp(active);
-    for (const [id, cardEl] of Object.entries(cards)) {
-      cardEl.hidden = id !== active;
-    }
+    applyThemeForApp(active, true);
   }
 }
 
@@ -933,10 +1007,16 @@ function showShareNotification(iconName: IconName, msg: string, isError = false)
 }
 
 function renderStatus(s: HostStatus): void {
+  const prevApp = currentStatus?.active_app;
   currentStatus = s;
-  try {
-    localStorage.setItem("rookery_status", JSON.stringify(s));
-  } catch {}
+
+  const now = performance.now();
+  if (now - lastStatusCacheWriteMs > 5000 || prevApp !== s.active_app) {
+    lastStatusCacheWriteMs = now;
+    try {
+      localStorage.setItem("rookery_status", JSON.stringify(s));
+    } catch {}
+  }
 
   // Power badge
   const powerLabels: Record<string, string> = {
@@ -944,17 +1024,16 @@ function renderStatus(s: HostStatus): void {
     battery: "BAT",
     low_power: "LOW PWR",
   };
-  powerBadge.textContent = powerLabels[s.power] ?? s.power.toUpperCase();
+  const nextPowerText = powerLabels[s.power] ?? s.power.toUpperCase();
+  if (powerBadge.textContent !== nextPowerText) {
+    powerBadge.textContent = nextPowerText;
+  }
 
-  // Active App Theme & Cards
+  // Active App Theme & Cards (memoized unless activeApp changed)
   const activeApp = s.active_app || "living-rookery";
   applyThemeForApp(activeApp);
 
-  for (const [id, cardEl] of Object.entries(cards)) {
-    cardEl.hidden = id !== activeApp;
-  }
-
-  if (activeView === "library") {
+  if (activeView === "library" && prevApp !== activeApp) {
     renderLibraryGrid();
   }
 
@@ -1011,11 +1090,14 @@ function renderStatus(s: HostStatus): void {
     // Populate Forest Tree Dropdown if tree list available
     if (Array.isArray(s.rookery.trees) && s.rookery.trees.length > 0) {
       const activeId = s.rookery.active_tree_id;
-      const optCount = selectDebugForestTree.options.length;
+      const treesSig = s.rookery.trees
+        .map((t) => `${t.id}:${t.species}:${t.growth_steps}:${t.is_mature}`)
+        .join("|");
       if (
-        optCount !== s.rookery.trees.length ||
+        treesSig !== lastTreesSignature &&
         document.activeElement !== selectDebugForestTree
       ) {
+        lastTreesSignature = treesSig;
         selectDebugForestTree.innerHTML = "";
         for (const t of s.rookery.trees) {
           const opt = document.createElement("option");
@@ -1122,35 +1204,53 @@ function renderStatus(s: HostStatus): void {
   setIcon(icoPause, s.user_paused ? "play" : "pause");
   lblPause.textContent = s.user_paused ? "Resume" : "Pause";
 
-  // Displays list
-  displaysList.innerHTML = "";
-  if (s.displays.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty";
-    li.textContent = "No active displays";
-    displaysList.appendChild(li);
+  // Displays list (diffed to avoid DOM teardown on every tick)
+  const displaysSig = s.displays.map((d) => `${d.id}:${d.name}:${d.width}x${d.height}`).join("|");
+  if (displaysSig !== lastDisplaysSignature) {
+    lastDisplaysSignature = displaysSig;
+    displaysList.innerHTML = "";
+    if (s.displays.length === 0) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "No active displays";
+      displaysList.appendChild(li);
+    } else {
+      for (const d of s.displays) {
+        const li = document.createElement("li");
+        li.className = "display-item";
+        li.dataset.displayId = d.id;
+
+        const left = document.createElement("div");
+        const name = document.createElement("strong");
+        name.textContent = d.name;
+        const meta = document.createElement("span");
+        meta.className = "display-meta";
+        meta.textContent = `${d.width}×${d.height}`;
+        left.appendChild(name);
+        left.appendChild(meta);
+
+        const right = document.createElement("span");
+        const info = formatBudget(d);
+        right.className = info.paused ? "status-pill paused" : "status-pill";
+        right.textContent = info.text;
+
+        li.appendChild(left);
+        li.appendChild(right);
+        displaysList.appendChild(li);
+      }
+    }
   } else {
     for (const d of s.displays) {
-      const li = document.createElement("li");
-      li.className = "display-item";
-
-      const left = document.createElement("div");
-      const name = document.createElement("strong");
-      name.textContent = d.name;
-      const meta = document.createElement("span");
-      meta.className = "display-meta";
-      meta.textContent = `${d.width}×${d.height}`;
-      left.appendChild(name);
-      left.appendChild(meta);
-
-      const right = document.createElement("span");
-      const info = formatBudget(d);
-      right.className = info.paused ? "status-pill paused" : "status-pill";
-      right.textContent = info.text;
-
-      li.appendChild(left);
-      li.appendChild(right);
-      displaysList.appendChild(li);
+      const li = displaysList.querySelector<HTMLElement>(
+        `li[data-display-id="${CSS.escape(d.id)}"]`,
+      );
+      const pill = li?.querySelector<HTMLElement>(".status-pill");
+      if (pill) {
+        const info = formatBudget(d);
+        const nextClass = info.paused ? "status-pill paused" : "status-pill";
+        if (pill.className !== nextClass) pill.className = nextClass;
+        if (pill.textContent !== info.text) pill.textContent = info.text;
+      }
     }
   }
 
@@ -1224,210 +1324,193 @@ function renderSettings(st: Settings): void {
 }
 
 // Living Rookery Action Handlers
-btnFeed.addEventListener("click", async () => {
-  try {
-    const s = await api.feedBirds([500.0, 400.0]);
-    renderStatus(s);
-    showNotification("grains", "Snacks scattered across the boughs!");
-  } catch (err) {
-    console.error("feed error:", err);
-  }
+btnFeed.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnFeed,
+    "grains",
+    "Snacks scattered across the boughs!",
+    () => api.feedBirds([500.0, 400.0]),
+  );
 });
 
-btnPrune.addEventListener("click", async () => {
-  try {
-    const s = await api.pruneBranch([500.0, 300.0], 80.0);
-    renderStatus(s);
-    showNotification("scissors", "Outer canopy pruned gently!");
-  } catch (err) {
-    console.error("prune error:", err);
-  }
+btnPrune.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnPrune,
+    "scissors",
+    "Outer canopy pruned gently!",
+    () => api.pruneBranch([500.0, 300.0], 80.0),
+  );
 });
 
-btnPlant.addEventListener("click", async () => {
-  try {
-    const s = await api.plantSeed([500.0, 750.0]);
-    renderStatus(s);
-    showNotification("plant", "Sapling seed planted at the roots!");
-  } catch (err) {
-    console.error("plant error:", err);
-  }
+btnPlant.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnPlant,
+    "plant",
+    "Sapling seed planted at the roots!",
+    () => api.plantSeed([500.0, 750.0]),
+  );
 });
 
-btnPanLeft.addEventListener("click", async () => {
-  try {
-    const s = await api.panForest(-80.0);
-    renderStatus(s);
-    showNotification("caret-left", "Forest horizon panned west");
-  } catch (err) {
-    console.error("panForest error:", err);
-  }
+btnPanLeft.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnPanLeft,
+    "caret-left",
+    "Forest horizon panned west",
+    () => api.panForest(-80.0),
+  );
 });
 
-btnPanRight.addEventListener("click", async () => {
-  try {
-    const s = await api.panForest(80.0);
-    renderStatus(s);
-    showNotification("caret-right", "Forest horizon panned east");
-  } catch (err) {
-    console.error("panForest error:", err);
-  }
+btnPanRight.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnPanRight,
+    "caret-right",
+    "Forest horizon panned east",
+    () => api.panForest(80.0),
+  );
 });
 
 selectRookeryStyle.addEventListener("change", async () => {
+  const styleIdx = Number(selectRookeryStyle.value);
+  const optText =
+    selectRookeryStyle.options[selectRookeryStyle.selectedIndex]?.textContent ??
+    `Palette ${styleIdx + 1}`;
+  showNotification("palette", `Palette: ${optText}`);
   try {
-    const styleIdx = Number(selectRookeryStyle.value);
     const s = await api.executeAppAction("living-rookery", "set_style", {
       value: styleIdx,
     });
     renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? `Palette ${styleIdx + 1}`;
-    showNotification("palette", `Palette: ${styleName}`);
   } catch (err) {
     console.error("set_style error:", err);
   }
 });
 
-btnStylePrev.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "prev_style");
-    renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? "Previous Palette";
-    showNotification("palette", `Palette: ${styleName}`);
-  } catch (err) {
-    console.error("prev_style error:", err);
-  }
+btnStylePrev.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnStylePrev,
+    "palette",
+    "Shifting palette…",
+    () => api.executeAppAction("living-rookery", "prev_style"),
+    (s) => `Palette: ${s.rookery?.aesthetic_style_name ?? "Previous Palette"}`,
+  );
 });
 
-btnStyleNext.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "cycle_style");
-    renderStatus(s);
-    const styleName = s.rookery?.aesthetic_style_name ?? "Next Palette";
-    showNotification("palette", `Palette: ${styleName}`);
-  } catch (err) {
-    console.error("cycle_style error:", err);
-  }
+btnStyleNext.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnStyleNext,
+    "palette",
+    "Shifting palette…",
+    () => api.executeAppAction("living-rookery", "cycle_style"),
+    (s) => `Palette: ${s.rookery?.aesthetic_style_name ?? "Next Palette"}`,
+  );
 });
 
 // Koi Pond Action Handlers
-btnKoiFeed.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("koi-pond", "feed", {
-      pos: [500.0, 375.0],
-    });
-    renderStatus(s);
-    showNotification("pellets", "Nourishing pellets dropped into the lagoon!");
-  } catch (err) {
-    console.error("koi feed error:", err);
-  }
+btnKoiFeed.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiFeed,
+    "pellets",
+    "Nourishing pellets dropped into the lagoon!",
+    () =>
+      api.executeAppAction("koi-pond", "feed", {
+        pos: [500.0, 375.0],
+      }),
+  );
 });
 
-btnKoiPebble.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("koi-pond", "pebble", {
-      pos: [500.0, 375.0],
-      radius: 80.0,
-    });
-    renderStatus(s);
-    showNotification("ripple", "Smooth pebble skipped across the water!");
-  } catch (err) {
-    console.error("koi pebble error:", err);
-  }
+btnKoiPebble.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiPebble,
+    "ripple",
+    "Smooth pebble skipped across the water!",
+    () =>
+      api.executeAppAction("koi-pond", "pebble", {
+        pos: [500.0, 375.0],
+        radius: 80.0,
+      }),
+  );
 });
 
 // Cosmic Nebula Action Handlers
-btnNebulaAttractor.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("cosmic-nebula", "add_attractor", {
-      pos: [500.0, 375.0],
-    });
-    renderStatus(s);
-    showNotification("spiral", "Gravitational singularity vortex spawned!");
-  } catch (err) {
-    console.error("nebula attractor error:", err);
-  }
+btnNebulaAttractor.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaAttractor,
+    "spiral",
+    "Gravitational singularity vortex spawned!",
+    () =>
+      api.executeAppAction("cosmic-nebula", "add_attractor", {
+        pos: [500.0, 375.0],
+      }),
+  );
 });
 
-btnNebulaRepulsor.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("cosmic-nebula", "repulsor_pulse", {
-      strength: 400.0,
-    });
-    renderStatus(s);
-    showNotification("nova", "Supernova shockwave repelled stellar dust!");
-  } catch (err) {
-    console.error("nebula repulsor error:", err);
-  }
+btnNebulaRepulsor.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaRepulsor,
+    "nova",
+    "Supernova shockwave repelled stellar dust!",
+    () =>
+      api.executeAppAction("cosmic-nebula", "repulsor_pulse", {
+        strength: 400.0,
+      }),
+  );
 });
 
-btnNebulaPalette.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("cosmic-nebula", "cycle_palette");
-    renderStatus(s);
-    showNotification("palette", "Nebular spectrum shifted!");
-  } catch (err) {
-    console.error("nebula palette error:", err);
-  }
+btnNebulaPalette.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaPalette,
+    "palette",
+    "Nebular spectrum shifted!",
+    () => api.executeAppAction("cosmic-nebula", "cycle_palette"),
+  );
 });
 
 // Orbital Haven Action Handlers
-btnOrbitalModule.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("orbital-haven", "overdrive_drones");
-    renderStatus(s);
-    showNotification(
-      "lightning",
-      "Welder drones overdriven — module assembly accelerated!",
-    );
-  } catch (err) {
-    console.error("orbital module error:", err);
-  }
+btnOrbitalModule.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnOrbitalModule,
+    "lightning",
+    "Welder drones overdriven — module assembly accelerated!",
+    () => api.executeAppAction("orbital-haven", "overdrive_drones"),
+  );
 });
 
-btnOrbitalLaunch.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("orbital-haven", "launch_shuttle");
-    renderStatus(s);
-    showNotification(
-      "rocket-launch",
-      "Orbital vessel dispatched from Aegis docking bay!",
-    );
-  } catch (err) {
-    console.error("orbital launch error:", err);
-  }
+btnOrbitalLaunch.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnOrbitalLaunch,
+    "rocket-launch",
+    "Orbital vessel dispatched from Aegis docking bay!",
+    () => api.executeAppAction("orbital-haven", "launch_shuttle"),
+  );
 });
 
-btnOrbitalFocus.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("orbital-haven", "cycle_focus");
-    renderStatus(s);
-    const focusName = s.orbital?.focus || "Updated";
-    showNotification("hab-ring", `Construction directive: ${focusName}`);
-  } catch (err) {
-    console.error("orbital focus error:", err);
-  }
+btnOrbitalFocus.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnOrbitalFocus,
+    "hab-ring",
+    "Updating construction directive…",
+    () => api.executeAppAction("orbital-haven", "cycle_focus"),
+    (s) => `Construction directive: ${s.orbital?.focus || "Updated"}`,
+  );
 });
 
-btnOrbitalPlanet.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("orbital-haven", "cycle_planet");
-    renderStatus(s);
-    const biome = s.orbital?.planet_biome || "Shifted";
-    showNotification("compass", `Orbital horizon shifted to ${biome}!`);
-  } catch (err) {
-    console.error("orbital planet error:", err);
-  }
+btnOrbitalPlanet.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnOrbitalPlanet,
+    "compass",
+    "Shifting orbital horizon…",
+    () => api.executeAppAction("orbital-haven", "cycle_planet"),
+    (s) => `Orbital horizon shifted to ${s.orbital?.planet_biome || "Shifted"}!`,
+  );
 });
 
-btnOrbitalScan.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("orbital-haven", "scan_pulse");
-    renderStatus(s);
-    showNotification("satellite", "Subspace sensor scan wave emitted!");
-  } catch (err) {
-    console.error("orbital scan error:", err);
-  }
+btnOrbitalScan.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnOrbitalScan,
+    "satellite",
+    "Subspace sensor scan wave emitted!",
+    () => api.executeAppAction("orbital-haven", "scan_pulse"),
+  );
 });
 
 // Schedule Mode Selection
@@ -1539,11 +1622,17 @@ btnImportWorld.addEventListener("click", async () => {
   }
 });
 
-// Interactive & Pause
+// Interactive & Pause (Optimistic immediate toggle)
 btnInteractive.addEventListener("click", async () => {
   if (!currentStatus) return;
+  const nextInteractive = !currentStatus.interactive;
+  currentStatus.interactive = nextInteractive;
+  btnInteractive.classList.toggle("active", nextInteractive);
+  lblInteractive.textContent = nextInteractive
+    ? "Desktop Interactive"
+    : "Interact on Desktop";
   try {
-    const s = await api.setInteractive(!currentStatus.interactive);
+    const s = await api.setInteractive(nextInteractive);
     renderStatus(s);
   } catch (err) {
     console.error("setInteractive error:", err);
@@ -1552,8 +1641,12 @@ btnInteractive.addEventListener("click", async () => {
 
 btnPause.addEventListener("click", async () => {
   if (!currentStatus) return;
+  const nextPaused = !currentStatus.user_paused;
+  currentStatus.user_paused = nextPaused;
+  setIcon(icoPause, nextPaused ? "play" : "pause");
+  lblPause.textContent = nextPaused ? "Resume" : "Pause";
   try {
-    const s = await api.setPaused(!currentStatus.user_paused);
+    const s = await api.setPaused(nextPaused);
     renderStatus(s);
   } catch (err) {
     console.error("setPaused error:", err);
@@ -1619,12 +1712,16 @@ sliderMenuOpacity.addEventListener("change", async () => {
   }
 });
 
+const sendPopoverBlurCoalesced = createCoalescedCaller(async (blur: number) => {
+  await api.setPopoverBlur(blur);
+});
+
 sliderMenuBlur.addEventListener("input", () => {
   const blur = Number(sliderMenuBlur.value);
   popoverRoot.style.setProperty("--menu-blur", `${blur}px`);
   sliderMenuBlur.setAttribute("aria-valuetext", `${blur}px`);
   valMenuBlur.textContent = `${blur}px`;
-  api.setPopoverBlur(blur).catch(() => {});
+  sendPopoverBlurCoalesced(blur);
 });
 
 sliderMenuBlur.addEventListener("change", async () => {
@@ -2101,100 +2198,94 @@ selectDebugBirdStyle.addEventListener("change", async () => {
   }
 });
 
-btnSpawnRaven.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
-      species: "CelestialRaven",
-    });
-    renderStatus(s);
-    showNotification("bird", "Celestial Raven summoned into canopy!");
-  } catch (err) {
-    console.error("spawn raven error:", err);
-  }
+btnSpawnRaven.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnRaven,
+    "bird",
+    "Celestial Raven summoned into canopy!",
+    () =>
+      api.executeAppAction("living-rookery", "spawn_bird", {
+        species: "CelestialRaven",
+      }),
+  );
 });
 
-btnSpawnTanager.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
-      species: "RubyTanager",
-    });
-    renderStatus(s);
-    showNotification("bird", "Ruby Tanager arrived in forest!");
-  } catch (err) {
-    console.error("spawn tanager error:", err);
-  }
+btnSpawnTanager.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnTanager,
+    "bird",
+    "Ruby Tanager arrived in forest!",
+    () =>
+      api.executeAppAction("living-rookery", "spawn_bird", {
+        species: "RubyTanager",
+      }),
+  );
 });
 
-btnSpawnOwl.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_bird", {
-      species: "SnowyOwl",
-    });
-    renderStatus(s);
-    showNotification("bird", "Snowy Owl guardian appeared!");
-  } catch (err) {
-    console.error("spawn owl error:", err);
-  }
+btnSpawnOwl.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnOwl,
+    "bird",
+    "Snowy Owl guardian appeared!",
+    () =>
+      api.executeAppAction("living-rookery", "spawn_bird", {
+        species: "SnowyOwl",
+      }),
+  );
 });
 
-btnSpawnFox.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Fox" });
-    renderStatus(s);
-    showNotification("sparkle", "Red Fox trotting across the meadow!");
-  } catch (err) {
-    console.error("spawn fox error:", err);
-  }
+btnSpawnFox.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnFox,
+    "sparkle",
+    "Red Fox trotting across the meadow!",
+    () => api.executeAppAction("living-rookery", "spawn_fauna", { species: "Fox" }),
+  );
 });
 
-btnSpawnSquirrel.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Squirrel" });
-    renderStatus(s);
-    showNotification("sparkle", "Squirrel scampering through the clovers!");
-  } catch (err) {
-    console.error("spawn squirrel error:", err);
-  }
+btnSpawnSquirrel.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnSquirrel,
+    "sparkle",
+    "Squirrel scampering through the clovers!",
+    () => api.executeAppAction("living-rookery", "spawn_fauna", { species: "Squirrel" }),
+  );
 });
 
-btnSpawnBadger.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Badger" });
-    renderStatus(s);
-    showNotification("sparkle", "Badger exploring near the roots!");
-  } catch (err) {
-    console.error("spawn badger error:", err);
-  }
+btnSpawnBadger.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnBadger,
+    "sparkle",
+    "Badger exploring near the roots!",
+    () => api.executeAppAction("living-rookery", "spawn_fauna", { species: "Badger" }),
+  );
 });
 
-btnSpawnHedgehog.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Hedgehog" });
-    renderStatus(s);
-    showNotification("sparkle", "Prickly Hedgehog snuffling in the grass!");
-  } catch (err) {
-    console.error("spawn hedgehog error:", err);
-  }
+btnSpawnHedgehog.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnHedgehog,
+    "sparkle",
+    "Prickly Hedgehog snuffling in the grass!",
+    () => api.executeAppAction("living-rookery", "spawn_fauna", { species: "Hedgehog" }),
+  );
 });
 
-btnSpawnRabbit.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "spawn_fauna", { species: "Rabbit" });
-    renderStatus(s);
-    showNotification("sparkle", "Cottontail Rabbit hopped into the meadow!");
-  } catch (err) {
-    console.error("spawn rabbit error:", err);
-  }
+btnSpawnRabbit.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnSpawnRabbit,
+    "sparkle",
+    "Cottontail Rabbit hopped into the meadow!",
+    () => api.executeAppAction("living-rookery", "spawn_fauna", { species: "Rabbit" }),
+  );
 });
 
-btnScatterSnacks.addEventListener("click", async () => {
-  try {
-    const s = await api.executeAppAction("living-rookery", "scatter_snacks");
-    renderStatus(s);
-    showNotification("grains", "Sweet berries & acorns scattered on the grass!");
-  } catch (err) {
-    console.error("scatter snacks error:", err);
-  }
+btnScatterSnacks.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnScatterSnacks,
+    "grains",
+    "Sweet berries & acorns scattered on the grass!",
+    () => api.executeAppAction("living-rookery", "scatter_snacks"),
+  );
 });
 
 let resetConfirmPending = false;

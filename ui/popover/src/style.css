@@ -578,10 +578,18 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 6px 7px;
+    contain: layout style paint;
     transition:
       border-color 0.14s ease,
       box-shadow 0.14s ease,
-      background-color 0.14s ease;
+      background-color 0.14s ease,
+      scale 0.1s ease-out;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .library-item:active {
+      scale: 0.985;
+    }
   }
 
   .library-item:hover {
@@ -727,6 +735,7 @@
     display: flex;
     flex-direction: column;
     gap: 7px;
+    contain: layout style paint;
   }
 
   .hud-card {
@@ -795,6 +804,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    contain: layout style paint;
   }
 
   .stat-label {
@@ -892,7 +902,12 @@
     gap: 6px;
     background: var(--btn-surface);
     color: var(--text);
-    transition: all 0.12s ease;
+    transition:
+      border-color 0.08s ease-out,
+      box-shadow 0.08s ease-out,
+      color 0.08s ease-out,
+      transform 0.08s ease-out,
+      scale 0.08s ease-out;
   }
 
   .game-cmd-btn {
@@ -909,8 +924,38 @@
     color: var(--accent);
   }
 
-  .btn:active:not(:disabled) {
+  .btn:active:not(:disabled),
+  .btn.is-pressed:not(:disabled) {
     transform: translateY(1px);
+    border-color: var(--accent-active);
+    box-shadow:
+      0 0 10px var(--accent-glow),
+      inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .btn:active:not(:disabled),
+    .btn.is-pressed:not(:disabled),
+    .settings-toggle-btn:active:not(:disabled),
+    .brand-selector-btn:active:not(:disabled) {
+      scale: 0.97;
+    }
+
+    .popover.is-switching-realm .crest-frame {
+      animation: realm-switch-pulse 0.32s ease-out;
+    }
+  }
+
+  @keyframes realm-switch-pulse {
+    0% {
+      scale: 0.92;
+    }
+    60% {
+      scale: 1.05;
+    }
+    100% {
+      scale: 1;
+    }
   }
 
   .btn:disabled {

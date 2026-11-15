@@ -19,8 +19,8 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::gothic::{
-    BuildingArchetype, BuildingPlacement, CityBlueprint, GothicMetropolisState, GothicPalette,
-    GothicVehicleKind, WalkwaySpan, WalkwayStyle,
+    BuildingArchetype, BuildingPlacement, CityBlueprint, GaragePortal, GothicMetropolisState,
+    GothicPalette, GothicVehicleKind, WalkwaySpan, WalkwayStyle,
 };
 use wgpu::util::DeviceExt;
 
@@ -53,6 +53,8 @@ struct GothicThemeColors {
     plinth_trim: [f32; 4],
     asphalt: [f32; 4],
     sidewalk: [f32; 4],
+    sidewalk_curb: [f32; 4],
+    sidewalk_paver: [f32; 4],
     stone_primary: [f32; 4],
     stone_secondary: [f32; 4],
     stone_dark: [f32; 4],
@@ -74,7 +76,9 @@ fn palette_theme(palette: GothicPalette) -> GothicThemeColors {
             plinth_dark: [0.07, 0.07, 0.09, 1.0],
             plinth_trim: [0.14, 0.13, 0.16, 1.0],
             asphalt: [0.05, 0.05, 0.07, 1.0],
-            sidewalk: [0.15, 0.14, 0.17, 1.0],
+            sidewalk: [0.25, 0.23, 0.26, 1.0],
+            sidewalk_curb: [0.35, 0.31, 0.33, 1.0],
+            sidewalk_paver: [0.30, 0.27, 0.30, 1.0],
             stone_primary: [0.18, 0.17, 0.21, 1.0],
             stone_secondary: [0.24, 0.22, 0.26, 1.0],
             stone_dark: [0.11, 0.11, 0.14, 1.0],
@@ -93,7 +97,9 @@ fn palette_theme(palette: GothicPalette) -> GothicThemeColors {
             plinth_dark: [0.06, 0.08, 0.12, 1.0],
             plinth_trim: [0.12, 0.16, 0.23, 1.0],
             asphalt: [0.04, 0.06, 0.09, 1.0],
-            sidewalk: [0.13, 0.17, 0.24, 1.0],
+            sidewalk: [0.21, 0.27, 0.36, 1.0],
+            sidewalk_curb: [0.31, 0.39, 0.50, 1.0],
+            sidewalk_paver: [0.26, 0.33, 0.43, 1.0],
             stone_primary: [0.16, 0.21, 0.30, 1.0],
             stone_secondary: [0.22, 0.28, 0.39, 1.0],
             stone_dark: [0.10, 0.13, 0.20, 1.0],
@@ -112,7 +118,9 @@ fn palette_theme(palette: GothicPalette) -> GothicThemeColors {
             plinth_dark: [0.09, 0.06, 0.07, 1.0],
             plinth_trim: [0.18, 0.12, 0.14, 1.0],
             asphalt: [0.06, 0.04, 0.05, 1.0],
-            sidewalk: [0.17, 0.13, 0.14, 1.0],
+            sidewalk: [0.27, 0.20, 0.21, 1.0],
+            sidewalk_curb: [0.38, 0.28, 0.28, 1.0],
+            sidewalk_paver: [0.32, 0.24, 0.25, 1.0],
             stone_primary: [0.21, 0.15, 0.17, 1.0],
             stone_secondary: [0.28, 0.20, 0.21, 1.0],
             stone_dark: [0.13, 0.09, 0.10, 1.0],
@@ -131,7 +139,9 @@ fn palette_theme(palette: GothicPalette) -> GothicThemeColors {
             plinth_dark: [0.06, 0.09, 0.08, 1.0],
             plinth_trim: [0.12, 0.18, 0.16, 1.0],
             asphalt: [0.04, 0.06, 0.05, 1.0],
-            sidewalk: [0.13, 0.19, 0.16, 1.0],
+            sidewalk: [0.21, 0.29, 0.25, 1.0],
+            sidewalk_curb: [0.30, 0.40, 0.34, 1.0],
+            sidewalk_paver: [0.25, 0.34, 0.29, 1.0],
             stone_primary: [0.16, 0.22, 0.19, 1.0],
             stone_secondary: [0.22, 0.30, 0.25, 1.0],
             stone_dark: [0.09, 0.14, 0.12, 1.0],
@@ -537,24 +547,24 @@ impl MeshBuilder {
 
 /// Build the complete static 3D city mesh from [`CityBlueprint`] and [`GothicThemeColors`].
 fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<GothicVertex> {
-    let mut mb = MeshBuilder::with_capacity(48_000);
+    let mut mb = MeshBuilder::with_capacity(64_000);
 
     // 1. Stepped Citadel Foundation Plinth floating in the black void
     let ext = bp.plinth_half_extent;
-    // Upper street deck (y = -0.25 .. 0.0)
+    // Lower dark obsidian/slate deck slab (y = -0.26 .. 0.0)
     mb.push_box(
         0.0,
-        -0.25,
+        -0.26,
         0.0,
         ext * 2.0,
-        0.25,
+        0.26,
         ext * 2.0,
-        theme.sidewalk,
+        theme.plinth_dark,
         0.0,
     );
-    // Outer parapet wall around the city island perimeter
-    let wall_t = 0.22;
-    let wall_h = 0.28;
+    // Outer fortified parapet wall around the city island perimeter
+    let wall_t = 0.24;
+    let wall_h = 0.32;
     mb.push_box(
         0.0,
         0.0,
@@ -595,11 +605,36 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
         theme.plinth_trim,
         0.0,
     );
+    // Corner bastion turrets on the 4 corners of the expanded floor plate
+    for sx in [-1.0f32, 1.0f32] {
+        for sz in [-1.0f32, 1.0f32] {
+            mb.push_box(
+                sx * (ext - 0.22),
+                -0.15,
+                sz * (ext - 0.22),
+                0.56,
+                0.62,
+                0.56,
+                theme.stone_secondary,
+                0.0,
+            );
+            mb.push_box(
+                sx * (ext - 0.22),
+                0.47,
+                sz * (ext - 0.22),
+                0.62,
+                0.10,
+                0.62,
+                theme.accent_trim,
+                0.0,
+            );
+        }
+    }
 
     // Tapered under-city substructure fading into the black abyss
     mb.push_frustum(
         0.0,
-        -1.05,
+        -1.06,
         0.0,
         ext * 1.84,
         ext * 1.84,
@@ -611,7 +646,7 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
     );
     mb.push_frustum(
         0.0,
-        -1.85,
+        -1.86,
         0.0,
         ext * 1.45,
         ext * 1.45,
@@ -622,7 +657,309 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
         0.0,
     );
 
-    // 2. Deep Canyon Street Avenues & Glowing Gothic Streetlamps
+    // 2. Raised Stone Sidewalks, Curbs, Flagstone Pavers & Outer Highway Promenade
+    build_sidewalks_and_curbs_mesh(&mut mb, bp, theme);
+
+    // 3. Connected Canyon Avenues & Outer Perimeter Ring Highway
+    build_roads_and_highway_mesh(&mut mb, bp, theme);
+
+    // 4. Modular Gothic Buildings
+    for b in &bp.buildings {
+        build_archetype_mesh(&mut mb, b, theme);
+    }
+
+    // 5. Subterranean Building Parking Garage Portals & Ramps
+    for garage in &bp.garages {
+        build_garage_portal_mesh(&mut mb, garage, theme);
+    }
+
+    // 6. Multi-Level Elevated Walkways / Skybridges
+    for span in &bp.walkways {
+        build_walkway_mesh(&mut mb, span, theme);
+    }
+
+    // 7. Elevated Train Viaduct Loop & Support Arches
+    build_viaduct_mesh(&mut mb, bp, theme);
+
+    mb.verts
+}
+
+/// Build raised stone sidewalks, distinct curb borders, flagstone paving courses, and corner bollards
+/// around all 9 city blocks and along the outer perimeter ring highway promenade.
+fn build_sidewalks_and_curbs_mesh(
+    mb: &mut MeshBuilder,
+    bp: &CityBlueprint,
+    theme: &GothicThemeColors,
+) {
+    // The 3x3 city block intervals bounded by the road grid (-8.2, -2.4, 2.1, 8.2)
+    let block_spans: [(f32, f32); 3] = [(-7.56, -2.95), (-1.85, 1.55), (2.65, 7.56)];
+    let sw_h = 0.075f32;
+    let curb_h = 0.095f32;
+    let curb_w = 0.085f32;
+    let walk_band = 0.42f32;
+
+    for &(x0, x1) in &block_spans {
+        for &(z0, z1) in &block_spans {
+            let bw = x1 - x0;
+            let bd = z1 - z0;
+            let cx = (x0 + x1) * 0.5;
+            let cz = (z0 + z1) * 0.5;
+
+            // Main raised block sidewalk & plaza platform
+            mb.push_box(cx, 0.0, cz, bw, sw_h, bd, theme.sidewalk, 0.0);
+
+            // Inner slightly recessed dark stone building plinth pad so the surrounding
+            // 0.42m sidewalk walkway reads as a crisp perimeter pedestrian belt!
+            if bw > walk_band * 2.2 && bd > walk_band * 2.2 {
+                mb.push_box(
+                    cx,
+                    sw_h,
+                    cz,
+                    bw - walk_band * 2.0,
+                    0.015,
+                    bd - walk_band * 2.0,
+                    theme.stone_dark,
+                    0.0,
+                );
+            }
+
+            // Raised stone curbs along the 4 street-facing edges of the city block
+            mb.push_box(
+                cx,
+                0.0,
+                z0 + curb_w * 0.5,
+                bw,
+                curb_h,
+                curb_w,
+                theme.sidewalk_curb,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                0.0,
+                z1 - curb_w * 0.5,
+                bw,
+                curb_h,
+                curb_w,
+                theme.sidewalk_curb,
+                0.0,
+            );
+            mb.push_box(
+                x0 + curb_w * 0.5,
+                0.0,
+                cz,
+                curb_w,
+                curb_h,
+                bd,
+                theme.sidewalk_curb,
+                0.0,
+            );
+            mb.push_box(
+                x1 - curb_w * 0.5,
+                0.0,
+                cz,
+                curb_w,
+                curb_h,
+                bd,
+                theme.sidewalk_curb,
+                0.0,
+            );
+
+            // Textured flagstone paving slabs along North & South block sidewalks
+            let x_pavers = ((bw - 0.4) / 0.54).floor().max(2.0) as usize;
+            let x_step = (bw - 0.36) / x_pavers as f32;
+            for i in 0..x_pavers {
+                let px = x0 + 0.18 + (i as f32 + 0.5) * x_step;
+                let paver_w = (x_step * 0.76).min(0.42);
+                for pz in [z0 + walk_band * 0.52, z1 - walk_band * 0.52] {
+                    mb.push_box(
+                        px,
+                        sw_h,
+                        pz,
+                        paver_w,
+                        0.012,
+                        walk_band * 0.68,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                }
+            }
+
+            // Textured flagstone paving slabs along West & East block sidewalks
+            let z_pavers = ((bd - 0.4) / 0.54).floor().max(2.0) as usize;
+            let z_step = (bd - 0.36) / z_pavers as f32;
+            for i in 0..z_pavers {
+                let pz = z0 + 0.18 + (i as f32 + 0.5) * z_step;
+                let paver_d = (z_step * 0.76).min(0.42);
+                for px in [x0 + walk_band * 0.52, x1 - walk_band * 0.52] {
+                    mb.push_box(
+                        px,
+                        sw_h,
+                        pz,
+                        walk_band * 0.68,
+                        0.012,
+                        paver_d,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                }
+            }
+
+            // Gothic corner curb bollards at all 4 corners of the block
+            for bx in [x0 + 0.14, x1 - 0.14] {
+                for bz in [z0 + 0.14, z1 - 0.14] {
+                    mb.push_box(bx, sw_h, bz, 0.10, 0.16, 0.10, theme.sidewalk_curb, 0.0);
+                    mb.push_box(
+                        bx,
+                        sw_h + 0.16,
+                        bz,
+                        0.12,
+                        0.04,
+                        0.12,
+                        theme.accent_trim,
+                        0.0,
+                    );
+                }
+            }
+        }
+    }
+
+    // Outer Highway Perimeter Sidewalk Promenade (between highway outer edge ±8.84 and parapet wall ±9.56)
+    let ext = bp.plinth_half_extent;
+    let hwy_outer = 8.84f32;
+    let prom_outer = (ext - 0.24).max(hwy_outer + 0.35);
+    let prom_w = prom_outer - hwy_outer;
+    let prom_mid = (hwy_outer + prom_outer) * 0.5;
+    let span_full = prom_outer * 2.0;
+
+    // 4 outer promenade sidewalk strips + inner highway curbs
+    for sign in [-1.0f32, 1.0f32] {
+        // North & South outer highway sidewalk promenades
+        mb.push_box(
+            0.0,
+            0.0,
+            sign * prom_mid,
+            span_full,
+            sw_h,
+            prom_w,
+            theme.sidewalk,
+            0.0,
+        );
+        mb.push_box(
+            0.0,
+            0.0,
+            sign * (hwy_outer + curb_w * 0.5),
+            span_full - prom_w * 2.0,
+            curb_h,
+            curb_w,
+            theme.sidewalk_curb,
+            0.0,
+        );
+        // West & East outer highway sidewalk promenades
+        mb.push_box(
+            sign * prom_mid,
+            0.0,
+            0.0,
+            prom_w,
+            sw_h,
+            span_full,
+            theme.sidewalk,
+            0.0,
+        );
+        mb.push_box(
+            sign * (hwy_outer + curb_w * 0.5),
+            0.0,
+            0.0,
+            curb_w,
+            curb_h,
+            span_full - prom_w * 2.0,
+            theme.sidewalk_curb,
+            0.0,
+        );
+
+        // Flagstone pavers & highway light standards along outer promenade
+        let steps = 22usize;
+        for i in 0..steps {
+            let coord = -hwy_outer + (i as f32 + 0.5) * ((hwy_outer * 2.0) / steps as f32);
+            mb.push_box(
+                coord,
+                sw_h,
+                sign * prom_mid,
+                0.52,
+                0.012,
+                prom_w * 0.65,
+                theme.sidewalk_paver,
+                0.0,
+            );
+            mb.push_box(
+                sign * prom_mid,
+                sw_h,
+                coord,
+                prom_w * 0.65,
+                0.012,
+                0.52,
+                theme.sidewalk_paver,
+                0.0,
+            );
+
+            // Outer highway art-deco light standards every 3rd paver
+            if i % 3 == 1 {
+                let lamp_pos = sign * (hwy_outer + 0.16);
+                mb.push_box(
+                    coord,
+                    sw_h,
+                    lamp_pos,
+                    0.07,
+                    0.42,
+                    0.07,
+                    theme.stone_dark,
+                    0.0,
+                );
+                mb.push_box(
+                    coord,
+                    sw_h + 0.42,
+                    lamp_pos,
+                    0.13,
+                    0.10,
+                    0.13,
+                    theme.window_warm,
+                    1.0,
+                );
+
+                mb.push_box(
+                    lamp_pos,
+                    sw_h,
+                    coord,
+                    0.07,
+                    0.42,
+                    0.07,
+                    theme.stone_dark,
+                    0.0,
+                );
+                mb.push_box(
+                    lamp_pos,
+                    sw_h + 0.42,
+                    coord,
+                    0.13,
+                    0.10,
+                    0.13,
+                    theme.window_warm,
+                    1.0,
+                );
+            }
+        }
+    }
+}
+
+/// Build the connected canyon avenues, the 4-sided outer perimeter ring highway,
+/// highway median dividers, intersection crosswalks, and canyon streetlamps.
+fn build_roads_and_highway_mesh(
+    mb: &mut MeshBuilder,
+    bp: &CityBlueprint,
+    theme: &GothicThemeColors,
+) {
+    let road_nodes = [-8.2f32, -2.4, 2.1, 8.2];
+
     for ave in &bp.avenues {
         let dx = ave.end[0] - ave.start[0];
         let dz = ave.end[1] - ave.start[1];
@@ -631,52 +968,263 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
         let cz = (ave.start[1] + ave.end[1]) * 0.5;
         let fwd = [dx / len, dz / len];
 
-        // Dark wet-look asphalt road surface slightly above plinth
+        // Extend highway segments slightly at endpoints so the 4 outer corners at (±8.2, ±8.2)
+        // form a seamless continuous perimeter ring highway!
+        let ext_len = if ave.is_highway {
+            len + ave.width
+        } else {
+            len + 0.35
+        };
+
+        // Dark wet-look asphalt roadbed
         mb.push_oriented_box(
             [cx, 0.005, cz],
             fwd,
-            len,
-            0.02,
+            ext_len,
+            0.022,
             ave.width,
             theme.asphalt,
             0.0,
         );
 
-        // Place miniature gothic streetlamps along both sides of the avenue
-        let steps = 7;
-        for i in 0..=steps {
-            let t = i as f32 / steps as f32;
-            let lx = ave.start[0] + dx * t;
-            let lz = ave.start[1] + dz * t;
-            // Skip intersections
-            if ((lx - (-2.4)).abs() < 0.75 || (lx - 2.1).abs() < 0.75)
-                && ((lz - (-2.4)).abs() < 0.75 || (lz - 2.1).abs() < 0.75)
-            {
+        // Centerline dashed lane markings & highway median reflector studs
+        let dash_steps = (len / 0.85).floor().max(4.0) as usize;
+        for i in 0..dash_steps {
+            let t = (i as f32 + 0.5) / dash_steps as f32;
+            let mx = ave.start[0] + dx * t;
+            let mz = ave.start[1] + dz * t;
+
+            // Skip road intersections so junctions stay clean
+            let near_x_node = road_nodes.iter().any(|&nx| (mx - nx).abs() < 0.78);
+            let near_z_node = road_nodes.iter().any(|&nz| (mz - nz).abs() < 0.78);
+            if near_x_node && near_z_node {
                 continue;
             }
-            for side in [-1.0f32, 1.0f32] {
-                let px = lx + (-fwd[1]) * (ave.width * 0.58) * side;
-                let pz = lz + (fwd[0]) * (ave.width * 0.58) * side;
-                mb.push_box(px, 0.0, pz, 0.06, 0.36, 0.06, theme.stone_dark, 0.0);
-                mb.push_box(px, 0.36, pz, 0.11, 0.10, 0.11, theme.window_warm, 1.0);
+            // Also skip garage turnoff points
+            let near_garage = bp.garages.iter().any(|g| {
+                (mx - g.street_entry[0]).abs() < 0.55 && (mz - g.street_entry[1]).abs() < 0.55
+            });
+            if near_garage {
+                continue;
+            }
+
+            if ave.is_highway {
+                // Highway double-brass median strip + glowing amber cat's-eye reflector
+                mb.push_oriented_box(
+                    [mx, 0.026, mz],
+                    fwd,
+                    0.46,
+                    0.012,
+                    0.08,
+                    theme.accent_trim,
+                    0.0,
+                );
+                if i % 2 == 0 {
+                    mb.push_oriented_box(
+                        [mx, 0.036, mz],
+                        fwd,
+                        0.10,
+                        0.016,
+                        0.06,
+                        theme.window_dim,
+                        0.75,
+                    );
+                }
+            } else {
+                // Canyon avenue center dashed stripe
+                mb.push_oriented_box(
+                    [mx, 0.026, mz],
+                    fwd,
+                    0.34,
+                    0.008,
+                    0.05,
+                    theme.sidewalk_paver,
+                    0.0,
+                );
+            }
+        }
+
+        // Place miniature gothic streetlamps along both sides of inner canyon avenues
+        if !ave.is_highway {
+            let steps = 9usize;
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let lx = ave.start[0] + dx * t;
+                let lz = ave.start[1] + dz * t;
+                // Skip street intersections
+                if road_nodes.iter().any(|&nx| (lx - nx).abs() < 0.85)
+                    && road_nodes.iter().any(|&nz| (lz - nz).abs() < 0.85)
+                {
+                    continue;
+                }
+                for side in [-1.0f32, 1.0f32] {
+                    let px = lx + (-fwd[1]) * (ave.width * 0.5 + 0.16) * side;
+                    let pz = lz + (fwd[0]) * (ave.width * 0.5 + 0.16) * side;
+                    // Skip if a garage driveway apron occupies this sidewalk spot
+                    let blocks_garage = bp.garages.iter().any(|g| {
+                        (px - g.portal_pos[0]).abs() < 0.75 && (pz - g.portal_pos[1]).abs() < 0.75
+                    });
+                    if blocks_garage {
+                        continue;
+                    }
+                    mb.push_box(px, 0.075, pz, 0.06, 0.34, 0.06, theme.stone_dark, 0.0);
+                    mb.push_box(px, 0.415, pz, 0.11, 0.10, 0.11, theme.window_warm, 1.0);
+                }
             }
         }
     }
 
-    // 3. Modular Gothic Buildings
-    for b in &bp.buildings {
-        build_archetype_mesh(&mut mb, b, theme);
+    // Stone crosswalk stripes at the 4 central canyon avenue intersections
+    for &ix in &[-2.4f32, 2.1f32] {
+        for &iz in &[-2.4f32, 2.1f32] {
+            for offset in [-0.66f32, 0.66f32] {
+                for stripe in [-0.30f32, -0.10, 0.10, 0.30] {
+                    mb.push_box(
+                        ix + stripe,
+                        0.025,
+                        iz + offset,
+                        0.09,
+                        0.008,
+                        0.22,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                    mb.push_box(
+                        ix + offset,
+                        0.025,
+                        iz + stripe,
+                        0.22,
+                        0.008,
+                        0.09,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Build an underground parking garage entrance recessed into a building base, complete with
+/// a downward-sloping asphalt driveway cutting through the sidewalk, stone ramp wing-walls,
+/// a heavy gothic portal arch, a pitch-black subterranean tunnel void, and glowing clearance lights.
+fn build_garage_portal_mesh(
+    mb: &mut MeshBuilder,
+    garage: &GaragePortal,
+    theme: &GothicThemeColors,
+) {
+    let fwd = garage.inward_dir;
+    let right = [-fwd[1], fwd[0]];
+    let w = garage.width;
+
+    let dx = garage.portal_pos[0] - garage.street_entry[0];
+    let dz = garage.portal_pos[1] - garage.street_entry[1];
+    let dist = (dx * dx + dz * dz).sqrt().max(0.2);
+
+    // 1. Asphalt driveway apron cutting across the raised sidewalk into the building portal
+    let apron_len = (dist - 0.32).max(0.35);
+    let apron_cx = garage.portal_pos[0] - fwd[0] * (apron_len * 0.5 - 0.12);
+    let apron_cz = garage.portal_pos[1] - fwd[1] * (apron_len * 0.5 - 0.12);
+    mb.push_oriented_box(
+        [apron_cx, 0.002, apron_cz],
+        fwd,
+        apron_len + 0.35,
+        0.078,
+        w * 0.92,
+        theme.asphalt,
+        0.0,
+    );
+    // Amber center guide stripe leading into the subterranean ramp
+    mb.push_oriented_box(
+        [apron_cx, 0.076, apron_cz],
+        fwd,
+        apron_len * 0.85,
+        0.008,
+        0.06,
+        theme.accent_trim,
+        0.0,
+    );
+
+    // 2. Flanking sloped stone curb wing-walls bordering the garage ramp across the sidewalk
+    let cheek_w = 0.09f32;
+    for side in [-1.0f32, 1.0f32] {
+        let wx = apron_cx + right[0] * (w * 0.48 + cheek_w * 0.5) * side;
+        let wz = apron_cz + right[1] * (w * 0.48 + cheek_w * 0.5) * side;
+        mb.push_oriented_box(
+            [wx, 0.075, wz],
+            fwd,
+            apron_len * 0.88,
+            0.09,
+            cheek_w,
+            theme.sidewalk_curb,
+            0.0,
+        );
     }
 
-    // 4. Multi-Level Elevated Walkways / Skybridges
-    for span in &bp.walkways {
-        build_walkway_mesh(&mut mb, span, theme);
+    // 3. Protruding Gothic Stone Garage Portal Archway & Hood on the building facade
+    let portal_h = 0.72f32;
+    let portal_depth = 0.24f32;
+    let arch_cx = garage.portal_pos[0] - fwd[0] * 0.04;
+    let arch_cz = garage.portal_pos[1] - fwd[1] * 0.04;
+
+    // Outer stone portal surround
+    mb.push_oriented_box(
+        [arch_cx, 0.0, arch_cz],
+        fwd,
+        portal_depth,
+        portal_h,
+        w + 0.28,
+        theme.stone_secondary,
+        0.0,
+    );
+    // Overhanging gothic cornice lintel above garage entrance
+    mb.push_oriented_box(
+        [
+            arch_cx - fwd[0] * 0.03,
+            portal_h - 0.08,
+            arch_cz - fwd[1] * 0.03,
+        ],
+        fwd,
+        portal_depth + 0.10,
+        0.11,
+        w + 0.36,
+        theme.accent_trim,
+        0.0,
+    );
+
+    // 4. Pitch-black subterranean tunnel mouth & underground vault recess
+    let void_color = [0.01, 0.01, 0.018, 1.0];
+    mb.push_oriented_box(
+        [
+            garage.portal_pos[0] + fwd[0] * 0.14,
+            0.0,
+            garage.portal_pos[1] + fwd[1] * 0.14,
+        ],
+        fwd,
+        0.64,
+        portal_h - 0.16,
+        w * 0.86,
+        void_color,
+        0.0,
+    );
+
+    // 5. Illuminated overhead clearance light bar + twin ruby entrance marker beacons
+    let sign_x = garage.portal_pos[0] - fwd[0] * 0.15;
+    let sign_z = garage.portal_pos[1] - fwd[1] * 0.15;
+    mb.push_oriented_box(
+        [sign_x, portal_h - 0.18, sign_z],
+        fwd,
+        0.05,
+        0.07,
+        w * 0.72,
+        theme.window_warm,
+        0.95,
+    );
+    for side in [-1.0f32, 1.0f32] {
+        let bx = sign_x + right[0] * (w * 0.52) * side;
+        let bz = sign_z + right[1] * (w * 0.52) * side;
+        mb.push_oriented_box([bx, 0.34, bz], fwd, 0.06, 0.08, 0.06, theme.beacon_red, 1.0);
     }
-
-    // 5. Elevated Train Viaduct Loop & Support Arches
-    build_viaduct_mesh(&mut mb, bp, theme);
-
-    mb.verts
 }
 
 /// Emit recessed gothic window strips along all 4 sides of a tower section.
@@ -1682,8 +2230,8 @@ fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicTh
             let t = (p as f32 + 0.5) / pier_steps as f32;
             let px = a[0] + dx * t;
             let pz = a[1] + dz * t;
-            // Skip piers inside ViaductStation (around x = -4.6, z = -0.2)
-            if (px - (-4.6)).abs() < 1.3 && (pz - (-0.2)).abs() < 1.6 {
+            // Skip piers inside ViaductStation (around x = -4.55, z = -0.15)
+            if (px - (-4.55)).abs() < 1.3 && (pz - (-0.15)).abs() < 1.6 {
                 continue;
             }
             for side in [-1.0f32, 1.0f32] {
@@ -1731,11 +2279,11 @@ fn build_isometric_view_proj(
     let cp = pitch.cos();
     let sp = pitch.sin();
 
-    // City horizontal radius is ~10.8 world units; vertical span is ~13.5 world units.
+    // City horizontal radius is ~11.8 world units; vertical span is ~13.5 world units.
     // Sizing `scale_y` so that the projected city spans ~60% (three-fifths) of the screen:
     let occ = occupancy.clamp(0.40, 0.85);
     // Fit smoothly across both 16:9 widescreen and narrower aspect ratios
-    let base_scale = occ / 9.2;
+    let base_scale = occ / 10.2;
     let scale_y = base_scale * (aspect.min(1.65)).sqrt();
     let scale_x = scale_y / aspect;
     let scale_z = 1.0 / 56.0;
@@ -2025,19 +2573,16 @@ impl GothicMetropolisScene {
         let mut opaque_mb = MeshBuilder::with_capacity(8192);
         let mut trans_mb = MeshBuilder::with_capacity(4096);
 
-        // --- LAYER 1: Deep Canyon Street Vehicles & Headlight Cones ---
+        // --- LAYER 1: Connected Street & Highway Vehicles + Garage Commuters ---
         for veh in &guard.vehicles {
-            if let Some(ave) = guard.blueprint.avenues.get(veh.avenue_idx) {
-                let dx = ave.end[0] - ave.start[0];
-                let dz = ave.end[1] - ave.start[1];
-                let len = (dx * dx + dz * dz).sqrt().max(0.1);
-                let u_fwd = [dx / len, dz / len];
-                let u_right = [-u_fwd[1], u_fwd[0]];
-                let lane_offset = if veh.dir > 0.0 { 0.22 } else { -0.22 };
-
-                let vx = ave.start[0] + dx * veh.progress + u_right[0] * lane_offset;
-                let vz = ave.start[1] + dz * veh.progress + u_right[1] * lane_offset;
-                let car_fwd = [u_fwd[0] * veh.dir, u_fwd[1] * veh.dir];
+            if let Some((pos, car_fwd, is_subterranean)) = guard.blueprint.sample_vehicle_pose(veh)
+            {
+                if is_subterranean {
+                    continue;
+                }
+                let vx = pos[0];
+                let vy = pos[1];
+                let vz = pos[2];
 
                 let (car_len, car_w, car_h) = match veh.kind {
                     GothicVehicleKind::NoirCoupe => (0.58, 0.22, 0.14),
@@ -2047,7 +2592,7 @@ impl GothicMetropolisScene {
 
                 // Sleek dark chassis + cabin
                 opaque_mb.push_oriented_box(
-                    [vx, 0.02, vz],
+                    [vx, vy, vz],
                     car_fwd,
                     car_len,
                     car_h * 0.58,
@@ -2058,7 +2603,7 @@ impl GothicMetropolisScene {
                 opaque_mb.push_oriented_box(
                     [
                         vx - car_fwd[0] * (car_len * 0.10),
-                        0.02 + car_h * 0.55,
+                        vy + car_h * 0.55,
                         vz - car_fwd[1] * (car_len * 0.10),
                     ],
                     car_fwd,
@@ -2072,7 +2617,7 @@ impl GothicMetropolisScene {
                 opaque_mb.push_oriented_box(
                     [
                         vx + car_fwd[0] * (car_len * 0.50),
-                        0.04,
+                        vy + 0.02,
                         vz + car_fwd[1] * (car_len * 0.50),
                     ],
                     car_fwd,
@@ -2085,7 +2630,7 @@ impl GothicMetropolisScene {
                 opaque_mb.push_oriented_box(
                     [
                         vx - car_fwd[0] * (car_len * 0.50),
-                        0.04,
+                        vy + 0.02,
                         vz - car_fwd[1] * (car_len * 0.50),
                     ],
                     car_fwd,
@@ -2100,7 +2645,7 @@ impl GothicMetropolisScene {
                 trans_mb.push_light_cone(
                     [
                         vx + car_fwd[0] * (car_len * 0.52),
-                        0.06,
+                        vy + 0.04,
                         vz + car_fwd[1] * (car_len * 0.52),
                     ],
                     [car_fwd[0], -0.04, car_fwd[1]],
@@ -2372,6 +2917,9 @@ impl GothicMetropolisScene {
             }
         }
 
+        // Release simulation lock before submitting GPU buffer writes
+        drop(guard);
+
         let opaque_slice = &opaque_mb.verts[..opaque_mb.verts.len().min(MAX_DYNAMIC_VERTS)];
         self.opaque_dyn_count = opaque_slice.len() as u32;
         if !opaque_slice.is_empty() {
@@ -2401,27 +2949,17 @@ impl Scene for GothicMetropolisScene {
     }
 
     fn update(&mut self, gpu: &Gpu, dt: Duration, input: &SceneInput) -> Activity {
-        // Handle Direct Interaction Mode camera orbit & clicks
+        let mut drag_delta = None;
         if input.action == PointerAction::LeftClick {
             self.is_dragging = true;
             self.last_pointer = input.pointer;
-            if let Ok(mut guard) = self.state.lock() {
-                guard.trigger_steam_burst();
-            }
-        } else if input.action == PointerAction::RightClick
-            && let Ok(mut guard) = self.state.lock()
-        {
-            guard.rotate_camera_quarter_turn();
         }
-
         if input.left_held {
             if let (Some(curr), Some(prev)) = (input.pointer, self.last_pointer) {
                 let dx = (curr.x - prev.x) / (self.width.max(1) as f32);
                 let dy = (curr.y - prev.y) / (self.height.max(1) as f32);
-                if (dx.abs() > 0.0001 || dy.abs() > 0.0001)
-                    && let Ok(mut guard) = self.state.lock()
-                {
-                    guard.orbit_camera(dx * PI * 1.4, dy * 1.1);
+                if dx.abs() > 0.0001 || dy.abs() > 0.0001 {
+                    drag_delta = Some((dx * PI * 1.4, dy * 1.1));
                 }
             }
             self.last_pointer = input.pointer;
@@ -2431,6 +2969,14 @@ impl Scene for GothicMetropolisScene {
         }
 
         let activity = if let Ok(mut guard) = self.state.lock() {
+            if input.action == PointerAction::LeftClick {
+                guard.trigger_steam_burst();
+            } else if input.action == PointerAction::RightClick {
+                guard.rotate_camera_quarter_turn();
+            }
+            if let Some((yaw_d, pitch_d)) = drag_delta {
+                guard.orbit_camera(yaw_d, pitch_d);
+            }
             guard.tick(dt.as_secs_f32())
         } else {
             Activity::Animating

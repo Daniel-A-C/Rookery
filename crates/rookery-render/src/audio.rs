@@ -4,11 +4,12 @@
 //! Strictly silent by default; consumes 0% audio CPU when muted, paused, or occluded.
 //! Gracefully handles headless environments / systems without audio hardware.
 
+use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::num::{NonZeroU16, NonZeroU32};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread::JoinHandle;
 
 use rodio::buffer::SamplesBuffer;
@@ -323,11 +324,30 @@ fn run_audio_worker(
 }
 
 // -----------------------------------------------------------------------------
-// Procedural Sound Synthesis
+// Procedural Sound Synthesis (Memoized)
 // -----------------------------------------------------------------------------
 
-/// Synthesize a seamless looping ambient buffer (~3.0 seconds, 44.1 kHz).
+static AMBIENT_LOOP_CACHE: LazyLock<Mutex<HashMap<String, Arc<Vec<f32>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static SFX_BUFFER_CACHE: LazyLock<Mutex<HashMap<SoundEffect, Arc<Vec<f32>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Synthesize (or retrieve from cache) a seamless looping ambient buffer (~3.0 seconds, 44.1 kHz).
 pub fn synth_ambient_loop(app_id: &str) -> Vec<f32> {
+    if let Ok(cache) = AMBIENT_LOOP_CACHE.lock()
+        && let Some(buf) = cache.get(app_id)
+    {
+        return buf.as_ref().clone();
+    }
+
+    let generated = Arc::new(generate_ambient_loop_uncached(app_id));
+    if let Ok(mut cache) = AMBIENT_LOOP_CACHE.lock() {
+        cache.insert(app_id.to_string(), Arc::clone(&generated));
+    }
+    generated.as_ref().clone()
+}
+
+fn generate_ambient_loop_uncached(app_id: &str) -> Vec<f32> {
     let duration_secs = 3.0;
     let total_samples = (duration_secs * SAMPLE_RATE as f64) as usize;
     let mut buffer = vec![0.0f32; total_samples];
@@ -463,8 +483,22 @@ fn apply_seamless_crossfade(buffer: &mut [f32], crossfade_len: usize) {
     }
 }
 
-/// Synthesize a discrete sound effect into a PCM buffer.
+/// Synthesize (or retrieve from cache) a discrete sound effect into a PCM buffer.
 pub fn synth_sfx(sfx: SoundEffect) -> Vec<f32> {
+    if let Ok(cache) = SFX_BUFFER_CACHE.lock()
+        && let Some(buf) = cache.get(&sfx)
+    {
+        return buf.as_ref().clone();
+    }
+
+    let generated = Arc::new(generate_sfx_uncached(sfx));
+    if let Ok(mut cache) = SFX_BUFFER_CACHE.lock() {
+        cache.insert(sfx, Arc::clone(&generated));
+    }
+    generated.as_ref().clone()
+}
+
+fn generate_sfx_uncached(sfx: SoundEffect) -> Vec<f32> {
     match sfx {
         SoundEffect::Prune => {
             // Crisp woody snip: sharp noise transient + wooden click decay (0.12s)
