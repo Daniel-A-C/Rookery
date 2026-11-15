@@ -29,7 +29,8 @@ pub use gothic::{
     BuildingArchetype, BuildingPlacement, CityBlockPlot, CityBlueprint, ElevatedGothicTrain,
     GOTHIC_PALETTE_NAMES, GaragePortal, GothicAirship, GothicMetropolisState,
     GothicMetropolisStats, GothicPalette, GothicVehicle, GothicVehicleKind, SearchlightBeam,
-    SteamPlume, StreetAvenue, VehicleRoute, WalkwayPedestrian, WalkwaySpan, WalkwayStyle,
+    SteamPlume, StreetAvenue, TrafficDensity, TrafficSignal, VehicleRoute, WalkwayPedestrian,
+    WalkwaySpan, WalkwayStyle,
 };
 pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
 pub use manifest::{

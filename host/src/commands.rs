@@ -763,6 +763,22 @@ pub async fn execute_app_action(
                     g.dispatch_train();
                     state.audio.play_sfx(SoundEffect::TrainPass);
                 }
+                "dispatch_interceptor" => {
+                    g.dispatch_interceptor();
+                    state.audio.play_sfx(SoundEffect::ShuttleLaunch);
+                }
+                "toggle_rush_hour" => {
+                    g.toggle_rush_hour();
+                    state.audio.play_sfx(SoundEffect::SignToggle);
+                }
+                "green_wave" => {
+                    g.trigger_green_wave();
+                    state.audio.play_sfx(SoundEffect::SignToggle);
+                }
+                "toggle_follow_car" => {
+                    g.toggle_follow_car();
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
                 "summon_airship" => {
                     g.summon_airship();
                     state.audio.play_sfx(SoundEffect::ShuttleLaunch);

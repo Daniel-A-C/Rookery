@@ -1800,10 +1800,14 @@ pub struct WalkwayPedestrian {
 pub enum GothicVehicleKind {
     /// Exaggerated long-hood 1990s-Batman art-deco coupe.
     NoirCoupe,
-    /// Heavy gothic armored cruiser / patrol car.
+    /// Heavy gothic armored cruiser / patrol car with flashing roof lightbar.
     ArmoredCruiser,
-    /// Double-length vintage gothic street omnibus.
+    /// Double-length vintage gothic street omnibus with lit passenger windows.
     TransitOmnibus,
+    /// Hero jet-turbine noir interceptor with swept bat-fins and rear afterburner.
+    VigilanteInterceptor,
+    /// Elongated obsidian formal steam-limousine with brass carriage lanterns.
+    SteamLimousine,
 }
 
 /// A vehicle cruising through the deep canyon avenues at street level.
@@ -1817,6 +1821,41 @@ pub struct GothicVehicle {
     pub dir: f32,
     pub speed: f32,
     pub kind: GothicVehicleKind,
+    /// Instantaneous route speed (modulated by traffic, corners, signals, and highway boosts).
+    #[serde(default)]
+    pub current_speed: f32,
+    /// True when decelerating or stopped at a red signal / behind traffic.
+    #[serde(default)]
+    pub is_braking: bool,
+    /// Active turn indicator: `-1` = left, `0` = off, `1` = right.
+    #[serde(default)]
+    pub turn_signal: i8,
+    /// Rear turbine afterburner intensity (`0.0 ..= 1.0`), used by `VigilanteInterceptor`.
+    #[serde(default)]
+    pub afterburner: f32,
+    /// Accumulator for periodic tailpipe steam/smoke puffs.
+    #[serde(default)]
+    pub exhaust_accum: f32,
+}
+
+/// A wrought-iron gothic intersection traffic signal controlling cross-traffic.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TrafficSignal {
+    pub id: u32,
+    pub pos: [f32; 2],
+    pub phase_offset: f32,
+    /// True when North-South (+/-Z) avenues have a green light (and East-West has red).
+    pub ns_green: bool,
+    /// True during the brief amber clearance phase before switching axes.
+    pub is_amber: bool,
+}
+
+/// Street traffic density preset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TrafficDensity {
+    #[default]
+    NocturnalCruise,
+    MidnightRushHour,
 }
 
 /// A high-altitude gothic patrol airship / dirigible drifting above the spires.
@@ -1918,6 +1957,30 @@ pub struct GothicMetropolisState {
     pub camera_pitch: f32,
     /// Fraction of the screen occupied by the city island (`0.60` = three-fifths default).
     pub screen_occupancy: f32,
+    /// Functional wrought-iron intersection traffic signals.
+    #[serde(default)]
+    pub traffic_signals: Vec<TrafficSignal>,
+    /// Current street traffic density preset.
+    #[serde(default)]
+    pub traffic_density: TrafficDensity,
+    /// Remaining seconds of all-green express wave (`> 0.0` forces all signals green).
+    #[serde(default)]
+    pub green_wave_timer: f32,
+    /// Remaining seconds of active high-speed Vigilante Interceptor patrol.
+    #[serde(default)]
+    pub pursuit_timer: f32,
+    /// Countdown in seconds until the next automatic 5-minute Vigilante patrol.
+    #[serde(default)]
+    pub vigilante_cooldown_secs: f32,
+    /// When true, the isometric camera smoothly tracks the active Vigilante or lead cruiser.
+    #[serde(default)]
+    pub follow_car: bool,
+    /// Current smoothed camera look-at target `[x, y, z]`.
+    #[serde(default)]
+    pub camera_target: [f32; 3],
+    /// Current smoothed camera zoom multiplier (`1.0` = overview, `2.35` = street follow).
+    #[serde(default)]
+    pub camera_zoom: f32,
     steam_accum: f32,
 }
 
@@ -1978,8 +2041,8 @@ impl GothicMetropolisState {
             }
         }
 
-        // Spawn 16 gothic vehicles across the 8 connected vehicle routes
-        // (4 continuous highway/canyon loops + 4 subterranean garage-to-garage commuter routes)
+        // Spawn 20 gothic vehicles across the 10 connected vehicle routes
+        // (5 continuous highway/canyon loops + 5 subterranean garage-to-garage commuter routes)
         let mut vehicles = Vec::new();
         let mut veh_id = 1u32;
         let route_count = blueprint.vehicle_routes.len().max(1);
@@ -1991,10 +2054,11 @@ impl GothicMetropolisState {
                 .unwrap_or(true);
             for slot in 0..2 {
                 let dir = if is_closed || slot == 0 { 1.0 } else { -1.0 };
-                let kind = match (route_idx + slot) % 3 {
+                let kind = match (route_idx + slot) % 4 {
                     0 => GothicVehicleKind::NoirCoupe,
                     1 => GothicVehicleKind::ArmoredCruiser,
-                    _ => GothicVehicleKind::TransitOmnibus,
+                    2 => GothicVehicleKind::TransitOmnibus,
+                    _ => GothicVehicleKind::SteamLimousine,
                 };
                 let base_prog = if slot == 0 {
                     0.18 + rng.f32() * 0.22
@@ -2013,10 +2077,52 @@ impl GothicMetropolisState {
                     dir,
                     speed,
                     kind,
+                    current_speed: speed,
+                    is_braking: false,
+                    turn_signal: 0,
+                    afterburner: 0.0,
+                    exhaust_accum: rng.range(0.0, 0.4),
                 });
                 veh_id += 1;
             }
         }
+
+        // Spawn the hero VigilanteInterceptor parked inside Garage 1 (Route 5) ready for patrol
+        let vigilante_route = 5.min(route_count.saturating_sub(1));
+        vehicles.push(GothicVehicle {
+            id: veh_id,
+            avenue_idx: vigilante_route,
+            progress: 0.0,
+            dir: 1.0,
+            speed: 0.085,
+            kind: GothicVehicleKind::VigilanteInterceptor,
+            current_speed: 0.0,
+            is_braking: false,
+            turn_signal: 0,
+            afterburner: 0.0,
+            exhaust_accum: 0.0,
+        });
+
+        // Functional wrought-iron traffic signals at the 6 primary inner-city junctions
+        let signal_coords: [([f32; 2], f32); 6] = [
+            ([-5.2, 0.2], 0.0),
+            ([5.4, 0.2], 6.0),
+            ([-0.4, -5.4], 3.0),
+            ([0.7, 4.6], 9.0),
+            ([-5.2, -5.4], 4.5),
+            ([-5.2, 5.4], 1.5),
+        ];
+        let traffic_signals = signal_coords
+            .iter()
+            .enumerate()
+            .map(|(i, &(pos, phase_offset))| TrafficSignal {
+                id: i as u32 + 1,
+                pos,
+                phase_offset,
+                ns_green: phase_offset < 6.0,
+                is_amber: false,
+            })
+            .collect();
 
         // Spawn 2 gothic patrol airships cruising above the upper spires
         let airships = vec![
@@ -2065,6 +2171,14 @@ impl GothicMetropolisState {
             target_camera_yaw: FRAC_PI_4,
             camera_pitch: 0.54,
             screen_occupancy: 0.675,
+            traffic_signals,
+            traffic_density: TrafficDensity::NocturnalCruise,
+            green_wave_timer: 0.0,
+            pursuit_timer: 0.0,
+            vigilante_cooldown_secs: 300.0,
+            follow_car: false,
+            camera_target: [0.0, 5.20, 0.0],
+            camera_zoom: 1.0,
             steam_accum: 0.0,
         };
 
@@ -2139,34 +2253,381 @@ impl GothicMetropolisState {
             }
         }
 
-        // 3. Advance canyon street & highway vehicles along connected routes and garage tunnels
+        // 3. Update traffic signals, Vigilante 5-minute patrol timer, and street vehicle AI
+        if self.green_wave_timer > 0.0 {
+            self.green_wave_timer = (self.green_wave_timer - dt).max(0.0);
+        }
+        if self.pursuit_timer > 0.0 {
+            self.pursuit_timer = (self.pursuit_timer - dt).max(0.0);
+        } else {
+            self.vigilante_cooldown_secs -= dt;
+            if self.vigilante_cooldown_secs <= 0.0 {
+                self.dispatch_interceptor();
+            }
+        }
+
+        for sig in &mut self.traffic_signals {
+            if self.green_wave_timer > 0.0 {
+                sig.ns_green = true;
+                sig.is_amber = false;
+            } else {
+                let cycle = (self.time + sig.phase_offset).rem_euclid(12.0);
+                sig.ns_green = cycle < 6.0;
+                sig.is_amber = (5.0..6.0).contains(&cycle) || (11.0..12.0).contains(&cycle);
+            }
+        }
+
+        // Pre-sample world poses and slightly-ahead tangents for spacing, signals, and cornering
+        let poses: Vec<_> = self
+            .vehicles
+            .iter()
+            .map(|v| self.blueprint.sample_vehicle_pose(v))
+            .collect();
+        let ahead_tangents: Vec<Option<[f32; 2]>> = self
+            .vehicles
+            .iter()
+            .map(|v| {
+                let mut probe = v.clone();
+                probe.progress = (probe.progress + probe.dir * 0.025).clamp(0.0, 1.0);
+                self.blueprint
+                    .sample_vehicle_pose(&probe)
+                    .map(|(_, fwd, _)| fwd)
+            })
+            .collect();
+
         let route_count = self.blueprint.vehicle_routes.len();
-        for veh in &mut self.vehicles {
+        let veh_count = self.vehicles.len();
+        let mut exhaust_spawns: Vec<([f32; 3], [f32; 2])> = Vec::new();
+
+        for i in 0..veh_count {
             let is_closed = if route_count > 0 {
                 self.blueprint
                     .vehicle_routes
-                    .get(veh.avenue_idx % route_count)
+                    .get(self.vehicles[i].avenue_idx % route_count)
                     .map(|r| r.is_closed_loop)
                     .unwrap_or(true)
             } else {
                 true
             };
 
-            if is_closed {
-                veh.progress = (veh.progress + veh.dir * veh.speed * dt).rem_euclid(1.0);
+            let kind = self.vehicles[i].kind;
+            let base_speed = self.vehicles[i].speed;
+
+            // VigilanteInterceptor rests hidden inside Garage 1 between 5-minute patrols
+            if kind == GothicVehicleKind::VigilanteInterceptor
+                && self.pursuit_timer <= 0.0
+                && !is_closed
+                && self.vehicles[i].progress <= 0.02
+                && self.vehicles[i].dir < 0.0
+            {
+                self.vehicles[i].progress = 0.0;
+                self.vehicles[i].dir = 1.0;
+                self.vehicles[i].current_speed = 0.0;
+                self.vehicles[i].is_braking = false;
+                self.vehicles[i].turn_signal = 0;
+                self.vehicles[i].afterburner = 0.0;
+                continue;
+            }
+
+            let mut target_speed = base_speed;
+            let mut braking = false;
+            let mut turn_sig: i8 = 0;
+
+            if let Some((pos, fwd, is_subterranean)) = poses[i]
+                && !is_subterranean
+            {
+                // Highway speed boost on outer perimeter ring
+                if pos[0].abs() > 9.8 || pos[2].abs() > 9.8 {
+                    target_speed *= 1.35;
+                }
+
+                // Cornering deceleration & turn signal indicator
+                if let Some(ahead_fwd) = ahead_tangents[i] {
+                    let dot = fwd[0] * ahead_fwd[0] + fwd[1] * ahead_fwd[1];
+                    if dot < 0.94 {
+                        target_speed *= 0.62;
+                        if self.vehicles[i].current_speed > target_speed * 1.12 {
+                            braking = true;
+                        }
+                        let cross = fwd[0] * ahead_fwd[1] - fwd[1] * ahead_fwd[0];
+                        turn_sig = if cross > 0.0 { 1 } else { -1 };
+                    }
+                }
+
+                // Active Vigilante pursuit override
+                let is_active_vigilante =
+                    kind == GothicVehicleKind::VigilanteInterceptor && self.pursuit_timer > 0.0;
+                if is_active_vigilante {
+                    target_speed = base_speed * 2.05;
+                }
+
+                // Functional gothic traffic signals (Vigilante blasts through during pursuit)
+                if !is_active_vigilante && self.green_wave_timer <= 0.0 {
+                    let moving_ns = fwd[1].abs() >= fwd[0].abs();
+                    for sig in &self.traffic_signals {
+                        let dx = sig.pos[0] - pos[0];
+                        let dz = sig.pos[1] - pos[2];
+                        let along = dx * fwd[0] + dz * fwd[1];
+                        let perp = (-dx * fwd[1] + dz * fwd[0]).abs();
+                        if (0.38..=1.35).contains(&along) && perp < 0.55 {
+                            let has_green = if moving_ns {
+                                sig.ns_green && !sig.is_amber
+                            } else {
+                                !sig.ns_green && !sig.is_amber
+                            };
+                            if !has_green {
+                                target_speed = 0.0;
+                                braking = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Car-following collision avoidance
+                for (j, other_pose) in poses.iter().enumerate() {
+                    if i == j {
+                        continue;
+                    }
+                    if let Some((opos, _, o_sub)) = other_pose {
+                        if *o_sub {
+                            continue;
+                        }
+                        let dx = opos[0] - pos[0];
+                        let dz = opos[2] - pos[2];
+                        let along = dx * fwd[0] + dz * fwd[1];
+                        let perp = (-dx * fwd[1] + dz * fwd[0]).abs();
+                        if (0.15..=1.28).contains(&along) && perp < 0.34 {
+                            target_speed = 0.0;
+                            braking = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Periodic tailpipe steam puffs for vintage steam/turbine vehicles
+                if matches!(
+                    kind,
+                    GothicVehicleKind::SteamLimousine
+                        | GothicVehicleKind::TransitOmnibus
+                        | GothicVehicleKind::VigilanteInterceptor
+                ) {
+                    self.vehicles[i].exhaust_accum += dt;
+                    let interval = if kind == GothicVehicleKind::VigilanteInterceptor {
+                        0.18
+                    } else {
+                        0.55
+                    };
+                    if self.vehicles[i].exhaust_accum >= interval {
+                        self.vehicles[i].exhaust_accum = 0.0;
+                        exhaust_spawns.push((pos, fwd));
+                    }
+                }
+            }
+
+            let veh = &mut self.vehicles[i];
+            let accel_rate = if braking { 8.5 } else { 4.2 };
+            veh.current_speed += (target_speed - veh.current_speed) * (dt * accel_rate).min(1.0);
+            veh.is_braking = braking && veh.current_speed < base_speed * 0.9;
+            veh.turn_signal = turn_sig;
+
+            if kind == GothicVehicleKind::VigilanteInterceptor {
+                let target_ab = if self.pursuit_timer > 0.0 { 1.0 } else { 0.15 };
+                veh.afterburner += (target_ab - veh.afterburner) * (dt * 5.0).min(1.0);
             } else {
-                veh.progress += veh.dir * veh.speed * dt;
+                veh.afterburner = 0.0;
+            }
+
+            let kind = self.vehicles[i].kind;
+            let base_speed = self.vehicles[i].speed;
+
+            // VigilanteInterceptor rests hidden inside Garage 1 between 5-minute patrols
+            if kind == GothicVehicleKind::VigilanteInterceptor
+                && self.pursuit_timer <= 0.0
+                && !is_closed
+                && self.vehicles[i].progress <= 0.02
+                && self.vehicles[i].dir < 0.0
+            {
+                self.vehicles[i].progress = 0.0;
+                self.vehicles[i].dir = 1.0;
+                self.vehicles[i].current_speed = 0.0;
+                self.vehicles[i].is_braking = false;
+                self.vehicles[i].turn_signal = 0;
+                self.vehicles[i].afterburner = 0.0;
+                continue;
+            }
+
+            let mut target_speed = base_speed;
+            let mut braking = false;
+            let mut turn_sig: i8 = 0;
+
+            if let Some((pos, fwd, is_subterranean)) = poses[i]
+                && !is_subterranean
+            {
+                // Highway speed boost on outer perimeter ring
+                    if pos[0].abs() > 9.8 || pos[2].abs() > 9.8 {
+                        target_speed *= 1.35;
+                    }
+
+                    // Cornering deceleration & turn signal indicator
+                    if let Some(ahead_fwd) = ahead_tangents[i] {
+                        let dot = fwd[0] * ahead_fwd[0] + fwd[1] * ahead_fwd[1];
+                        if dot < 0.94 {
+                            target_speed *= 0.62;
+                            if self.vehicles[i].current_speed > target_speed * 1.12 {
+                                braking = true;
+                            }
+                            let cross = fwd[0] * ahead_fwd[1] - fwd[1] * ahead_fwd[0];
+                            turn_sig = if cross > 0.0 { 1 } else { -1 };
+                        }
+                    }
+
+                    // Active Vigilante pursuit override
+                    let is_active_vigilante =
+                        kind == GothicVehicleKind::VigilanteInterceptor && self.pursuit_timer > 0.0;
+                    if is_active_vigilante {
+                        target_speed = base_speed * 2.05;
+                    }
+
+                    // Functional gothic traffic signals (Vigilante blasts through during pursuit)
+                    if !is_active_vigilante && self.green_wave_timer <= 0.0 {
+                        let moving_ns = fwd[1].abs() >= fwd[0].abs();
+                        for sig in &self.traffic_signals {
+                            let dx = sig.pos[0] - pos[0];
+                            let dz = sig.pos[1] - pos[2];
+                            let along = dx * fwd[0] + dz * fwd[1];
+                            let perp = (-dx * fwd[1] + dz * fwd[0]).abs();
+                            if (0.38..=1.35).contains(&along) && perp < 0.55 {
+                                let has_green = if moving_ns {
+                                    sig.ns_green && !sig.is_amber
+                                } else {
+                                    !sig.ns_green && !sig.is_amber
+                                };
+                                if !has_green {
+                                    target_speed = 0.0;
+                                    braking = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Car-following collision avoidance
+                    for (j, other_pose) in poses.iter().enumerate() {
+                        if i == j {
+                            continue;
+                        }
+                        if let Some((opos, _, o_sub)) = other_pose {
+                            if *o_sub {
+                                continue;
+                            }
+                            let dx = opos[0] - pos[0];
+                            let dz = opos[2] - pos[2];
+                            let along = dx * fwd[0] + dz * fwd[1];
+                            let perp = (-dx * fwd[1] + dz * fwd[0]).abs();
+                            if (0.15..=1.28).contains(&along) && perp < 0.34 {
+                                target_speed = 0.0;
+                                braking = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Periodic tailpipe steam puffs for vintage steam/turbine vehicles
+                    if matches!(
+                        kind,
+                        GothicVehicleKind::SteamLimousine
+                            | GothicVehicleKind::TransitOmnibus
+                            | GothicVehicleKind::VigilanteInterceptor
+                    ) {
+                        self.vehicles[i].exhaust_accum += dt;
+                        let interval = if kind == GothicVehicleKind::VigilanteInterceptor {
+                            0.18
+                        } else {
+                            0.55
+                        };
+                        if self.vehicles[i].exhaust_accum >= interval {
+                            self.vehicles[i].exhaust_accum = 0.0;
+                            exhaust_spawns.push((pos, fwd));
+                        }
+                    }
+            }
+
+            let veh = &mut self.vehicles[i];
+            let accel_rate = if braking { 8.5 } else { 4.2 };
+            veh.current_speed += (target_speed - veh.current_speed) * (dt * accel_rate).min(1.0);
+            veh.is_braking = braking && veh.current_speed < base_speed * 0.9;
+            veh.turn_signal = turn_sig;
+
+            if kind == GothicVehicleKind::VigilanteInterceptor {
+                let target_ab = if self.pursuit_timer > 0.0 { 1.0 } else { 0.15 };
+                veh.afterburner += (target_ab - veh.afterburner) * (dt * 5.0).min(1.0);
+            } else {
+                veh.afterburner = 0.0;
+            }
+
+            if is_closed {
+                veh.progress = (veh.progress + veh.dir * veh.current_speed * dt).rem_euclid(1.0);
+            } else {
+                veh.progress += veh.dir * veh.current_speed * dt;
                 if veh.progress >= 1.0 {
-                    // Reached destination subterranean garage vault inside building; reverse for return trip
                     veh.progress = 1.0;
                     veh.dir = -1.0;
                 } else if veh.progress <= 0.0 {
-                    // Reached origin subterranean garage vault inside building; reverse for outbound trip
                     veh.progress = 0.0;
                     veh.dir = 1.0;
                 }
             }
         }
+
+        for (pos, fwd) in exhaust_spawns {
+            if self.steam_plumes.len() < 78 {
+                self.steam_plumes.push(SteamPlume {
+                    pos: [
+                        pos[0] - fwd[0] * 0.38,
+                        pos[1] + 0.06,
+                        pos[2] - fwd[1] * 0.38,
+                    ],
+                    vx: -fwd[0] * 0.18 + self.rng.range(-0.04, 0.04),
+                    vy: self.rng.range(0.16, 0.28),
+                    vz: -fwd[1] * 0.18 + self.rng.range(-0.04, 0.04),
+                    age: 0.0,
+                    max_age: 0.75,
+                    base_radius: 0.055,
+                });
+            }
+        }
+
+        // Smooth Follow-Car camera tracking
+        let (desired_target, desired_zoom) = if self.follow_car {
+            let tracked = self
+                .vehicles
+                .iter()
+                .find(|v| {
+                    v.kind == GothicVehicleKind::VigilanteInterceptor && self.pursuit_timer > 0.0
+                })
+                .or_else(|| {
+                    self.vehicles
+                        .iter()
+                        .find(|v| v.kind == GothicVehicleKind::ArmoredCruiser)
+                })
+                .or_else(|| self.vehicles.first());
+            if let Some(v) = tracked
+                && let Some((pos, _, is_sub)) = self.blueprint.sample_vehicle_pose(v)
+                && !is_sub
+            {
+                ([pos[0], 0.45, pos[2]], 2.35)
+            } else {
+                ([0.0, 5.20, 0.0], 1.0)
+            }
+        } else {
+            ([0.0, 5.20, 0.0], 1.0)
+        };
+        let cam_blend = (dt * 4.5).min(1.0);
+        for (tgt, desired) in self.camera_target.iter_mut().zip(desired_target) {
+            *tgt += (desired - *tgt) * cam_blend;
+        }
+        self.camera_zoom += (desired_zoom - self.camera_zoom) * cam_blend;
 
         // 4. Advance high-altitude patrol airships
         for ship in &mut self.airships {
@@ -2251,6 +2712,111 @@ impl GothicMetropolisState {
                 t.speed = 3.4;
             }
         }
+    }
+
+    /// Launch the Vigilante Interceptor on a high-speed afterburner patrol across the city.
+    pub fn dispatch_interceptor(&mut self) {
+        self.pursuit_timer = 26.0;
+        self.vigilante_cooldown_secs = 300.0;
+        if let Some(v) = self
+            .vehicles
+            .iter_mut()
+            .find(|v| v.kind == GothicVehicleKind::VigilanteInterceptor)
+        {
+            v.afterburner = 1.0;
+            v.current_speed = v.speed * 2.0;
+            if v.progress <= 0.02 {
+                v.dir = 1.0;
+            }
+        } else {
+            let next_id = self.vehicles.iter().map(|v| v.id).max().unwrap_or(0) + 1;
+            let route = 5.min(self.blueprint.vehicle_routes.len().saturating_sub(1));
+            self.vehicles.push(GothicVehicle {
+                id: next_id,
+                avenue_idx: route,
+                progress: 0.04,
+                dir: 1.0,
+                speed: 0.085,
+                kind: GothicVehicleKind::VigilanteInterceptor,
+                current_speed: 0.17,
+                is_braking: false,
+                turn_signal: 0,
+                afterburner: 1.0,
+                exhaust_accum: 0.0,
+            });
+        }
+    }
+
+    /// Toggle between Nocturnal Cruise and dense Midnight Rush Hour street traffic.
+    pub fn toggle_rush_hour(&mut self) {
+        match self.traffic_density {
+            TrafficDensity::NocturnalCruise => {
+                self.traffic_density = TrafficDensity::MidnightRushHour;
+                let route_count = self.blueprint.vehicle_routes.len().max(1);
+                let base_id = self.vehicles.iter().map(|v| v.id).max().unwrap_or(0) + 1;
+                for route_idx in 0..route_count {
+                    let is_closed = self
+                        .blueprint
+                        .vehicle_routes
+                        .get(route_idx)
+                        .map(|r| r.is_closed_loop)
+                        .unwrap_or(true);
+                    let kind = match route_idx % 4 {
+                        0 => GothicVehicleKind::NoirCoupe,
+                        1 => GothicVehicleKind::ArmoredCruiser,
+                        2 => GothicVehicleKind::TransitOmnibus,
+                        _ => GothicVehicleKind::SteamLimousine,
+                    };
+                    let speed = if is_closed {
+                        self.rng.range(0.028, 0.042)
+                    } else {
+                        self.rng.range(0.050, 0.072)
+                    };
+                    self.vehicles.push(GothicVehicle {
+                        id: base_id + route_idx as u32,
+                        avenue_idx: route_idx,
+                        progress: self.rng.range(0.32, 0.54),
+                        dir: if is_closed || route_idx % 2 == 0 {
+                            1.0
+                        } else {
+                            -1.0
+                        },
+                        speed,
+                        kind,
+                        current_speed: speed,
+                        is_braking: false,
+                        turn_signal: 0,
+                        afterburner: 0.0,
+                        exhaust_accum: 0.0,
+                    });
+                }
+            }
+            TrafficDensity::MidnightRushHour => {
+                self.traffic_density = TrafficDensity::NocturnalCruise;
+                let mut kept = 0usize;
+                self.vehicles.retain(|v| {
+                    if v.kind == GothicVehicleKind::VigilanteInterceptor {
+                        return true;
+                    }
+                    kept += 1;
+                    kept <= 20
+                });
+            }
+        }
+    }
+
+    /// Force all inner-city traffic signals green for 10 seconds so queued cars surge forward.
+    pub fn trigger_green_wave(&mut self) {
+        self.green_wave_timer = 10.0;
+        for sig in &mut self.traffic_signals {
+            sig.ns_green = true;
+            sig.is_amber = false;
+        }
+    }
+
+    /// Toggle smooth Follow-Car camera tracking of the Vigilante Interceptor or lead cruiser.
+    pub fn toggle_follow_car(&mut self) {
+        self.follow_car = !self.follow_car;
     }
 
     /// Summon an additional patrol airship (or boost airship patrol speed and emit steam).
@@ -2548,5 +3114,52 @@ mod tests {
                 arch
             );
         }
+    }
+
+    #[test]
+    fn vigilante_auto_patrol_signals_rush_hour_and_follow_car() {
+        let mut state = GothicMetropolisState::new(42);
+        assert_eq!(state.traffic_signals.len(), 6);
+        assert_eq!(state.traffic_density, TrafficDensity::NocturnalCruise);
+        assert!(!state.follow_car);
+
+        // Rush hour toggles density up and back down
+        let base_count = state.vehicles.len();
+        state.toggle_rush_hour();
+        assert_eq!(state.traffic_density, TrafficDensity::MidnightRushHour);
+        assert!(state.vehicles.len() > base_count);
+        state.toggle_rush_hour();
+        assert_eq!(state.traffic_density, TrafficDensity::NocturnalCruise);
+        assert_eq!(state.vehicles.len(), base_count);
+
+        // Green wave forces all signals green
+        state.trigger_green_wave();
+        assert!(state.green_wave_timer > 9.0);
+        assert!(
+            state
+                .traffic_signals
+                .iter()
+                .all(|s| s.ns_green && !s.is_amber)
+        );
+
+        // Follow car smoothly shifts camera zoom & target
+        state.toggle_follow_car();
+        assert!(state.follow_car);
+        for _ in 0..20 {
+            state.tick(0.1);
+        }
+        assert!(state.camera_zoom > 1.5);
+
+        // Vigilante auto-launches when 5-minute cooldown expires
+        state.pursuit_timer = 0.0;
+        state.vigilante_cooldown_secs = 0.05;
+        state.tick(0.1);
+        assert!(state.pursuit_timer > 20.0);
+        let vigilante = state
+            .vehicles
+            .iter()
+            .find(|v| v.kind == GothicVehicleKind::VigilanteInterceptor)
+            .expect("vigilante vehicle exists");
+        assert!(vigilante.afterburner > 0.5);
     }
 }

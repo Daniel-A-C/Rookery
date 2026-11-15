@@ -743,6 +743,30 @@ impl AppCatalog {
                         tooltip: Some("Dispatch an express elevated train along the viaduct loop".into()),
                     },
                     AppControl::Button {
+                        id: "dispatch_interceptor".into(),
+                        label: "Dispatch Interceptor".into(),
+                        icon: Some("lightning".into()),
+                        tooltip: Some("Launch the turbine Vigilante Interceptor on a high-speed patrol".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_rush_hour".into(),
+                        label: "Rush Hour".into(),
+                        icon: Some("gauge".into()),
+                        tooltip: Some("Toggle between Nocturnal Cruise and Midnight Rush Hour traffic".into()),
+                    },
+                    AppControl::Button {
+                        id: "green_wave".into(),
+                        label: "Green Wave".into(),
+                        icon: Some("arrow-clockwise".into()),
+                        tooltip: Some("Force all gothic intersection signals green for 10 seconds".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_follow_car".into(),
+                        label: "Follow Car".into(),
+                        icon: Some("eye".into()),
+                        tooltip: Some("Track the Vigilante Interceptor or lead cruiser with the camera".into()),
+                    },
+                    AppControl::Button {
                         id: "summon_airship".into(),
                         label: "Summon Airship".into(),
                         icon: Some("rocket".into()),
