@@ -19,8 +19,9 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::gothic::{
-    BuildingArchetype, BuildingPlacement, CityBlueprint, GaragePortal, GothicMetropolisState,
-    GothicPalette, GothicVehicleKind, WalkwaySpan, WalkwayStyle,
+    BuildingArchetype, BuildingPlacement, CityBlockPlot, CityBlueprint, GaragePortal,
+    GothicMetropolisState, GothicPalette, GothicVehicleKind, StreetAvenue, WalkwaySpan,
+    WalkwayStyle,
 };
 use wgpu::util::DeviceExt;
 
@@ -605,7 +606,7 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
         theme.plinth_trim,
         0.0,
     );
-    // Corner bastion turrets on the 4 corners of the expanded floor plate
+    // Corner bastion turrets + mid-wall gothic buttress bastions around the expanded floor plate
     for sx in [-1.0f32, 1.0f32] {
         for sz in [-1.0f32, 1.0f32] {
             mb.push_box(
@@ -626,6 +627,28 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
                 0.10,
                 0.62,
                 theme.accent_trim,
+                0.0,
+            );
+        }
+        for mid in [-4.4f32, 4.4f32] {
+            mb.push_box(
+                mid,
+                -0.12,
+                sx * (ext - 0.18),
+                0.44,
+                0.50,
+                0.44,
+                theme.stone_secondary,
+                0.0,
+            );
+            mb.push_box(
+                sx * (ext - 0.18),
+                -0.12,
+                mid,
+                0.44,
+                0.50,
+                0.44,
+                theme.stone_secondary,
                 0.0,
             );
         }
@@ -685,148 +708,168 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
 }
 
 /// Build raised stone sidewalks, distinct curb borders, flagstone paving courses, and corner bollards
-/// around all 9 city blocks and along the outer perimeter ring highway promenade.
+/// around all city blocks in the blueprint and along the outer perimeter ring highway promenade.
 fn build_sidewalks_and_curbs_mesh(
     mb: &mut MeshBuilder,
     bp: &CityBlueprint,
     theme: &GothicThemeColors,
 ) {
-    // The 3x3 city block intervals bounded by the road grid (-8.2, -2.4, 2.1, 8.2)
-    let block_spans: [(f32, f32); 3] = [(-7.56, -2.95), (-1.85, 1.55), (2.65, 7.56)];
     let sw_h = 0.075f32;
     let curb_h = 0.095f32;
     let curb_w = 0.085f32;
     let walk_band = 0.42f32;
 
-    for &(x0, x1) in &block_spans {
-        for &(z0, z1) in &block_spans {
-            let bw = x1 - x0;
-            let bd = z1 - z0;
-            let cx = (x0 + x1) * 0.5;
-            let cz = (z0 + z1) * 0.5;
+    let fallback_blocks: Vec<CityBlockPlot>;
+    let blocks: &[CityBlockPlot] = if !bp.blocks.is_empty() {
+        &bp.blocks
+    } else {
+        let spans: [(f32, f32); 3] = [(-7.56, -2.95), (-1.85, 1.55), (2.65, 7.56)];
+        let mut v = Vec::with_capacity(9);
+        let mut id = 1;
+        for &(x0, x1) in &spans {
+            for &(z0, z1) in &spans {
+                v.push(CityBlockPlot { id, x0, z0, x1, z1 });
+                id += 1;
+            }
+        }
+        fallback_blocks = v;
+        &fallback_blocks
+    };
 
-            // Main raised block sidewalk & plaza platform
-            mb.push_box(cx, 0.0, cz, bw, sw_h, bd, theme.sidewalk, 0.0);
+    for block in blocks {
+        let (x0, z0, x1, z1) = (block.x0, block.z0, block.x1, block.z1);
+        let bw = x1 - x0;
+        let bd = z1 - z0;
+        let cx = (x0 + x1) * 0.5;
+        let cz = (z0 + z1) * 0.5;
 
-            // Inner slightly recessed dark stone building plinth pad so the surrounding
-            // 0.42m sidewalk walkway reads as a crisp perimeter pedestrian belt!
-            if bw > walk_band * 2.2 && bd > walk_band * 2.2 {
+        // Main raised block sidewalk & plaza platform
+        mb.push_box(cx, 0.0, cz, bw, sw_h, bd, theme.sidewalk, 0.0);
+
+        // Inner slightly recessed dark stone building plinth pad so the surrounding
+        // 0.42m sidewalk walkway reads as a crisp perimeter pedestrian belt!
+        if bw > walk_band * 2.2 && bd > walk_band * 2.2 {
+            mb.push_box(
+                cx,
+                sw_h,
+                cz,
+                bw - walk_band * 2.0,
+                0.015,
+                bd - walk_band * 2.0,
+                theme.stone_dark,
+                0.0,
+            );
+        }
+
+        // Raised stone curbs along the 4 street-facing edges of the city block
+        mb.push_box(
+            cx,
+            0.0,
+            z0 + curb_w * 0.5,
+            bw,
+            curb_h,
+            curb_w,
+            theme.sidewalk_curb,
+            0.0,
+        );
+        mb.push_box(
+            cx,
+            0.0,
+            z1 - curb_w * 0.5,
+            bw,
+            curb_h,
+            curb_w,
+            theme.sidewalk_curb,
+            0.0,
+        );
+        mb.push_box(
+            x0 + curb_w * 0.5,
+            0.0,
+            cz,
+            curb_w,
+            curb_h,
+            bd,
+            theme.sidewalk_curb,
+            0.0,
+        );
+        mb.push_box(
+            x1 - curb_w * 0.5,
+            0.0,
+            cz,
+            curb_w,
+            curb_h,
+            bd,
+            theme.sidewalk_curb,
+            0.0,
+        );
+
+        // Textured flagstone paving slabs along North & South block sidewalks
+        let x_pavers = ((bw - 0.4) / 0.54).floor().max(2.0) as usize;
+        let x_step = (bw - 0.36) / x_pavers as f32;
+        for i in 0..x_pavers {
+            let px = x0 + 0.18 + (i as f32 + 0.5) * x_step;
+            let paver_w = (x_step * 0.76).min(0.42);
+            for pz in [z0 + walk_band * 0.52, z1 - walk_band * 0.52] {
                 mb.push_box(
-                    cx,
+                    px,
                     sw_h,
-                    cz,
-                    bw - walk_band * 2.0,
-                    0.015,
-                    bd - walk_band * 2.0,
-                    theme.stone_dark,
+                    pz,
+                    paver_w,
+                    0.012,
+                    walk_band * 0.68,
+                    theme.sidewalk_paver,
                     0.0,
                 );
             }
+        }
 
-            // Raised stone curbs along the 4 street-facing edges of the city block
-            mb.push_box(
-                cx,
-                0.0,
-                z0 + curb_w * 0.5,
-                bw,
-                curb_h,
-                curb_w,
-                theme.sidewalk_curb,
-                0.0,
-            );
-            mb.push_box(
-                cx,
-                0.0,
-                z1 - curb_w * 0.5,
-                bw,
-                curb_h,
-                curb_w,
-                theme.sidewalk_curb,
-                0.0,
-            );
-            mb.push_box(
-                x0 + curb_w * 0.5,
-                0.0,
-                cz,
-                curb_w,
-                curb_h,
-                bd,
-                theme.sidewalk_curb,
-                0.0,
-            );
-            mb.push_box(
-                x1 - curb_w * 0.5,
-                0.0,
-                cz,
-                curb_w,
-                curb_h,
-                bd,
-                theme.sidewalk_curb,
-                0.0,
-            );
-
-            // Textured flagstone paving slabs along North & South block sidewalks
-            let x_pavers = ((bw - 0.4) / 0.54).floor().max(2.0) as usize;
-            let x_step = (bw - 0.36) / x_pavers as f32;
-            for i in 0..x_pavers {
-                let px = x0 + 0.18 + (i as f32 + 0.5) * x_step;
-                let paver_w = (x_step * 0.76).min(0.42);
-                for pz in [z0 + walk_band * 0.52, z1 - walk_band * 0.52] {
-                    mb.push_box(
-                        px,
-                        sw_h,
-                        pz,
-                        paver_w,
-                        0.012,
-                        walk_band * 0.68,
-                        theme.sidewalk_paver,
-                        0.0,
-                    );
-                }
+        // Textured flagstone paving slabs along West & East block sidewalks
+        let z_pavers = ((bd - 0.4) / 0.54).floor().max(2.0) as usize;
+        let z_step = (bd - 0.36) / z_pavers as f32;
+        for i in 0..z_pavers {
+            let pz = z0 + 0.18 + (i as f32 + 0.5) * z_step;
+            let paver_d = (z_step * 0.76).min(0.42);
+            for px in [x0 + walk_band * 0.52, x1 - walk_band * 0.52] {
+                mb.push_box(
+                    px,
+                    sw_h,
+                    pz,
+                    walk_band * 0.68,
+                    0.012,
+                    paver_d,
+                    theme.sidewalk_paver,
+                    0.0,
+                );
             }
+        }
 
-            // Textured flagstone paving slabs along West & East block sidewalks
-            let z_pavers = ((bd - 0.4) / 0.54).floor().max(2.0) as usize;
-            let z_step = (bd - 0.36) / z_pavers as f32;
-            for i in 0..z_pavers {
-                let pz = z0 + 0.18 + (i as f32 + 0.5) * z_step;
-                let paver_d = (z_step * 0.76).min(0.42);
-                for px in [x0 + walk_band * 0.52, x1 - walk_band * 0.52] {
-                    mb.push_box(
-                        px,
-                        sw_h,
-                        pz,
-                        walk_band * 0.68,
-                        0.012,
-                        paver_d,
-                        theme.sidewalk_paver,
-                        0.0,
-                    );
-                }
-            }
-
-            // Gothic corner curb bollards at all 4 corners of the block
-            for bx in [x0 + 0.14, x1 - 0.14] {
-                for bz in [z0 + 0.14, z1 - 0.14] {
-                    mb.push_box(bx, sw_h, bz, 0.10, 0.16, 0.10, theme.sidewalk_curb, 0.0);
-                    mb.push_box(
-                        bx,
-                        sw_h + 0.16,
-                        bz,
-                        0.12,
-                        0.04,
-                        0.12,
-                        theme.accent_trim,
-                        0.0,
-                    );
-                }
+        // Gothic corner curb bollards at all 4 corners of the block
+        for bx in [x0 + 0.14, x1 - 0.14] {
+            for bz in [z0 + 0.14, z1 - 0.14] {
+                mb.push_box(bx, sw_h, bz, 0.10, 0.16, 0.10, theme.sidewalk_curb, 0.0);
+                mb.push_box(
+                    bx,
+                    sw_h + 0.16,
+                    bz,
+                    0.12,
+                    0.04,
+                    0.12,
+                    theme.accent_trim,
+                    0.0,
+                );
             }
         }
     }
 
-    // Outer Highway Perimeter Sidewalk Promenade (between highway outer edge ±8.84 and parapet wall ±9.56)
+    // Outer Highway Perimeter Sidewalk Promenade (derived from outer highway position & plinth extent)
     let ext = bp.plinth_half_extent;
-    let hwy_outer = 8.84f32;
+    let hwy_outer = bp
+        .avenues
+        .iter()
+        .filter(|a| a.is_highway)
+        .map(|a| a.start[0].abs().max(a.start[1].abs()) + a.width * 0.5)
+        .fold(0.0f32, f32::max)
+        .max(ext - 0.96);
     let prom_outer = (ext - 0.24).max(hwy_outer + 0.35);
     let prom_w = prom_outer - hwy_outer;
     let prom_mid = (hwy_outer + prom_outer) * 0.5;
@@ -878,7 +921,7 @@ fn build_sidewalks_and_curbs_mesh(
         );
 
         // Flagstone pavers & highway light standards along outer promenade
-        let steps = 22usize;
+        let steps = 28usize;
         for i in 0..steps {
             let coord = -hwy_outer + (i as f32 + 0.5) * ((hwy_outer * 2.0) / steps as f32);
             mb.push_box(
@@ -951,6 +994,20 @@ fn build_sidewalks_and_curbs_mesh(
     }
 }
 
+/// Shortest 2D distance from point `(px, pz)` to avenue segment `ave`.
+fn point_to_avenue_dist(px: f32, pz: f32, ave: &StreetAvenue) -> f32 {
+    let vx = ave.end[0] - ave.start[0];
+    let vz = ave.end[1] - ave.start[1];
+    let len_sq = vx * vx + vz * vz;
+    if len_sq < 1e-4 {
+        return ((px - ave.start[0]).powi(2) + (pz - ave.start[1]).powi(2)).sqrt();
+    }
+    let t = (((px - ave.start[0]) * vx + (pz - ave.start[1]) * vz) / len_sq).clamp(0.0, 1.0);
+    let qx = ave.start[0] + vx * t;
+    let qz = ave.start[1] + vz * t;
+    ((px - qx).powi(2) + (pz - qz).powi(2)).sqrt()
+}
+
 /// Build the connected canyon avenues, the 4-sided outer perimeter ring highway,
 /// highway median dividers, intersection crosswalks, and canyon streetlamps.
 fn build_roads_and_highway_mesh(
@@ -958,9 +1015,7 @@ fn build_roads_and_highway_mesh(
     bp: &CityBlueprint,
     theme: &GothicThemeColors,
 ) {
-    let road_nodes = [-8.2f32, -2.4, 2.1, 8.2];
-
-    for ave in &bp.avenues {
+    for (ave_idx, ave) in bp.avenues.iter().enumerate() {
         let dx = ave.end[0] - ave.start[0];
         let dz = ave.end[1] - ave.start[1];
         let len = (dx * dx + dz * dz).sqrt().max(0.1);
@@ -968,13 +1023,9 @@ fn build_roads_and_highway_mesh(
         let cz = (ave.start[1] + ave.end[1]) * 0.5;
         let fwd = [dx / len, dz / len];
 
-        // Extend highway segments slightly at endpoints so the 4 outer corners at (±8.2, ±8.2)
-        // form a seamless continuous perimeter ring highway!
-        let ext_len = if ave.is_highway {
-            len + ave.width
-        } else {
-            len + 0.35
-        };
+        // Extend segments by `ave.width` so all T-junctions, dogleg corners, and outer highway
+        // corners overlap cleanly with zero asphalt gaps!
+        let ext_len = len + ave.width;
 
         // Dark wet-look asphalt roadbed
         mb.push_oriented_box(
@@ -988,16 +1039,18 @@ fn build_roads_and_highway_mesh(
         );
 
         // Centerline dashed lane markings & highway median reflector studs
-        let dash_steps = (len / 0.85).floor().max(4.0) as usize;
+        let dash_steps = (len / 0.85).floor().max(3.0) as usize;
         for i in 0..dash_steps {
             let t = (i as f32 + 0.5) / dash_steps as f32;
             let mx = ave.start[0] + dx * t;
             let mz = ave.start[1] + dz * t;
 
-            // Skip road intersections so junctions stay clean
-            let near_x_node = road_nodes.iter().any(|&nx| (mx - nx).abs() < 0.78);
-            let near_z_node = road_nodes.iter().any(|&nz| (mz - nz).abs() < 0.78);
-            if near_x_node && near_z_node {
+            // Skip road intersections & T-junctions against all other avenue segments
+            let near_junction = bp.avenues.iter().enumerate().any(|(other_idx, other)| {
+                other_idx != ave_idx
+                    && point_to_avenue_dist(mx, mz, other) < other.width * 0.5 + 0.28
+            });
+            if near_junction {
                 continue;
             }
             // Also skip garage turnoff points
@@ -1046,20 +1099,33 @@ fn build_roads_and_highway_mesh(
 
         // Place miniature gothic streetlamps along both sides of inner canyon avenues
         if !ave.is_highway {
-            let steps = 9usize;
+            let steps = (len / 1.9).round().clamp(3.0, 9.0) as usize;
             for i in 0..=steps {
                 let t = i as f32 / steps as f32;
                 let lx = ave.start[0] + dx * t;
                 let lz = ave.start[1] + dz * t;
-                // Skip street intersections
-                if road_nodes.iter().any(|&nx| (lx - nx).abs() < 0.85)
-                    && road_nodes.iter().any(|&nz| (lz - nz).abs() < 0.85)
-                {
+                // Skip street intersections & T-junctions
+                let near_junction = bp.avenues.iter().enumerate().any(|(other_idx, other)| {
+                    other_idx != ave_idx
+                        && point_to_avenue_dist(lx, lz, other) < other.width * 0.5 + 0.35
+                });
+                if near_junction {
                     continue;
                 }
                 for side in [-1.0f32, 1.0f32] {
                     let px = lx + (-fwd[1]) * (ave.width * 0.5 + 0.16) * side;
                     let pz = lz + (fwd[0]) * (ave.width * 0.5 + 0.16) * side;
+                    // Ensure the streetlamp sits on a raised city block sidewalk
+                    let on_block_sidewalk = bp.blocks.is_empty()
+                        || bp.blocks.iter().any(|b| {
+                            px >= b.x0 + 0.06
+                                && px <= b.x1 - 0.06
+                                && pz >= b.z0 + 0.06
+                                && pz <= b.z1 - 0.06
+                        });
+                    if !on_block_sidewalk {
+                        continue;
+                    }
                     // Skip if a garage driveway apron occupies this sidewalk spot
                     let blocks_garage = bp.garages.iter().any(|g| {
                         (px - g.portal_pos[0]).abs() < 0.75 && (pz - g.portal_pos[1]).abs() < 0.75
@@ -1074,25 +1140,35 @@ fn build_roads_and_highway_mesh(
         }
     }
 
-    // Stone crosswalk stripes at the 4 central canyon avenue intersections
-    for &ix in &[-2.4f32, 2.1f32] {
-        for &iz in &[-2.4f32, 2.1f32] {
-            for offset in [-0.66f32, 0.66f32] {
-                for stripe in [-0.30f32, -0.10, 0.10, 0.30] {
+    // Stone crosswalk stripes at key staggered interior plaza junctions
+    let crosswalk_junctions: [([f32; 2], bool); 8] = [
+        ([-5.2, 0.2], true),
+        ([-0.4, 0.2], false),
+        ([0.7, 0.2], false),
+        ([5.4, 0.2], true),
+        ([-5.2, -5.4], false),
+        ([-0.4, -4.3], false),
+        ([0.7, 4.6], false),
+        ([-5.2, 5.4], false),
+    ];
+    for &(jpos, both_axes) in &crosswalk_junctions {
+        for offset in [-0.64f32, 0.64f32] {
+            for stripe in [-0.30f32, -0.10, 0.10, 0.30] {
+                mb.push_box(
+                    jpos[0] + stripe,
+                    0.025,
+                    jpos[1] + offset,
+                    0.09,
+                    0.008,
+                    0.22,
+                    theme.sidewalk_paver,
+                    0.0,
+                );
+                if both_axes {
                     mb.push_box(
-                        ix + stripe,
+                        jpos[0] + offset,
                         0.025,
-                        iz + offset,
-                        0.09,
-                        0.008,
-                        0.22,
-                        theme.sidewalk_paver,
-                        0.0,
-                    );
-                    mb.push_box(
-                        ix + offset,
-                        0.025,
-                        iz + stripe,
+                        jpos[1] + stripe,
                         0.22,
                         0.008,
                         0.09,
@@ -1227,6 +1303,74 @@ fn build_garage_portal_mesh(
     }
 }
 
+/// Per-building masonry, trim, and roof color palette derived deterministically from
+/// the active [`GothicThemeColors`] and the building's `id` / `style_variant`.
+#[derive(Clone, Copy)]
+struct BuildingMaterial {
+    stone_main: [f32; 4],
+    stone_alt: [f32; 4],
+    stone_base: [f32; 4],
+    trim: [f32; 4],
+    roof: [f32; 4],
+}
+
+fn mix_color(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    let u = t.clamp(0.0, 1.0);
+    [
+        a[0] + (b[0] - a[0]) * u,
+        a[1] + (b[1] - a[1]) * u,
+        a[2] + (b[2] - a[2]) * u,
+        a[3],
+    ]
+}
+
+fn scale_color(c: [f32; 4], s: f32) -> [f32; 4] {
+    [
+        (c[0] * s).clamp(0.0, 1.0),
+        (c[1] * s).clamp(0.0, 1.0),
+        (c[2] * s).clamp(0.0, 1.0),
+        c[3],
+    ]
+}
+
+fn building_material(b: &BuildingPlacement, theme: &GothicThemeColors) -> BuildingMaterial {
+    let finish = (b.id as u8).wrapping_add(b.style_variant.wrapping_mul(3)) % 4;
+    match finish {
+        // 0: Obsidian Basalt — deep charcoal stone with high-contrast brass/amber trim
+        0 => BuildingMaterial {
+            stone_main: scale_color(theme.stone_primary, 0.84),
+            stone_alt: theme.stone_secondary,
+            stone_base: scale_color(theme.stone_dark, 0.86),
+            trim: scale_color(theme.accent_trim, 1.14),
+            roof: mix_color(theme.copper_roof, theme.stone_dark, 0.28),
+        },
+        // 1: Weathered Gargoyle Limestone — lighter ash-stone with crisp dark mullions & verdigris roof
+        1 => BuildingMaterial {
+            stone_main: scale_color(theme.stone_secondary, 1.12),
+            stone_alt: theme.stone_primary,
+            stone_base: theme.stone_dark,
+            trim: mix_color(theme.accent_trim, theme.sidewalk_curb, 0.35),
+            roof: scale_color(theme.copper_roof, 1.18),
+        },
+        // 2: Bronzed Art-Deco Slate — warm bronze-infused masonry with gilded deco ledges
+        2 => BuildingMaterial {
+            stone_main: mix_color(theme.stone_primary, theme.accent_trim, 0.24),
+            stone_alt: mix_color(theme.stone_secondary, theme.accent_trim, 0.32),
+            stone_base: mix_color(theme.stone_dark, theme.accent_trim, 0.16),
+            trim: mix_color(theme.accent_trim, theme.window_warm, 0.20),
+            roof: mix_color(theme.copper_roof, theme.accent_trim, 0.35),
+        },
+        // 3: Soot-Stained Foundry Ironstone — gunmetal slate with oxidized copper upper works
+        _ => BuildingMaterial {
+            stone_main: mix_color(theme.stone_primary, theme.steel_viaduct, 0.45),
+            stone_alt: scale_color(theme.stone_secondary, 0.94),
+            stone_base: scale_color(theme.plinth_dark, 1.12),
+            trim: theme.accent_trim,
+            roof: scale_color(theme.copper_roof, 1.08),
+        },
+    }
+}
+
 /// Emit recessed gothic window strips along all 4 sides of a tower section.
 #[allow(clippy::too_many_arguments)]
 fn push_gothic_window_bands(
@@ -1248,7 +1392,7 @@ fn push_gothic_window_bands(
     let pad_x = w * 0.16;
     let pad_z = d * 0.16;
     let usable_w = (w - pad_x * 2.0).max(0.2);
-    let usable_d = (d - pad_z * 2.0).max(0.2);
+    let usable_d = (d - pad_z * 0.2 * 2.0 - pad_z * 1.6).max(0.2);
     let usable_h = (h * 0.78).max(0.3);
     let start_y = y0 + h * 0.11;
 
@@ -1286,6 +1430,258 @@ fn push_gothic_window_bands(
             mb.push_box(cx + w * 0.502, wy, wz, 0.03, win_h, win_d, win_color, 0.9);
             mb.push_box(cx - w * 0.502, wy, wz, 0.03, win_h, win_d, win_color, 0.9);
         }
+    }
+}
+
+/// Emit continuous multi-story Art-Deco vertical window channels with dark spandrel dividers
+/// and projecting vertical stone mullions (inspired by 1990s Batman / Anton Furst skyscrapers).
+#[allow(clippy::too_many_arguments)]
+fn push_vertical_deco_light_strips(
+    mb: &mut MeshBuilder,
+    cx: f32,
+    y0: f32,
+    cz: f32,
+    w: f32,
+    h: f32,
+    d: f32,
+    strips: usize,
+    seed_variant: u8,
+    mat: &BuildingMaterial,
+    theme: &GothicThemeColors,
+) {
+    if h < 0.8 || strips == 0 {
+        return;
+    }
+    let usable_w = (w * 0.68).max(0.24);
+    let usable_d = (d * 0.68).max(0.24);
+    let strip_h = (h * 0.82).max(0.4);
+    let sy = y0 + h * 0.09;
+    let step_w = usable_w / strips as f32;
+    let step_d = usable_d / strips as f32;
+    let chan_w = (step_w * 0.38).clamp(0.06, 0.16);
+    let chan_d = (step_d * 0.38).clamp(0.06, 0.16);
+
+    for i in 0..strips {
+        let hash = (i as u32)
+            .wrapping_mul(29)
+            .wrapping_add((seed_variant as u32).wrapping_mul(19));
+        let col = if hash.is_multiple_of(3) {
+            theme.window_dim
+        } else {
+            theme.window_warm
+        };
+
+        let wx = (cx - usable_w * 0.5) + (i as f32 + 0.5) * step_w;
+        let wz = (cz - usable_d * 0.5) + (i as f32 + 0.5) * step_d;
+
+        // Vertical glowing light channel on all 4 faces
+        mb.push_box(wx, sy, cz + d * 0.503, chan_w, strip_h, 0.03, col, 0.95);
+        mb.push_box(wx, sy, cz - d * 0.503, chan_w, strip_h, 0.03, col, 0.95);
+        mb.push_box(cx + w * 0.503, sy, wz, 0.03, strip_h, chan_d, col, 0.95);
+        mb.push_box(cx - w * 0.503, sy, wz, 0.03, strip_h, chan_d, col, 0.95);
+
+        // Flanking vertical Art-Deco stone flute rib next to each light channel
+        let rib_off_x = step_w * 0.44;
+        let rib_off_z = step_d * 0.44;
+        mb.push_box(
+            wx + rib_off_x,
+            y0,
+            cz + d * 0.508,
+            0.06,
+            h - 0.10,
+            0.05,
+            mat.stone_alt,
+            0.0,
+        );
+        mb.push_box(
+            wx - rib_off_x,
+            y0,
+            cz - d * 0.508,
+            0.06,
+            h - 0.10,
+            0.05,
+            mat.stone_alt,
+            0.0,
+        );
+        mb.push_box(
+            cx + w * 0.508,
+            y0,
+            wz + rib_off_z,
+            0.05,
+            h - 0.10,
+            0.06,
+            mat.stone_alt,
+            0.0,
+        );
+        mb.push_box(
+            cx - w * 0.508,
+            y0,
+            wz - rib_off_z,
+            0.05,
+            h - 0.10,
+            0.06,
+            mat.stone_alt,
+            0.0,
+        );
+    }
+
+    // Horizontal dark bronze spandrel bars interrupting the vertical light strips every ~1.1m
+    let spandrels = (strip_h / 1.05).floor().max(1.0) as usize;
+    for s in 1..spandrels {
+        let by = sy + (s as f32 / spandrels as f32) * strip_h;
+        mb.push_box(
+            cx,
+            by,
+            cz,
+            w + 0.05,
+            0.07,
+            d + 0.05,
+            mat.stone_base,
+            0.0,
+        );
+    }
+}
+
+/// Emit tall double-height pointed-arch gothic lancet windows with glowing tracery heads.
+#[allow(clippy::too_many_arguments)]
+fn push_gothic_lancet_windows(
+    mb: &mut MeshBuilder,
+    cx: f32,
+    y0: f32,
+    cz: f32,
+    w: f32,
+    h: f32,
+    d: f32,
+    cols: usize,
+    tiers: usize,
+    seed_variant: u8,
+    theme: &GothicThemeColors,
+) {
+    if h < 0.8 || cols == 0 || tiers == 0 {
+        return;
+    }
+    let usable_w = (w * 0.68).max(0.24);
+    let usable_d = (d * 0.68).max(0.24);
+    let usable_h = (h * 0.80).max(0.4);
+    let start_y = y0 + h * 0.10;
+    let step_w = usable_w / cols as f32;
+    let step_d = usable_d / cols as f32;
+    let tier_h = usable_h / tiers as f32;
+    let win_w = (step_w * 0.44).clamp(0.08, 0.22);
+    let win_d = (step_d * 0.44).clamp(0.08, 0.22);
+    let body_h = (tier_h * 0.60).clamp(0.18, 0.75);
+    let arch_h = (tier_h * 0.18).clamp(0.06, 0.22);
+
+    for t in 0..tiers {
+        let wy = start_y + (t as f32 + 0.10) * tier_h;
+        for c in 0..cols {
+            let hash = (c as u32)
+                .wrapping_mul(41)
+                .wrapping_add((t as u32).wrapping_mul(23))
+                .wrapping_add((seed_variant as u32).wrapping_mul(11));
+            let col = if hash.is_multiple_of(3) {
+                theme.window_dim
+            } else {
+                theme.window_warm
+            };
+
+            let wx = (cx - usable_w * 0.5) + (c as f32 + 0.5) * step_w;
+            let wz = (cz - usable_d * 0.5) + (c as f32 + 0.5) * step_d;
+
+            // Main lancet shaft + narrower pointed arch head on +Z / -Z
+            mb.push_box(wx, wy, cz + d * 0.503, win_w, body_h, 0.03, col, 0.95);
+            mb.push_box(
+                wx,
+                wy + body_h,
+                cz + d * 0.503,
+                win_w * 0.56,
+                arch_h,
+                0.03,
+                theme.window_warm,
+                1.0,
+            );
+            mb.push_box(wx, wy, cz - d * 0.503, win_w, body_h, 0.03, col, 0.95);
+            mb.push_box(
+                wx,
+                wy + body_h,
+                cz - d * 0.503,
+                win_w * 0.56,
+                arch_h,
+                0.03,
+                theme.window_warm,
+                1.0,
+            );
+
+            // Main lancet shaft + narrower pointed arch head on +X / -X
+            mb.push_box(cx + w * 0.503, wy, wz, 0.03, body_h, win_d, col, 0.95);
+            mb.push_box(
+                cx + w * 0.503,
+                wy + body_h,
+                wz,
+                0.03,
+                arch_h,
+                win_d * 0.56,
+                theme.window_warm,
+                1.0,
+            );
+            mb.push_box(cx - w * 0.503, wy, wz, 0.03, body_h, win_d, col, 0.95);
+            mb.push_box(
+                cx - w * 0.503,
+                wy + body_h,
+                wz,
+                0.03,
+                arch_h,
+                win_d * 0.56,
+                theme.window_warm,
+                1.0,
+            );
+        }
+    }
+}
+
+/// Emit a grand illuminated street-level gothic entrance colonnade / vaulted narthex at the base of a tower.
+fn push_street_lobby_colonnade(
+    mb: &mut MeshBuilder,
+    cx: f32,
+    cz: f32,
+    w: f32,
+    d: f32,
+    mat: &BuildingMaterial,
+    theme: &GothicThemeColors,
+) {
+    if w < 1.3 || d < 1.3 {
+        return;
+    }
+    let lobby_h = 0.68f32;
+    let portal_w = (w * 0.36).clamp(0.32, 0.72);
+    let portal_d = (d * 0.36).clamp(0.32, 0.72);
+
+    // Street-level projecting stone plinth belt
+    mb.push_box(cx, 0.0, cz, w + 0.10, 0.14, d + 0.10, mat.stone_base, 0.0);
+    mb.push_box(cx, lobby_h, cz, w + 0.14, 0.08, d + 0.14, mat.trim, 0.0);
+
+    // Warm recessed entrance lobby portals on all 4 street facades
+    for sign in [-1.0f32, 1.0f32] {
+        mb.push_box(
+            cx,
+            0.08,
+            cz + sign * (d * 0.504),
+            portal_w,
+            lobby_h - 0.12,
+            0.04,
+            theme.window_warm,
+            0.95,
+        );
+        mb.push_box(
+            cx + sign * (w * 0.504),
+            0.08,
+            cz,
+            0.04,
+            lobby_h - 0.12,
+            portal_d,
+            theme.window_warm,
+            0.95,
+        );
     }
 }
 
@@ -1336,12 +1732,14 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
     let w = b.width;
     let d = b.depth;
     let h = b.height;
+    let mat = building_material(b, theme);
 
     match b.archetype {
         BuildingArchetype::CathedralKeep => {
-            // 1. Heavy buttressed podium base
+            // 1. Heavy buttressed podium base + grand street narthex colonnade
             let h_base = h * 0.34;
-            mb.push_box(cx, 0.0, cz, w, h_base, d, theme.stone_dark, 0.0);
+            mb.push_box(cx, 0.0, cz, w, h_base, d, mat.stone_base, 0.0);
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
             push_gothic_ribs_and_cornice(
                 mb,
                 cx,
@@ -1350,24 +1748,24 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w,
                 h_base,
                 d,
-                theme.stone_secondary,
-                theme.accent_trim,
+                mat.stone_alt,
+                mat.trim,
             );
-            push_gothic_window_bands(
+            push_gothic_lancet_windows(
                 mb,
                 cx,
-                0.2,
+                0.75,
                 cz,
                 w,
-                h_base - 0.3,
+                h_base - 0.9,
                 d,
-                4,
                 3,
+                2,
                 b.style_variant,
                 theme,
             );
 
-            // 2. Flying buttress fins flanking the mid nave
+            // 2. Flying buttress fins flanking the soaring mid nave
             let h_nave = h * 0.42;
             let nave_w = w * 0.72;
             let nave_d = d * 0.72;
@@ -1378,10 +1776,10 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 nave_w,
                 h_nave,
                 nave_d,
-                theme.stone_primary,
+                mat.stone_main,
                 0.0,
             );
-            push_gothic_window_bands(
+            push_gothic_ribs_and_cornice(
                 mb,
                 cx,
                 h_base,
@@ -1389,44 +1787,81 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 nave_w,
                 h_nave,
                 nave_d,
+                mat.stone_alt,
+                mat.trim,
+            );
+            push_gothic_lancet_windows(
+                mb,
+                cx,
+                h_base + 0.15,
+                cz,
+                nave_w,
+                h_nave - 0.3,
+                nave_d,
                 3,
-                5,
+                3,
                 b.style_variant + 1,
                 theme,
             );
 
+            let rotated = !b.quarter_turns.is_multiple_of(2);
             for side in [-1.0f32, 1.0f32] {
                 for offset in [-0.55f32, 0.55f32] {
-                    // Outer buttress pier + sloped flying arch strut
+                    let (px, pz, sx_pier, sz_pier, sx_strut, sz_strut, ax_x, ax_z) = if !rotated {
+                        (
+                            cx + side * (w * 0.46),
+                            cz + offset * d * 0.38,
+                            0.20,
+                            0.24,
+                            cx + side * (w * 0.38),
+                            cz + offset * d * 0.38,
+                            w * 0.22,
+                            0.16,
+                        )
+                    } else {
+                        (
+                            cx + offset * w * 0.38,
+                            cz + side * (d * 0.46),
+                            0.24,
+                            0.20,
+                            cx + offset * w * 0.38,
+                            cz + side * (d * 0.38),
+                            0.16,
+                            d * 0.22,
+                        )
+                    };
+                    // Outer buttress pier + double-tier flying arch struts
                     mb.push_box(
-                        cx + side * (w * 0.46),
+                        px,
                         h_base,
-                        cz + offset * d * 0.38,
-                        0.18,
-                        h_nave * 0.72,
-                        0.22,
-                        theme.stone_secondary,
+                        pz,
+                        sx_pier,
+                        h_nave * 0.78,
+                        sz_pier,
+                        mat.stone_alt,
                         0.0,
                     );
-                    mb.push_box(
-                        cx + side * (w * 0.38),
-                        h_base + h_nave * 0.55,
-                        cz + offset * d * 0.38,
-                        w * 0.22,
-                        0.14,
-                        0.16,
-                        theme.accent_trim,
-                        0.0,
-                    );
+                    for arch_frac in [0.36f32, 0.66f32] {
+                        mb.push_box(
+                            sx_strut,
+                            h_base + h_nave * arch_frac,
+                            sz_strut,
+                            ax_x,
+                            0.14,
+                            ax_z,
+                            mat.trim,
+                            0.0,
+                        );
+                    }
                     // Pinnacle tip on outer pier
                     mb.push_pyramid(
-                        cx + side * (w * 0.46),
-                        h_base + h_nave * 0.72,
-                        cz + offset * d * 0.38,
-                        0.22,
-                        0.55,
-                        0.22,
-                        theme.copper_roof,
+                        px,
+                        h_base + h_nave * 0.78,
+                        pz,
+                        0.24,
+                        0.68,
+                        0.24,
+                        mat.roof,
                         0.0,
                     );
                 }
@@ -1435,53 +1870,92 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
             // 3. Twin Gothic Belfry Towers + Rose Window Facade
             let y_top = h_base + h_nave;
             let tower_h = h * 0.24;
-            let tw = nave_w * 0.36;
-            for sx in [-1.0f32, 1.0f32] {
-                let tx = cx + sx * (nave_w * 0.34);
+            for s in [-1.0f32, 1.0f32] {
+                let (tx, tz, tw_x, tw_z) = if !rotated {
+                    (cx + s * (nave_w * 0.34), cz, nave_w * 0.36, nave_d * 0.82)
+                } else {
+                    (cx, cz + s * (nave_d * 0.34), nave_w * 0.82, nave_d * 0.36)
+                };
                 mb.push_box(
                     tx,
                     y_top,
-                    cz,
-                    tw,
+                    tz,
+                    tw_x,
                     tower_h,
-                    nave_d * 0.82,
-                    theme.stone_secondary,
+                    tw_z,
+                    mat.stone_alt,
                     0.0,
+                );
+                push_gothic_lancet_windows(
+                    mb,
+                    tx,
+                    y_top + 0.1,
+                    tz,
+                    tw_x,
+                    tower_h - 0.2,
+                    tw_z,
+                    1,
+                    2,
+                    b.style_variant + 2,
+                    theme,
                 );
                 mb.push_pyramid(
                     tx,
                     y_top + tower_h,
-                    cz,
-                    tw * 1.08,
+                    tz,
+                    tw_x * 1.08,
                     h * 0.22,
-                    nave_d * 0.86,
-                    theme.copper_roof,
+                    tw_z * 1.08,
+                    mat.roof,
                     0.0,
                 );
             }
 
             // Glowing Rose Window on front & back of nave
-            let rose_y = h_base + h_nave * 0.58;
-            mb.push_box(
-                cx,
-                rose_y,
-                cz + nave_d * 0.51,
-                0.48,
-                0.48,
-                0.04,
-                theme.window_warm,
-                1.0,
-            );
-            mb.push_box(
-                cx,
-                rose_y,
-                cz - nave_d * 0.51,
-                0.48,
-                0.48,
-                0.04,
-                theme.window_warm,
-                1.0,
-            );
+            let rose_y = h_base + h_nave * 0.62;
+            if !rotated {
+                mb.push_box(
+                    cx,
+                    rose_y,
+                    cz + nave_d * 0.51,
+                    0.56,
+                    0.56,
+                    0.04,
+                    theme.window_warm,
+                    1.0,
+                );
+                mb.push_box(
+                    cx,
+                    rose_y,
+                    cz - nave_d * 0.51,
+                    0.56,
+                    0.56,
+                    0.04,
+                    theme.window_warm,
+                    1.0,
+                );
+            } else {
+                mb.push_box(
+                    cx + nave_w * 0.51,
+                    rose_y,
+                    cz,
+                    0.04,
+                    0.56,
+                    0.56,
+                    theme.window_warm,
+                    1.0,
+                );
+                mb.push_box(
+                    cx - nave_w * 0.51,
+                    rose_y,
+                    cz,
+                    0.04,
+                    0.56,
+                    0.56,
+                    theme.window_warm,
+                    1.0,
+                );
+            }
 
             // 4. Soaring Central Needle Spire + Red Warning Beacon
             let spire_base = y_top;
@@ -1490,10 +1964,10 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 cx,
                 spire_base,
                 cz,
-                nave_w * 0.38,
+                nave_w * 0.40,
                 spire_h,
-                nave_d * 0.38,
-                theme.copper_roof,
+                nave_d * 0.40,
+                mat.roof,
                 0.0,
             );
             mb.push_box(
@@ -1501,7 +1975,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 spire_base + spire_h,
                 cz,
                 0.12,
-                0.14,
+                0.15,
                 0.12,
                 theme.beacon_red,
                 1.0,
@@ -1509,11 +1983,12 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
         }
 
         BuildingArchetype::ArtDecoZiggurat => {
-            // 4-tier stepped Furst/Art-Deco skyscraper with dramatic vertical ribs and gargoyle ledges
+            // 4-tier stepped Furst/Art-Deco skyscraper with vertical light strips, setback floodlights, and eagle ledges
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
             let tiers = [
                 (0.0, 0.42, 1.00, 4, 4),
-                (0.42, 0.28, 0.78, 3, 3),
-                (0.70, 0.18, 0.56, 2, 2),
+                (0.42, 0.28, 0.78, 3, 4),
+                (0.70, 0.18, 0.56, 2, 3),
                 (0.88, 0.12, 0.36, 1, 2),
             ];
             for (idx, &(y_frac, h_frac, scale, cols, rows)) in tiers.iter().enumerate() {
@@ -1522,9 +1997,9 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 let tw = w * scale;
                 let td = d * scale;
                 let col = if idx % 2 == 0 {
-                    theme.stone_primary
+                    mat.stone_main
                 } else {
-                    theme.stone_secondary
+                    mat.stone_alt
                 };
                 mb.push_box(cx, ty, cz, tw, th, td, col, 0.0);
                 push_gothic_ribs_and_cornice(
@@ -1535,25 +2010,55 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                     tw,
                     th,
                     td,
-                    theme.stone_secondary,
-                    theme.accent_trim,
+                    mat.stone_base,
+                    mat.trim,
                 );
-                push_gothic_window_bands(
-                    mb,
-                    cx,
-                    ty,
-                    cz,
-                    tw,
-                    th,
-                    td,
-                    cols,
-                    rows,
-                    b.style_variant.wrapping_add(idx as u8),
-                    theme,
-                );
+                if idx == 1 || idx == 2 {
+                    push_vertical_deco_light_strips(
+                        mb,
+                        cx,
+                        ty,
+                        cz,
+                        tw,
+                        th,
+                        td,
+                        cols,
+                        b.style_variant.wrapping_add(idx as u8),
+                        &mat,
+                        theme,
+                    );
+                } else {
+                    push_gothic_window_bands(
+                        mb,
+                        cx,
+                        ty,
+                        cz,
+                        tw,
+                        th,
+                        td,
+                        cols,
+                        rows,
+                        b.style_variant.wrapping_add(idx as u8),
+                        theme,
+                    );
+                }
 
-                // Jutting gargoyle/eagle ledges on the 4 corners of tiers 1 and 2
-                if idx == 0 || idx == 1 {
+                // Upward-glowing Art-Deco setback terrace floodlight collar at each step
+                if idx > 0 {
+                    mb.push_box(
+                        cx,
+                        ty + 0.02,
+                        cz,
+                        tw + 0.12,
+                        0.08,
+                        td + 0.12,
+                        theme.window_warm,
+                        0.9,
+                    );
+                }
+
+                // Jutting gargoyle/eagle ledges on the 4 corners of tiers 0, 1, and 2
+                if idx <= 2 {
                     let gy = ty + th - 0.08;
                     for sx in [-1.0f32, 1.0f32] {
                         for sz in [-1.0f32, 1.0f32] {
@@ -1561,10 +2066,10 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                                 cx + sx * (tw * 0.56),
                                 gy,
                                 cz + sz * (td * 0.56),
-                                0.24,
-                                0.10,
-                                0.24,
-                                theme.accent_trim,
+                                0.28,
+                                0.12,
+                                0.28,
+                                mat.trim,
                                 0.0,
                             );
                         }
@@ -1572,21 +2077,31 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 }
             }
             // Crown needle spire + glowing lantern
-            mb.push_box(cx, h, cz, w * 0.20, 0.28, d * 0.20, theme.window_warm, 1.0);
+            mb.push_box(cx, h, cz, w * 0.24, 0.36, d * 0.24, theme.window_warm, 1.0);
             mb.push_pyramid(
                 cx,
-                h + 0.28,
+                h + 0.36,
                 cz,
-                w * 0.24,
+                w * 0.28,
                 h * 0.22,
-                d * 0.24,
-                theme.copper_roof,
+                d * 0.28,
+                mat.roof,
                 0.0,
+            );
+            mb.push_box(
+                cx,
+                h + 0.36 + h * 0.22,
+                cz,
+                0.11,
+                0.14,
+                0.11,
+                theme.beacon_red,
+                1.0,
             );
         }
 
         BuildingArchetype::ClockworkBelfry => {
-            // Slender campanile shaft
+            // Slender campanile shaft with vertical deco lancet channels
             let shaft_h = h * 0.74;
             mb.push_box(
                 cx,
@@ -1595,9 +2110,10 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.86,
                 shaft_h,
                 d * 0.86,
-                theme.stone_primary,
+                mat.stone_main,
                 0.0,
             );
+            push_street_lobby_colonnade(mb, cx, cz, w * 0.86, d * 0.86, &mat, theme);
             push_gothic_ribs_and_cornice(
                 mb,
                 cx,
@@ -1606,19 +2122,19 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.86,
                 shaft_h,
                 d * 0.86,
-                theme.stone_dark,
-                theme.accent_trim,
+                mat.stone_base,
+                mat.trim,
             );
-            push_gothic_window_bands(
+            push_gothic_lancet_windows(
                 mb,
                 cx,
-                0.3,
+                0.7,
                 cz,
                 w * 0.86,
-                shaft_h - 0.5,
+                shaft_h - 0.9,
                 d * 0.86,
                 2,
-                6,
+                4,
                 b.style_variant,
                 theme,
             );
@@ -1627,7 +2143,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
             let clock_h = h * 0.18;
             let cw = w * 0.96;
             let cd = d * 0.96;
-            mb.push_box(cx, shaft_h, cz, cw, clock_h, cd, theme.stone_secondary, 0.0);
+            mb.push_box(cx, shaft_h, cz, cw, clock_h, cd, mat.stone_alt, 0.0);
             mb.push_box(
                 cx,
                 shaft_h + clock_h - 0.10,
@@ -1635,7 +2151,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 cw + 0.20,
                 0.12,
                 cd + 0.20,
-                theme.accent_trim,
+                mat.trim,
                 0.0,
             );
 
@@ -1661,7 +2177,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.06,
                 face_size * 0.42,
                 0.04,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
             mb.push_box(
@@ -1671,7 +2187,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 face_size * 0.34,
                 0.06,
                 0.04,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
 
@@ -1692,7 +2208,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.06,
                 face_size * 0.42,
                 0.04,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
             mb.push_box(
@@ -1702,7 +2218,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 face_size * 0.34,
                 0.06,
                 0.04,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
 
@@ -1724,7 +2240,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.04,
                 face_size * 0.42,
                 0.06,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
             mb.push_box(
@@ -1734,7 +2250,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.04,
                 0.06,
                 face_size * 0.34,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
 
@@ -1755,7 +2271,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.04,
                 face_size * 0.42,
                 0.06,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
             mb.push_box(
@@ -1765,7 +2281,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 0.04,
                 0.06,
                 face_size * 0.34,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
 
@@ -1776,19 +2292,19 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 roof_y,
                 cz,
                 cw * 0.90,
-                h * 0.34,
+                h * 0.32,
                 cd * 0.90,
-                theme.copper_roof,
+                mat.roof,
                 0.0,
             );
             mb.push_pyramid(
                 cx,
-                roof_y + h * 0.30,
+                roof_y + h * 0.28,
                 cz,
                 cw * 0.18,
-                h * 0.18,
+                h * 0.16,
                 cd * 0.18,
-                theme.accent_trim,
+                mat.trim,
                 0.0,
             );
             for sx in [-1.0f32, 1.0f32] {
@@ -1798,9 +2314,9 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                         roof_y,
                         cz + sz * (cd * 0.42),
                         0.20,
-                        0.48,
+                        0.52,
                         0.20,
-                        theme.accent_trim,
+                        mat.trim,
                         0.0,
                     );
                 }
@@ -1819,7 +2335,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.90,
                 d * 0.90,
                 base_h,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
             push_gothic_window_bands(
@@ -1845,7 +2361,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.72,
                 hall_h,
                 d * 0.72,
-                theme.stone_primary,
+                mat.stone_main,
                 0.0,
             );
             mb.push_box(
@@ -1892,11 +2408,12 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
         }
 
         BuildingArchetype::SyndicateTower => {
-            // Brutalist-gothic corporate citadel with cantilevered skybridge portals
+            // Brutalist-gothic corporate citadel with style_variant crown differentiation
             let h1 = h * 0.58;
             let h2 = h * 0.30;
             let h3 = h * 0.12;
-            mb.push_box(cx, 0.0, cz, w, h1, d, theme.stone_primary, 0.0);
+            mb.push_box(cx, 0.0, cz, w, h1, d, mat.stone_main, 0.0);
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
             push_gothic_ribs_and_cornice(
                 mb,
                 cx,
@@ -1905,20 +2422,20 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w,
                 h1,
                 d,
-                theme.stone_dark,
-                theme.accent_trim,
+                mat.stone_base,
+                mat.trim,
             );
-            push_gothic_window_bands(
+            push_vertical_deco_light_strips(
                 mb,
                 cx,
-                0.2,
+                0.75,
                 cz,
                 w,
-                h1 - 0.3,
+                h1 - 0.90,
                 d,
-                4,
-                5,
+                3,
                 b.style_variant,
+                &mat,
                 theme,
             );
 
@@ -1929,7 +2446,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.82,
                 h2,
                 d * 0.82,
-                theme.stone_secondary,
+                mat.stone_alt,
                 0.0,
             );
             push_gothic_ribs_and_cornice(
@@ -1940,8 +2457,8 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.82,
                 h2,
                 d * 0.82,
-                theme.stone_dark,
-                theme.accent_trim,
+                mat.stone_base,
+                mat.trim,
             );
             push_gothic_window_bands(
                 mb,
@@ -1964,19 +2481,69 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.56,
                 h3,
                 d * 0.56,
-                theme.stone_dark,
+                mat.stone_base,
                 0.0,
             );
-            mb.push_pyramid(
-                cx,
-                h,
-                cz,
-                w * 0.52,
-                h * 0.16,
-                d * 0.52,
-                theme.copper_roof,
-                0.0,
-            );
+
+            if b.style_variant.is_multiple_of(2) {
+                // Variant A: Brutalist twin-turret corporate crown + tall radio spire
+                for s in [-1.0f32, 1.0f32] {
+                    mb.push_box(
+                        cx + s * (w * 0.16),
+                        h,
+                        cz,
+                        w * 0.20,
+                        h * 0.12,
+                        d * 0.42,
+                        mat.stone_alt,
+                        0.0,
+                    );
+                    mb.push_pyramid(
+                        cx + s * (w * 0.16),
+                        h + h * 0.12,
+                        cz,
+                        w * 0.22,
+                        h * 0.14,
+                        d * 0.44,
+                        mat.roof,
+                        0.0,
+                    );
+                }
+            } else {
+                // Variant B: Steep chateau mansard frustum roof + glowing attic lantern
+                mb.push_frustum(
+                    cx,
+                    h,
+                    cz,
+                    w * 0.58,
+                    d * 0.58,
+                    w * 0.26,
+                    d * 0.26,
+                    h * 0.16,
+                    mat.roof,
+                    0.0,
+                );
+                mb.push_box(
+                    cx,
+                    h + h * 0.16,
+                    cz,
+                    w * 0.28,
+                    0.12,
+                    d * 0.28,
+                    theme.window_warm,
+                    1.0,
+                );
+                mb.push_pyramid(
+                    cx,
+                    h + h * 0.16 + 0.12,
+                    cz,
+                    w * 0.26,
+                    h * 0.12,
+                    d * 0.26,
+                    mat.trim,
+                    0.0,
+                );
+            }
         }
 
         BuildingArchetype::ViaductStation => {
@@ -1986,7 +2553,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
             let pier_w = w * 0.28;
             let portal_top_y = 3.85;
             // Lower solid station base below track level (0.0 .. 2.55)
-            mb.push_box(cx, 0.0, cz, w, 2.55, d, theme.stone_dark, 0.0);
+            mb.push_box(cx, 0.0, cz, w, 2.55, d, mat.stone_base, 0.0);
             push_gothic_window_bands(mb, cx, 0.2, cz, w, 2.2, d, 3, 2, b.style_variant, theme);
 
             // Left & Right vaulted train shed walls (y = 2.55 .. 3.85) leaving center open for the train!
@@ -1999,7 +2566,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                     pier_w,
                     portal_top_y - 2.55,
                     d,
-                    theme.stone_secondary,
+                    mat.stone_alt,
                     0.0,
                 );
             }
@@ -2036,7 +2603,7 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.92,
                 upper_h * 0.65,
                 d * 0.86,
-                theme.stone_primary,
+                mat.stone_main,
                 0.0,
             );
             push_gothic_ribs_and_cornice(
@@ -2047,16 +2614,16 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
                 w * 0.92,
                 upper_h * 0.65,
                 d * 0.86,
-                theme.stone_secondary,
-                theme.accent_trim,
+                mat.stone_alt,
+                mat.trim,
             );
-            push_gothic_window_bands(
+            push_gothic_lancet_windows(
                 mb,
                 cx,
-                portal_top_y,
+                portal_top_y + 0.15,
                 cz,
                 w * 0.92,
-                upper_h * 0.65,
+                upper_h * 0.65 - 0.3,
                 d * 0.86,
                 3,
                 2,
@@ -2065,15 +2632,727 @@ fn build_archetype_mesh(mb: &mut MeshBuilder, b: &BuildingPlacement, theme: &Got
             );
 
             let top_y = portal_top_y + upper_h * 0.65;
-            mb.push_pyramid(
+            mb.push_box(
                 cx,
                 top_y,
                 cz,
-                w * 0.68,
-                upper_h * 0.55,
-                d * 0.68,
-                theme.copper_roof,
+                w * 0.56,
+                upper_h * 0.35,
+                d * 0.56,
+                mat.stone_alt,
                 0.0,
+            );
+            mb.push_pyramid(
+                cx,
+                 h,
+                cz,
+                w * 0.60,
+                upper_h * 0.42,
+                d * 0.60,
+                mat.roof,
+                0.0,
+            );
+        }
+
+        BuildingArchetype::OctagonalCitadel => {
+            // Eight-sided Gothic Rotunda Keep built from overlapping 0° and 45° rotated drums,
+            // breaking up the strict 90-degree rectangular silhouette of standard city blocks!
+            let diag = [
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ];
+            let r_base = w.min(d) * 0.86;
+            let h1 = h * 0.38;
+            let h2 = h * 0.34;
+            let h3 = h * 0.28;
+
+            // Tier 1: Heavy Octagonal Bastion Podium + 45° Diagonal Buttress Fins
+            mb.push_box(cx, 0.0, cz, r_base, h1, r_base, mat.stone_base, 0.0);
+            mb.push_oriented_box(
+                [cx, 0.0, cz],
+                diag,
+                r_base,
+                h1 - 0.04,
+                r_base,
+                mat.stone_main,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                h1 - 0.10,
+                cz,
+                r_base + 0.18,
+                0.12,
+                r_base + 0.18,
+                mat.trim,
+                0.0,
+            );
+            mb.push_oriented_box(
+                [cx, h1 - 0.10, cz],
+                diag,
+                r_base + 0.18,
+                0.12,
+                r_base + 0.18,
+                mat.trim,
+                0.0,
+            );
+            push_gothic_window_bands(
+                mb,
+                cx,
+                0.22,
+                cz,
+                r_base,
+                h1 - 0.35,
+                r_base,
+                3,
+                3,
+                b.style_variant,
+                theme,
+            );
+
+            // Tier 2: Stepped Octagonal Rotunda Drum + Radial Flying Buttresses
+            let r_mid = r_base * 0.74;
+            mb.push_box(cx, h1, cz, r_mid, h2, r_mid, mat.stone_main, 0.0);
+            mb.push_oriented_box(
+                [cx, h1, cz],
+                diag,
+                r_mid,
+                h2 - 0.03,
+                r_mid,
+                mat.stone_alt,
+                0.0,
+            );
+            push_gothic_window_bands(
+                mb,
+                cx,
+                h1 + 0.15,
+                cz,
+                r_mid,
+                h2 - 0.30,
+                r_mid,
+                2,
+                3,
+                b.style_variant + 1,
+                theme,
+            );
+            // 45-degree diagonal buttress ribs & corner turrets on the setback terrace
+            for sign_u in [-1.0f32, 1.0f32] {
+                for sign_v in [-1.0f32, 1.0f32] {
+                    let bx = cx + sign_u * (r_base * 0.42);
+                    let bz = cz + sign_v * (r_base * 0.42);
+                    mb.push_oriented_box(
+                        [bx, h1, bz],
+                        diag,
+                        0.24,
+                        h2 * 0.65,
+                        0.24,
+                        mat.stone_alt,
+                        0.0,
+                    );
+                    mb.push_pyramid(
+                        bx,
+                        h1 + h2 * 0.65,
+                        bz,
+                        0.26,
+                        0.45,
+                        0.26,
+                        mat.roof,
+                        0.0,
+                    );
+                }
+            }
+
+            // Tier 3: Upper Octagonal Lantern Keep & Pointed Spire
+            let y2 = h1 + h2;
+            let r_top = r_base * 0.50;
+            mb.push_box(cx, y2, cz, r_top, h3, r_top, mat.stone_alt, 0.0);
+            mb.push_oriented_box(
+                [cx, y2, cz],
+                diag,
+                r_top,
+                h3 - 0.02,
+                r_top,
+                mat.stone_main,
+                0.0,
+            );
+            // Glowing clerestory lantern band around all 8 faces
+            mb.push_box(
+                cx,
+                y2 + h3 * 0.45,
+                cz,
+                r_top + 0.04,
+                0.20,
+                r_top + 0.04,
+                theme.window_warm,
+                1.0,
+            );
+            mb.push_oriented_box(
+                [cx, y2 + h3 * 0.45, cz],
+                diag,
+                r_top + 0.04,
+                0.20,
+                r_top + 0.04,
+                theme.window_warm,
+                1.0,
+            );
+            // Octagonal spire crown + ruby beacon
+            mb.push_pyramid(
+                cx,
+                h,
+                cz,
+                r_top * 1.04,
+                h * 0.28,
+                r_top * 1.04,
+                mat.roof,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                h + h * 0.28,
+                cz,
+                0.11,
+                0.12,
+                0.11,
+                theme.beacon_red,
+                1.0,
+            );
+        }
+
+        BuildingArchetype::GothicMonumentPlaza => {
+            // Open Old-World Gothic Civic Piazza with a stepped octagonal monument dais,
+            // central obelisk spire, glowing corner colonnade pavilions, and warm braziers.
+            // Leaves dramatic open sightlines across the middle of the 4x4 city!
+            let diag = [
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ];
+
+            // 1. Stepped Octagonal Courtyard Dais in the center of the piazza
+            let dais_w = w.min(d) * 0.76;
+            mb.push_box(
+                cx,
+                0.08,
+                cz,
+                dais_w,
+                0.14,
+                dais_w,
+                mat.stone_alt,
+                0.0,
+            );
+            mb.push_oriented_box(
+                [cx, 0.08, cz],
+                diag,
+                dais_w,
+                0.13,
+                dais_w,
+                mat.stone_main,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                0.22,
+                cz,
+                dais_w * 0.64,
+                0.18,
+                dais_w * 0.64,
+                mat.trim,
+                0.0,
+            );
+            mb.push_oriented_box(
+                [cx, 0.22, cz],
+                diag,
+                dais_w * 0.64,
+                0.17,
+                dais_w * 0.64,
+                mat.trim,
+                0.0,
+            );
+
+            // 2. Illuminated Fountain Basin / Sanctuary Pedestal
+            let ped_w = dais_w * 0.38;
+            mb.push_box(cx, 0.40, cz, ped_w, 0.55, ped_w, mat.stone_base, 0.0);
+            mb.push_box(
+                cx,
+                0.56,
+                cz,
+                ped_w + 0.08,
+                0.14,
+                ped_w + 0.08,
+                theme.window_warm,
+                0.95,
+            );
+
+            // 3. Soaring Gothic Obelisk Needle in the center of the Piazza
+            let obelisk_h = (h - 0.95).max(2.2);
+            mb.push_frustum(
+                cx,
+                0.95,
+                cz,
+                ped_w * 0.58,
+                ped_w * 0.58,
+                ped_w * 0.24,
+                ped_w * 0.24,
+                obelisk_h * 0.72,
+                mat.stone_alt,
+                0.0,
+            );
+            let pyramidion_y = 0.95 + obelisk_h * 0.72;
+            mb.push_pyramid(
+                cx,
+                pyramidion_y,
+                cz,
+                ped_w * 0.30,
+                obelisk_h * 0.28,
+                ped_w * 0.30,
+                mat.roof,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                0.95 + obelisk_h,
+                cz,
+                0.12,
+                0.12,
+                0.12,
+                theme.window_warm,
+                1.0,
+            );
+
+            // 4. Four Corner Gothic Colonnade Pavilions & Glowing Braziers framing the square
+            let pav_w = (w.min(d) * 0.22).clamp(0.28, 0.52);
+            let pav_h = (h * 0.34).clamp(1.1, 1.65);
+            for sx in [-1.0f32, 1.0f32] {
+                for sz in [-1.0f32, 1.0f32] {
+                    let px = cx + sx * (w * 0.5 - pav_w * 0.55);
+                    let pz = cz + sz * (d * 0.5 - pav_w * 0.55);
+                    mb.push_box(px, 0.08, pz, pav_w, pav_h, pav_w, mat.stone_main, 0.0);
+                    mb.push_box(
+                        px,
+                        0.08 + pav_h * 0.58,
+                        pz,
+                        pav_w + 0.04,
+                        0.16,
+                        pav_w + 0.04,
+                        theme.window_warm,
+                        1.0,
+                    );
+                    mb.push_pyramid(
+                        px,
+                        0.08 + pav_h,
+                        pz,
+                        pav_w * 1.12,
+                        0.48,
+                        pav_w * 1.12,
+                        mat.roof,
+                        0.0,
+                    );
+                }
+            }
+        }
+
+        BuildingArchetype::AtlasDecoTower => {
+            // Soaring slender Art-Deco supertall monolith with continuous vertical light strips,
+            // cantilevered titan/gargoyle shoulder buttresses, and a Chrysler/Furst sunburst spire!
+            let h0 = h * 0.34;
+            let h1 = h * 0.34;
+            let h2 = h * 0.20;
+            let h3 = h * 0.12;
+
+            // Tier 0: Grand Podium Base (0.0 .. h * 0.34, scale = 1.00)
+            mb.push_box(cx, 0.0, cz, w, h0, d, mat.stone_base, 0.0);
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
+            push_gothic_ribs_and_cornice(mb, cx, 0.0, cz, w, h0, d, mat.stone_alt, mat.trim);
+            push_vertical_deco_light_strips(
+                mb,
+                cx,
+                0.78,
+                cz,
+                w,
+                h0 - 0.92,
+                d,
+                4,
+                b.style_variant,
+                &mat,
+                theme,
+            );
+
+            // Tier 1: Soaring Fluted Deco Shaft (h * 0.34 .. h * 0.68, scale = 0.82)
+            let y1 = h0;
+            let w1 = w * 0.82;
+            let d1 = d * 0.82;
+            mb.push_box(cx, y1, cz, w1, h1, d1, mat.stone_main, 0.0);
+            push_gothic_ribs_and_cornice(mb, cx, y1, cz, w1, h1, d1, mat.stone_alt, mat.trim);
+            push_vertical_deco_light_strips(
+                mb,
+                cx,
+                y1 + 0.12,
+                cz,
+                w1,
+                h1 - 0.28,
+                d1,
+                3,
+                b.style_variant + 1,
+                &mat,
+                theme,
+            );
+
+            // Tier 2: Cantilevered Shoulder Lantern Tier (h * 0.68 .. h * 0.88, scale = 0.64)
+            let y2 = h0 + h1;
+            let w2 = w * 0.64;
+            let d2 = d * 0.64;
+            mb.push_box(cx, y2, cz, w2, h2, d2, mat.stone_alt, 0.0);
+            push_gothic_ribs_and_cornice(mb, cx, y2, cz, w2, h2, d2, mat.stone_base, mat.trim);
+            push_vertical_deco_light_strips(
+                mb,
+                cx,
+                y2 + 0.10,
+                cz,
+                w2,
+                h2 - 0.24,
+                d2,
+                2,
+                b.style_variant + 2,
+                &mat,
+                theme,
+            );
+
+            // 4 Cantilevered Titan/Gargoyle Shoulder Buttresses on the 4 cardinal faces at y2
+            for sign in [-1.0f32, 1.0f32] {
+                mb.push_frustum(
+                    cx + sign * (w1 * 0.44),
+                    y2,
+                    cz,
+                    0.34,
+                    d2 * 0.42,
+                    0.18,
+                    d2 * 0.26,
+                    h2 * 0.82,
+                    mat.trim,
+                    0.0,
+                );
+                mb.push_frustum(
+                    cx,
+                    y2,
+                    cz + sign * (d1 * 0.44),
+                    w2 * 0.42,
+                    0.34,
+                    w2 * 0.26,
+                    0.18,
+                    h2 * 0.82,
+                    mat.trim,
+                    0.0,
+                );
+            }
+
+            // Tier 3: Sunburst Crown Observatory (h * 0.88 .. h, scale = 0.44)
+            let y3 = y2 + h2;
+            let w3 = w * 0.44;
+            let d3 = d * 0.44;
+            mb.push_box(cx, y3, cz, w3, h3, d3, mat.stone_main, 0.0);
+            mb.push_box(
+                cx,
+                y3 + h3 * 0.35,
+                cz,
+                w3 + 0.06,
+                h3 * 0.38,
+                d3 + 0.06,
+                theme.window_warm,
+                1.0,
+            );
+            // Sunburst Art-Deco Spire + Ruby Beacon
+            mb.push_pyramid(cx, h, cz, w3 * 1.12, h * 0.24, d3 * 1.12, mat.roof, 0.0);
+            mb.push_pyramid(
+                cx,
+                h + h * 0.18,
+                cz,
+                w3 * 0.32,
+                h * 0.14,
+                d3 * 0.32,
+                mat.trim,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                h + h * 0.32,
+                cz,
+                0.12,
+                0.14,
+                0.12,
+                theme.beacon_red,
+                1.0,
+            );
+        }
+
+        BuildingArchetype::ChanceryArcadeKeep => {
+            // Twin-Spire Gothic Chancery Citadel with an integral high-altitude vaulted sky-arch
+            // bridge joining its asymmetric twin towers!
+            let h0 = h * 0.38;
+            let h1 = h * 0.28;
+            let h2 = h * 0.34;
+
+            // Tier 0: Heavy Vaulted Chancery Hall (0.0 .. h * 0.38, scale = 1.00)
+            mb.push_box(cx, 0.0, cz, w, h0, d, mat.stone_base, 0.0);
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
+            push_gothic_ribs_and_cornice(mb, cx, 0.0, cz, w, h0, d, mat.stone_alt, mat.trim);
+            push_gothic_lancet_windows(
+                mb,
+                cx,
+                0.76,
+                cz,
+                w,
+                h0 - 0.90,
+                d,
+                3,
+                2,
+                b.style_variant,
+                theme,
+            );
+
+            // Tier 1: Stepped Mid-Keep Envelope (h * 0.38 .. h * 0.66, scale = 0.86)
+            let y1 = h0;
+            let w1 = w * 0.86;
+            let d1 = d * 0.86;
+            mb.push_box(cx, y1, cz, w1, h1, d1, mat.stone_main, 0.0);
+            push_gothic_ribs_and_cornice(mb, cx, y1, cz, w1, h1, d1, mat.stone_alt, mat.trim);
+            push_gothic_lancet_windows(
+                mb,
+                cx,
+                y1 + 0.12,
+                cz,
+                w1,
+                h1 - 0.26,
+                d1,
+                3,
+                2,
+                b.style_variant + 1,
+                theme,
+            );
+
+            // Tier 2: Twin Asymmetric Gothic Towers (h * 0.66 .. h, outer envelope scale = 0.76)
+            // joined near the top by an integral vaulted stone Sky-Arch Bridge!
+            let y2 = h0 + h1;
+            let w2 = w * 0.76;
+            let d2 = d * 0.76;
+            let rotated = !b.quarter_turns.is_multiple_of(2);
+
+            for (idx, side) in [-1.0f32, 1.0f32].iter().enumerate() {
+                // Slight height asymmetry between the twin spires for organic gothic drama
+                let spire_scale = if idx == 0 { 1.06 } else { 0.92 };
+                let tw_h = h2 * spire_scale;
+                let (tx, tz, tw_x, tw_z) = if !rotated {
+                    (cx + side * (w2 * 0.31), cz, w2 * 0.38, d2)
+                } else {
+                    (cx, cz + side * (d2 * 0.31), w2, d2 * 0.38)
+                };
+                mb.push_box(tx, y2, tz, tw_x, tw_h, tw_z, mat.stone_alt, 0.0);
+                push_gothic_ribs_and_cornice(
+                    mb,
+                    tx,
+                    y2,
+                    tz,
+                    tw_x,
+                    tw_h,
+                    tw_z,
+                    mat.stone_base,
+                    mat.trim,
+                );
+                push_gothic_lancet_windows(
+                    mb,
+                    tx,
+                    y2 + 0.12,
+                    tz,
+                    tw_x,
+                    tw_h - 0.26,
+                    tw_z,
+                    1,
+                    2,
+                    b.style_variant + idx as u8,
+                    theme,
+                );
+                // Steep copper gable/pyramid spire on each twin tower
+                mb.push_pyramid(
+                    tx,
+                    y2 + tw_h,
+                    tz,
+                    tw_x * 1.10,
+                    h * 0.20 * spire_scale,
+                    tw_z * 1.10,
+                    mat.roof,
+                    0.0,
+                );
+            }
+
+            // Integral High-Altitude Sky-Arch Bridge spanning between the twin towers
+            let arch_y = y2 + h2 * 0.56;
+            let (arch_w, arch_d) = if !rotated {
+                (w2 * 0.52, d2 * 0.44)
+            } else {
+                (w2 * 0.44, d2 * 0.52)
+            };
+            mb.push_box(cx, arch_y, cz, arch_w, 0.38, arch_d, mat.trim, 0.0);
+            mb.push_box(
+                cx,
+                arch_y + 0.10,
+                cz,
+                arch_w + 0.04,
+                0.16,
+                arch_d + 0.04,
+                theme.window_warm,
+                1.0,
+            );
+            mb.push_pyramid(cx, arch_y + 0.38, cz, 0.26, 0.55, 0.26, mat.roof, 0.0);
+        }
+
+        BuildingArchetype::AlchemicalObservatory => {
+            // Stepped Gothic-Industrial Bastion crowned by an 8-sided ribbed verdigris copper
+            // observatory dome, glowing astronomical aperture, and corner lightning-coil pinnacles!
+            let diag = [
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ];
+            let h0 = h * 0.44;
+            let h1 = h * 0.32;
+            let h2 = h * 0.24;
+
+            // Tier 0: Buttressed Laboratory Citadel (0.0 .. h * 0.44, scale = 1.00)
+            mb.push_box(cx, 0.0, cz, w, h0, d, mat.stone_base, 0.0);
+            push_street_lobby_colonnade(mb, cx, cz, w, d, &mat, theme);
+            push_gothic_ribs_and_cornice(mb, cx, 0.0, cz, w, h0, d, mat.stone_alt, mat.trim);
+            push_gothic_lancet_windows(
+                mb,
+                cx,
+                0.76,
+                cz,
+                w,
+                h0 - 0.90,
+                d,
+                3,
+                2,
+                b.style_variant,
+                theme,
+            );
+
+            // Tier 1: Stepped Octagonal Instrument Drum (h * 0.44 .. h * 0.76, scale = 0.80)
+            let y1 = h0;
+            let w1 = w * 0.80;
+            let d1 = d * 0.80;
+            let r1 = w1.min(d1);
+            mb.push_box(cx, y1, cz, w1, h1, d1, mat.stone_main, 0.0);
+            mb.push_oriented_box([cx, y1, cz], diag, r1, h1 - 0.04, r1, mat.stone_alt, 0.0);
+            push_gothic_window_bands(
+                mb,
+                cx,
+                y1 + 0.14,
+                cz,
+                w1,
+                h1 - 0.28,
+                d1,
+                2,
+                2,
+                b.style_variant + 2,
+                theme,
+            );
+
+            // 4 Corner Tesla / Lightning-Coil Pinnacles on the Tier 1 terrace
+            for sx in [-1.0f32, 1.0f32] {
+                for sz in [-1.0f32, 1.0f32] {
+                    let px = cx + sx * (w * 0.42);
+                    let pz = cz + sz * (d * 0.42);
+                    mb.push_box(px, y1, pz, 0.20, h1 * 0.55, 0.20, mat.stone_alt, 0.0);
+                    mb.push_box(
+                        px,
+                        y1 + h1 * 0.55,
+                        pz,
+                        0.16,
+                        0.12,
+                        0.16,
+                        theme.window_dim,
+                        0.95,
+                    );
+                    mb.push_pyramid(
+                        px,
+                        y1 + h1 * 0.55 + 0.12,
+                        pz,
+                        0.14,
+                        0.48,
+                        0.14,
+                        mat.trim,
+                        0.0,
+                    );
+                }
+            }
+
+            // Tier 2: 8-Sided Ribbed Copper Observatory Dome (h * 0.76 .. h, scale = 0.62)
+            let y2 = h0 + h1;
+            let r2 = w.min(d) * 0.62;
+            // Lower dome drum + glowing clerestory ring
+            mb.push_box(cx, y2, cz, r2, h2 * 0.42, r2, mat.stone_alt, 0.0);
+            mb.push_oriented_box(
+                [cx, y2, cz],
+                diag,
+                r2,
+                h2 * 0.40,
+                r2,
+                mat.stone_main,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                y2 + h2 * 0.18,
+                cz,
+                r2 + 0.05,
+                0.14,
+                r2 + 0.05,
+                theme.window_warm,
+                1.0,
+            );
+
+            // Stepped octagonal copper dome hemisphere + meridian ribs
+            let dome_y = y2 + h2 * 0.42;
+            let dome_h = h2 * 0.78;
+            mb.push_frustum(
+                cx,
+                dome_y,
+                cz,
+                r2 * 0.98,
+                r2 * 0.98,
+                r2 * 0.62,
+                r2 * 0.62,
+                dome_h * 0.58,
+                mat.roof,
+                0.0,
+            );
+            mb.push_pyramid(
+                cx,
+                dome_y + dome_h * 0.58,
+                cz,
+                r2 * 0.64,
+                dome_h * 0.55,
+                r2 * 0.64,
+                mat.roof,
+                0.0,
+            );
+
+            // Glowing Astronomical Telescope Shutter Slit & Projecting Cupola
+            mb.push_box(
+                cx,
+                dome_y + dome_h * 0.12,
+                cz + r2 * 0.42,
+                r2 * 0.28,
+                dome_h * 0.52,
+                0.26,
+                mat.trim,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                dome_y + dome_h * 0.16,
+                cz + r2 * 0.56,
+                r2 * 0.18,
+                dome_h * 0.40,
+                0.06,
+                theme.window_warm,
+                1.0,
             );
         }
     }
@@ -2089,27 +3368,41 @@ fn build_walkway_mesh(mb: &mut MeshBuilder, span: &WalkwaySpan, theme: &GothicTh
     let right = [-fwd[1], fwd[0]];
     let y = span.elevation;
 
-    // 1. Bridge deck slab
+    // Penetrate 0.28m deep inside both connected building walls so neither orthogonal
+    // nor oblique skybridges ever show a gap against stepped facades!
+    let embed = 0.28f32;
+    let deck_len = len + embed * 2.0;
+
+    // 1. Bridge deck slab + lower molded stone soffit beam
     mb.push_oriented_box(
-        [cx, y - 0.10, cz],
+        [cx, y - 0.11, cz],
         fwd,
-        len + 0.16,
-        0.10,
+        deck_len,
+        0.11,
         span.width,
         theme.stone_secondary,
         0.0,
     );
+    mb.push_oriented_box(
+        [cx, y - 0.17, cz],
+        fwd,
+        deck_len,
+        0.06,
+        span.width * 0.78,
+        theme.stone_dark,
+        0.0,
+    );
 
-    // 2. Left and right gothic parapet railings
-    let rail_w = 0.05;
-    let rail_h = 0.14;
+    // 2. Left and right gothic parapet railings + warm walkway balustrade lamps
+    let rail_w = 0.055;
+    let rail_h = 0.15;
     for side in [-1.0f32, 1.0f32] {
         let rx = cx + right[0] * (span.width * 0.5 - rail_w * 0.5) * side;
         let rz = cz + right[1] * (span.width * 0.5 - rail_w * 0.5) * side;
         mb.push_oriented_box(
             [rx, y, rz],
             fwd,
-            len + 0.12,
+            deck_len - 0.04,
             rail_h,
             rail_w,
             theme.accent_trim,
@@ -2117,64 +3410,207 @@ fn build_walkway_mesh(mb: &mut MeshBuilder, span: &WalkwaySpan, theme: &GothicTh
         );
     }
 
-    // 3. Warm glowing portal doorways at both ends where the walkway enters the buildings
-    for end_pt in [span.start, span.end] {
+    // 3. Cantilevered Gothic Skybridge Vestibules & Under-Deck Stone Corbels at both building walls
+    for (end_pt, into_wall_sign) in [(span.start, -1.0f32), (span.end, 1.0f32)] {
+        let wall_dir = [fwd[0] * into_wall_sign, fwd[1] * into_wall_sign];
+        // Stepped stone corbel bracket supporting the bridge haunch from the building wall
+        let corbel_cx = end_pt[0] - wall_dir[0] * 0.10;
+        let corbel_cz = end_pt[1] - wall_dir[1] * 0.10;
         mb.push_oriented_box(
-            [end_pt[0], y, end_pt[1]],
+            [corbel_cx, y - 0.42, corbel_cz],
+            fwd,
+            0.38,
+            0.26,
+            span.width * 0.90,
+            theme.stone_dark,
+            0.0,
+        );
+        mb.push_oriented_box(
+            [corbel_cx + wall_dir[0] * 0.06, y - 0.62, corbel_cz + wall_dir[1] * 0.06],
+            fwd,
+            0.24,
+            0.20,
+            span.width * 0.72,
+            theme.stone_secondary,
+            0.0,
+        );
+
+        // Protruding Gothic Stone Vestibule Surround on the building facade
+        let vest_cx = end_pt[0] + wall_dir[0] * 0.04;
+        let vest_cz = end_pt[1] + wall_dir[1] * 0.04;
+        mb.push_oriented_box(
+            [vest_cx, y - 0.06, vest_cz],
+            fwd,
+            0.30,
+            0.48,
+            span.width + 0.20,
+            theme.stone_secondary,
+            0.0,
+        );
+        // Overhanging copper/brass portal pediment hood above the skybridge entrance
+        mb.push_oriented_box(
+            [vest_cx - wall_dir[0] * 0.03, y + 0.40, vest_cz - wall_dir[1] * 0.03],
+            fwd,
+            0.34,
+            0.10,
+            span.width + 0.28,
+            theme.accent_trim,
+            0.0,
+        );
+        // Warm glowing arched portal doorway where pedestrians enter/exit the building
+        mb.push_oriented_box(
+            [end_pt[0] - wall_dir[0] * 0.08, y, end_pt[1] - wall_dir[1] * 0.08],
             fwd,
             0.12,
-            0.34,
+            0.36,
             span.width * 0.68,
             theme.window_warm,
             0.95,
         );
     }
 
-    // 4. Style-specific arch ribs or overhead iron truss frames
+    // 4. Style-specific arch ribs, iron trusses, covered galleries, or grand vaulted arcades
     match span.style {
         WalkwayStyle::StoneArchBridge => {
-            // Underneath stepped stone arch haunches at both ends
-            for t in [0.18f32, 0.82f32] {
+            // Underneath stepped stone arch haunches & central keystone rib
+            for t in [0.22f32, 0.78f32] {
                 let px = span.start[0] + dx * t;
                 let pz = span.start[1] + dz * t;
                 mb.push_oriented_box(
                     [px, y - 0.34, pz],
                     fwd,
                     len * 0.24,
-                    0.24,
-                    span.width * 0.82,
+                    0.20,
+                    span.width * 0.84,
                     theme.stone_dark,
                     0.0,
                 );
             }
+            // Mid-span gothic lamp standards on both parapets
+            for side in [-1.0f32, 1.0f32] {
+                let lx = cx + right[0] * (span.width * 0.46) * side;
+                let lz = cz + right[1] * (span.width * 0.46) * side;
+                mb.push_box(lx, y + rail_h, lz, 0.06, 0.18, 0.06, theme.stone_dark, 0.0);
+                mb.push_box(
+                    lx,
+                    y + rail_h + 0.18,
+                    lz,
+                    0.10,
+                    0.09,
+                    0.10,
+                    theme.window_warm,
+                    1.0,
+                );
+            }
         }
         WalkwayStyle::IronTrussSkybridge => {
-            // Overhead iron portal frames along the bridge
-            for t in [0.25f32, 0.50f32, 0.75f32] {
+            // Overhead riveted iron portal frames + longitudinal top chords along the bridge
+            for t in [0.22f32, 0.50f32, 0.78f32] {
                 let px = span.start[0] + dx * t;
                 let pz = span.start[1] + dz * t;
+                for side in [-1.0f32, 1.0f32] {
+                    let post_x = px + right[0] * (span.width * 0.48) * side;
+                    let post_z = pz + right[1] * (span.width * 0.48) * side;
+                    mb.push_oriented_box(
+                        [post_x, y, post_z],
+                        fwd,
+                        0.06,
+                        0.32,
+                        0.06,
+                        theme.steel_viaduct,
+                        0.0,
+                    );
+                }
                 mb.push_oriented_box(
-                    [px, y + 0.28, pz],
+                    [px, y + 0.30, pz],
                     fwd,
+                    0.07,
                     0.06,
-                    0.06,
-                    span.width + 0.06,
+                    span.width + 0.08,
                     theme.steel_viaduct,
                     0.0,
                 );
             }
         }
         WalkwayStyle::CoveredGallery => {
-            // Covered gothic gallery roof with side lancet openings
+            // Covered gothic gallery roof with side buttress mullions and warm clerestory slits
+            for t in [0.25f32, 0.50f32, 0.75f32] {
+                let px = span.start[0] + dx * t;
+                let pz = span.start[1] + dz * t;
+                for side in [-1.0f32, 1.0f32] {
+                    let mx = px + right[0] * (span.width * 0.46) * side;
+                    let mz = pz + right[1] * (span.width * 0.46) * side;
+                    mb.push_oriented_box(
+                        [mx, y + rail_h, mz],
+                        fwd,
+                        0.08,
+                        0.20,
+                        0.05,
+                        theme.stone_secondary,
+                        0.0,
+                    );
+                }
+            }
             mb.push_oriented_box(
                 [cx, y + 0.32, cz],
                 fwd,
-                len + 0.10,
-                0.10,
-                span.width + 0.08,
+                deck_len - 0.06,
+                0.11,
+                span.width + 0.10,
                 theme.copper_roof,
                 0.0,
             );
+        }
+        WalkwayStyle::GrandVaultedArcade => {
+            // High-altitude vaulted cathedral skybridge with flying-buttress under-ribs,
+            // arched colonnade sides, pitched copper roof, and central lantern pinnacle!
+            for t in [0.20f32, 0.50f32, 0.80f32] {
+                let px = span.start[0] + dx * t;
+                let pz = span.start[1] + dz * t;
+                mb.push_oriented_box(
+                    [px, y - 0.36, pz],
+                    fwd,
+                    len * 0.18,
+                    0.22,
+                    span.width * 0.86,
+                    theme.stone_dark,
+                    0.0,
+                );
+                for side in [-1.0f32, 1.0f32] {
+                    let mx = px + right[0] * (span.width * 0.48) * side;
+                    let mz = pz + right[1] * (span.width * 0.48) * side;
+                    mb.push_oriented_box(
+                        [mx, y + rail_h, mz],
+                        fwd,
+                        0.10,
+                        0.26,
+                        0.06,
+                        theme.accent_trim,
+                        0.0,
+                    );
+                }
+            }
+            // Vaulted copper gallery roof + central glowing lantern turret
+            mb.push_oriented_box(
+                [cx, y + 0.38, cz],
+                fwd,
+                deck_len - 0.04,
+                0.12,
+                span.width + 0.12,
+                theme.copper_roof,
+                0.0,
+            );
+            mb.push_box(
+                cx,
+                y + 0.50,
+                cz,
+                0.18,
+                0.16,
+                0.18,
+                theme.window_warm,
+                1.0,
+            );
+            mb.push_pyramid(cx, y + 0.66, cz, 0.22, 0.34, 0.22, theme.copper_roof, 0.0);
         }
     }
 }
@@ -2198,11 +3634,23 @@ fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicTh
         let fwd = [dx / len, dz / len];
         let right = [-fwd[1], fwd[0]];
 
+        // Junction turret cap at each waypoint corner so angled/dogleg viaduct turns join seamlessly
+        mb.push_box(
+            a[0],
+            y - 0.18,
+            a[1],
+            deck_w * 1.06,
+            0.18,
+            deck_w * 1.06,
+            theme.steel_viaduct,
+            0.0,
+        );
+
         // Main steel viaduct girder deck
         mb.push_oriented_box(
             [cx, y - 0.16, cz],
             fwd,
-            len + 0.52,
+            len + 0.44,
             0.16,
             deck_w,
             theme.steel_viaduct,
@@ -2216,7 +3664,7 @@ fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicTh
             mb.push_oriented_box(
                 [rx, y, rz],
                 fwd,
-                len + 0.44,
+                len + 0.36,
                 0.09,
                 0.07,
                 theme.accent_trim,
@@ -2224,14 +3672,18 @@ fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicTh
             );
         }
 
-        // Support columns descending from viaduct to street level (skipping inside ViaductStation)
+        // Support columns descending from viaduct to street level (skipping inside buildings/stations)
         let pier_steps = (len / 2.2).ceil().max(1.0) as usize;
         for p in 0..pier_steps {
             let t = (p as f32 + 0.5) / pier_steps as f32;
             let px = a[0] + dx * t;
             let pz = a[1] + dz * t;
-            // Skip piers inside ViaductStation (around x = -4.55, z = -0.15)
-            if (px - (-4.55)).abs() < 1.3 && (pz - (-0.15)).abs() < 1.6 {
+            // Skip piers inside any building footprint (such as ViaductStation)
+            let inside_building = bp.buildings.iter().any(|bld| {
+                (px - bld.x).abs() < bld.width * 0.5 + 0.35
+                    && (pz - bld.z).abs() < bld.depth * 0.5 + 0.35
+            });
+            if inside_building {
                 continue;
             }
             for side in [-1.0f32, 1.0f32] {
@@ -2264,8 +3716,8 @@ fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicTh
 
 /// Build the orthographic isometric 4x4 column-major view-projection matrix.
 ///
-/// Configured so the city island occupies roughly **three-fifths (~60%)** of the viewport
-/// centered in a stark black void.
+/// Configured so the expanded 4x4 city island occupies roughly **three-fifths (~60%)** of the
+/// viewport centered in a stark black void.
 fn build_isometric_view_proj(
     width: f32,
     height: f32,
@@ -2279,17 +3731,17 @@ fn build_isometric_view_proj(
     let cp = pitch.cos();
     let sp = pitch.sin();
 
-    // City horizontal radius is ~11.8 world units; vertical span is ~13.5 world units.
-    // Sizing `scale_y` so that the projected city spans ~60% (three-fifths) of the screen:
+    // Expanded 4x4 city horizontal radius is ~12.2 world units; vertical span is ~17.5 world units.
+    // Sizing `scale_y` so that the projected 4x4 city spans ~60% (three-fifths) of the screen:
     let occ = occupancy.clamp(0.40, 0.85);
     // Fit smoothly across both 16:9 widescreen and narrower aspect ratios
-    let base_scale = occ / 10.2;
+    let base_scale = occ / 13.0;
     let scale_y = base_scale * (aspect.min(1.65)).sqrt();
     let scale_x = scale_y / aspect;
-    let scale_z = 1.0 / 56.0;
+    let scale_z = 1.0 / 64.0;
 
-    // Look-at target near the vertical midpoint of the gothic skyline
-    let target = [0.0f32, 3.65f32, 0.0f32];
+    // Look-at target near the vertical midpoint of the towering gothic skyline
+    let target = [0.0f32, 4.85f32, 0.0f32];
 
     // Row 0: vx = scale_x * (x * cy - z * sy)
     // Row 1: vy = scale_y * (y * cp - (x * sy + z * cy) * sp)

@@ -119,6 +119,21 @@ pub enum BuildingArchetype {
     /// Multi-level vaulted transit station that the elevated train viaduct passes
     /// directly through at `y = 2.6`, topped by a gothic tower.
     ViaductStation,
+    /// Eight-sided octagonal gothic rotunda keep with 45-degree chamfered drum tiers,
+    /// diagonal buttress fins, and a pointed octagonal spire.
+    OctagonalCitadel,
+    /// Open old-world gothic civic piazza with corner colonnade pavilions, glowing
+    /// braziers, a stepped octagonal fountain dais, and a central monument obelisk.
+    GothicMonumentPlaza,
+    /// Soaring slender Art-Deco supertall monolith with continuous vertical recessed
+    /// light strips, cantilevered titan/gargoyle shoulder buttresses, and a sunburst spire.
+    AtlasDecoTower,
+    /// Asymmetric twin-spire gothic chancery citadel with an integral high-altitude
+    /// vaulted sky-arch bridge joining its twin towers, stepped gables, and lancet windows.
+    ChanceryArcadeKeep,
+    /// Brooding stepped gothic-industrial bastion crowned by an 8-sided ribbed copper
+    /// observatory dome, glowing astronomical aperture, and corner lightning-coil pinnacles.
+    AlchemicalObservatory,
 }
 
 /// A single building placement in the city blueprint.
@@ -142,6 +157,164 @@ pub struct BuildingPlacement {
     pub style_variant: u8,
 }
 
+impl BuildingPlacement {
+    /// Return the solid axis-aligned `(min_x, max_x, min_z, max_z)` structural facade bounds
+    /// of this building at vertical elevation `y`.
+    ///
+    /// Accounts for each archetype's tier setbacks, frustum tapers, and octagonal drums so
+    /// elevated walkways and skybridge vestibules anchor flush into the actual 3D facade at `y`.
+    pub fn cross_section_bounds_at(&self, y: f32) -> Option<(f32, f32, f32, f32)> {
+        if y < 0.0 || y > self.height {
+            return None;
+        }
+        let h = self.height.max(0.5);
+        let y_frac = (y / h).clamp(0.0, 1.0);
+        let (w_eff, d_eff) = match self.archetype {
+            BuildingArchetype::CathedralKeep => {
+                if y_frac < 0.34 {
+                    (self.width, self.depth)
+                } else {
+                    (self.width * 0.72, self.depth * 0.72)
+                }
+            }
+            BuildingArchetype::ArtDecoZiggurat => {
+                let scale = if y_frac < 0.42 {
+                    1.00
+                } else if y_frac < 0.70 {
+                    0.78
+                } else if y_frac < 0.88 {
+                    0.56
+                } else {
+                    0.36
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::ClockworkBelfry => {
+                let scale = if y_frac < 0.74 {
+                    0.86
+                } else if y_frac < 0.92 {
+                    0.96
+                } else {
+                    0.86
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::IndustrialFoundry => {
+                let scale = if y_frac < 0.62 {
+                    let t = (y_frac / 0.62).clamp(0.0, 1.0);
+                    1.04 - 0.14 * t
+                } else if y_frac < 0.86 {
+                    0.72
+                } else {
+                    0.52
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::SyndicateTower => {
+                let scale = if y_frac < 0.58 {
+                    1.00
+                } else if y_frac < 0.88 {
+                    0.82
+                } else {
+                    0.56
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::ViaductStation => {
+                if y < 3.85 {
+                    (self.width, self.depth)
+                } else {
+                    (self.width * 0.92, self.depth * 0.86)
+                }
+            }
+            BuildingArchetype::OctagonalCitadel => {
+                let r_base = self.width.min(self.depth) * 0.86;
+                let r = if y_frac < 0.38 {
+                    r_base
+                } else if y_frac < 0.72 {
+                    r_base * 0.74
+                } else {
+                    r_base * 0.50
+                };
+                (r, r)
+            }
+            BuildingArchetype::GothicMonumentPlaza => {
+                let r = self.width.min(self.depth) * 0.48;
+                (r, r)
+            }
+            BuildingArchetype::AtlasDecoTower => {
+                let scale = if y_frac < 0.34 {
+                    1.00
+                } else if y_frac < 0.68 {
+                    0.82
+                } else if y_frac < 0.88 {
+                    0.64
+                } else {
+                    0.44
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::ChanceryArcadeKeep => {
+                let scale = if y_frac < 0.38 {
+                    1.00
+                } else if y_frac < 0.66 {
+                    0.86
+                } else {
+                    0.76
+                };
+                (self.width * scale, self.depth * scale)
+            }
+            BuildingArchetype::AlchemicalObservatory => {
+                let scale = if y_frac < 0.44 {
+                    1.00
+                } else if y_frac < 0.76 {
+                    0.80
+                } else {
+                    0.62
+                };
+                (self.width * scale, self.depth * scale)
+            }
+        };
+
+        let hx = w_eff * 0.5;
+        let hz = d_eff * 0.5;
+        Some((self.x - hx, self.x + hx, self.z - hz, self.z + hz))
+    }
+
+    /// Snap a walkway connection point `[x, z]` onto the outer facade wall of this building
+    /// at elevation `y` facing toward `other_xz`, ensuring the walkway is inset from building corners.
+    pub fn snap_facade_anchor(
+        &self,
+        y: f32,
+        hint_xz: [f32; 2],
+        other_xz: [f32; 2],
+        walkway_width: f32,
+    ) -> [f32; 2] {
+        let Some((x0, x1, z0, z1)) = self.cross_section_bounds_at(y) else {
+            return hint_xz;
+        };
+        let cx = (x0 + x1) * 0.5;
+        let cz = (z0 + z1) * 0.5;
+        let hx = ((x1 - x0) * 0.5).max(0.1);
+        let hz = ((z1 - z0) * 0.5).max(0.1);
+
+        let dx = other_xz[0] - cx;
+        let dz = other_xz[1] - cz;
+
+        if (dx / hx).abs() >= (dz / hz).abs() {
+            let wall_x = if dx >= 0.0 { x1 } else { x0 };
+            let margin = (walkway_width * 0.65).min(hz * 0.55);
+            let wall_z = hint_xz[1].clamp(z0 + margin, z1 - margin);
+            [wall_x, wall_z]
+        } else {
+            let wall_z = if dz >= 0.0 { z1 } else { z0 };
+            let margin = (walkway_width * 0.65).min(hx * 0.55);
+            let wall_x = hint_xz[0].clamp(x0 + margin, x1 - margin);
+            [wall_x, wall_z]
+        }
+    }
+}
+
 /// Visual style of an elevated walkway / skybridge spanning between two towers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WalkwayStyle {
@@ -151,12 +324,20 @@ pub enum WalkwayStyle {
     IronTrussSkybridge,
     /// Covered gothic gallery bridge with pitched roof and slit windows.
     CoveredGallery,
+    /// High-altitude vaulted cathedral skybridge with flying-buttress under-ribs and lantern pinnacles.
+    GrandVaultedArcade,
 }
 
 /// An elevated walkway connecting two building facades above the street canyons.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WalkwaySpan {
     pub id: u32,
+    /// ID of the building where `start` anchors into the facade at `elevation`.
+    #[serde(default)]
+    pub start_building_id: u32,
+    /// ID of the building where `end` anchors into the facade at `elevation`.
+    #[serde(default)]
+    pub end_building_id: u32,
     pub start: [f32; 2],
     pub end: [f32; 2],
     pub elevation: f32,
@@ -228,6 +409,20 @@ pub struct SteamSource {
     pub is_rooftop: bool,
 }
 
+/// A raised stone city block or courtyard plot in the metropolis blueprint.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CityBlockPlot {
+    pub id: u32,
+    /// Minimum X coordinate of the raised sidewalk curb.
+    pub x0: f32,
+    /// Minimum Z coordinate of the raised sidewalk curb.
+    pub z0: f32,
+    /// Maximum X coordinate of the raised sidewalk curb.
+    pub x1: f32,
+    /// Maximum Z coordinate of the raised sidewalk curb.
+    pub z1: f32,
+}
+
 /// Declarative, consistent blueprint of the Gothic Metropolis.
 ///
 /// Because this blueprint is authored deterministically, the city layout is always
@@ -238,6 +433,8 @@ pub struct CityBlueprint {
     pub name: String,
     /// Half-extent of the octagonal/stepped city plinth in world units.
     pub plinth_half_extent: f32,
+    #[serde(default)]
+    pub blocks: Vec<CityBlockPlot>,
     pub buildings: Vec<BuildingPlacement>,
     pub walkways: Vec<WalkwaySpan>,
     /// Closed loop of `(x, z)` waypoints for the elevated train viaduct at `viaduct_elevation`.
@@ -256,592 +453,1040 @@ pub struct CityBlueprint {
 impl CityBlueprint {
     /// Construct the canonical Gothic Metropolis layout.
     ///
-    /// Arranged around a 3x3 city block grid bounded by two intersecting North-South canyon
-    /// avenues (`x = -2.4`, `x = 2.1`), two East-West canyon avenues (`z = -2.4`, `z = 2.1`),
-    /// and a 4-sided outer perimeter ring highway (`x = ±8.2`, `z = ±8.2`) on an expanded
-    /// foundation floor plate (`plinth_half_extent = 9.8`), with 8 subterranean building
-    /// parking garage entrances and raised stone sidewalks around every block.
+    /// Arranged across an organic, staggered **4x4** city district topology (16 raised stone
+    /// city blocks of varied proportions) where **no interior street runs straight from edge
+    /// to edge**: avenues meet at old-world gothic doglegs, T-junctions, and stepped plazas,
+    /// bounded by an outer perimeter ring highway (`x = ±10.6`, `z = ±10.6`) on an expanded
+    /// foundation floor plate (`plinth_half_extent = 12.2`). Features 22 buildings (including
+    /// multi-structure compound blocks), 16 orthogonal and diagonal skybridges, a winding
+    /// elevated train viaduct loop, and 10 subterranean building parking garages.
     pub fn default_gothic_metropolis() -> Self {
+        // 16 Staggered City Block Plots (4 rows x 4 columns) with dogleg canyon avenues between them
+        let blocks = vec![
+            // Row 0 (North Skyline Ward)
+            CityBlockPlot {
+                id: 1,
+                x0: -9.92,
+                z0: -9.92,
+                x1: -6.40,
+                z1: -6.00,
+            },
+            CityBlockPlot {
+                id: 2,
+                x0: -5.20,
+                z0: -9.92,
+                x1: -1.00,
+                z1: -6.00,
+            },
+            CityBlockPlot {
+                id: 3,
+                x0: 0.20,
+                z0: -9.92,
+                x1: 3.90,
+                z1: -4.90,
+            },
+            CityBlockPlot {
+                id: 4,
+                x0: 5.10,
+                z0: -9.92,
+                x1: 9.92,
+                z1: -4.90,
+            },
+            // Row 1 (Upper-Mid Sovereign Core)
+            CityBlockPlot {
+                id: 5,
+                x0: -9.92,
+                z0: -4.80,
+                x1: -5.80,
+                z1: -1.30,
+            },
+            CityBlockPlot {
+                id: 6,
+                x0: -4.60,
+                z0: -4.80,
+                x1: -1.00,
+                z1: -0.40,
+            },
+            CityBlockPlot {
+                id: 7,
+                x0: 0.20,
+                z0: -3.70,
+                x1: 4.80,
+                z1: -0.40,
+            },
+            CityBlockPlot {
+                id: 8,
+                x0: 6.00,
+                z0: -3.70,
+                x1: 9.92,
+                z1: 0.50,
+            },
+            // Row 2 (Lower-Mid Plaza & Viaduct Core)
+            CityBlockPlot {
+                id: 9,
+                x0: -9.92,
+                z0: -0.10,
+                x1: -5.80,
+                z1: 4.80,
+            },
+            CityBlockPlot {
+                id: 10,
+                x0: -4.60,
+                z0: 0.80,
+                x1: 0.10,
+                z1: 4.80,
+            },
+            CityBlockPlot {
+                id: 11,
+                x0: 1.30,
+                z0: 0.80,
+                x1: 4.80,
+                z1: 4.00,
+            },
+            CityBlockPlot {
+                id: 12,
+                x0: 6.00,
+                z0: 1.70,
+                x1: 9.92,
+                z1: 4.00,
+            },
+            // Row 3 (South Foreground & Industrial Ward)
+            CityBlockPlot {
+                id: 13,
+                x0: -9.92,
+                z0: 6.00,
+                x1: -4.90,
+                z1: 9.92,
+            },
+            CityBlockPlot {
+                id: 14,
+                x0: -3.70,
+                z0: 6.00,
+                x1: 0.10,
+                z1: 9.92,
+            },
+            CityBlockPlot {
+                id: 15,
+                x0: 1.30,
+                z0: 5.20,
+                x1: 5.60,
+                z1: 9.92,
+            },
+            CityBlockPlot {
+                id: 16,
+                x0: 6.80,
+                z0: 5.20,
+                x1: 9.92,
+                z1: 9.92,
+            },
+        ];
+
+        // 22 Gothic Buildings across the 16 asymmetric blocks (including multi-building compounds),
+        // spanning 11 distinct archetypes and a dramatic vertical hierarchy (heights 4.4 .. 16.2).
         let buildings = vec![
-            // --- Central Crown District (Center Block) ---
+            // --- Row 0 (North Skyline Ward: Blocks 1..4) ---
             BuildingPlacement {
                 id: 1,
-                archetype: BuildingArchetype::CathedralKeep,
-                x: -0.15,
-                z: -0.15,
-                width: 2.6,
-                depth: 2.6,
-                height: 9.8,
-                quarter_turns: 0,
+                archetype: BuildingArchetype::ClockworkBelfry,
+                x: -8.16,
+                z: -7.96,
+                width: 2.1,
+                depth: 2.1,
+                height: 10.6,
+                quarter_turns: 1,
                 style_variant: 0,
             },
-            // --- East-Center District ---
             BuildingPlacement {
                 id: 2,
-                archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: 4.20,
-                z: -0.15,
+                archetype: BuildingArchetype::ChanceryArcadeKeep,
+                x: -3.55,
+                z: -7.96,
                 width: 2.2,
                 depth: 2.4,
-                height: 8.6,
-                quarter_turns: 1,
+                height: 11.8,
+                quarter_turns: 0,
                 style_variant: 1,
             },
-            // --- West-Center District ---
             BuildingPlacement {
                 id: 3,
-                archetype: BuildingArchetype::ViaductStation,
-                x: -4.55,
-                z: -0.15,
-                width: 2.2,
-                depth: 2.6,
-                height: 6.4,
+                archetype: BuildingArchetype::AtlasDecoTower,
+                x: 2.05,
+                z: -6.85,
+                width: 2.4,
+                depth: 2.4,
+                height: 14.4,
                 quarter_turns: 0,
                 style_variant: 2,
             },
-            // --- North District (Back Skyline) ---
             BuildingPlacement {
                 id: 4,
-                archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: -0.15,
-                z: -4.45,
-                width: 2.4,
-                depth: 2.1,
-                height: 9.0,
-                quarter_turns: 0,
+                archetype: BuildingArchetype::CathedralKeep,
+                x: 7.10,
+                z: -7.10,
+                width: 2.6,
+                depth: 2.6,
+                height: 12.6,
+                quarter_turns: 1,
                 style_variant: 3,
             },
+            // --- Row 1 (Upper-Mid Sovereign Core: Blocks 5..8) ---
             BuildingPlacement {
                 id: 5,
                 archetype: BuildingArchetype::SyndicateTower,
-                x: -4.55,
-                z: -4.55,
-                width: 2.2,
+                x: -7.86,
+                z: -3.05,
+                width: 2.5,
                 depth: 2.2,
-                height: 7.4,
+                height: 11.0,
+                quarter_turns: 1,
+                style_variant: 1,
+            },
+            BuildingPlacement {
+                id: 6,
+                archetype: BuildingArchetype::CathedralKeep,
+                x: -2.80,
+                z: -2.35,
+                width: 2.6,
+                depth: 2.8,
+                height: 16.2,
                 quarter_turns: 0,
                 style_variant: 0,
             },
             BuildingPlacement {
-                id: 6,
-                archetype: BuildingArchetype::ClockworkBelfry,
-                x: 4.20,
-                z: -4.55,
-                width: 2.0,
-                depth: 2.0,
-                height: 8.2,
-                quarter_turns: 2,
-                style_variant: 1,
-            },
-            // --- South District (Foreground Canyon) ---
-            BuildingPlacement {
                 id: 7,
-                archetype: BuildingArchetype::SyndicateTower,
-                x: -0.15,
-                z: 4.25,
-                width: 2.3,
-                depth: 2.2,
-                height: 7.2,
-                quarter_turns: 2,
+                archetype: BuildingArchetype::ArtDecoZiggurat,
+                x: 2.10,
+                z: -2.05,
+                width: 2.5,
+                depth: 2.3,
+                height: 15.4,
+                quarter_turns: 1,
                 style_variant: 2,
             },
             BuildingPlacement {
                 id: 8,
-                archetype: BuildingArchetype::IndustrialFoundry,
-                x: -4.55,
-                z: 4.30,
-                width: 2.2,
-                depth: 2.1,
-                height: 5.8,
+                archetype: BuildingArchetype::AlchemicalObservatory,
+                x: 7.96,
+                z: -1.60,
+                width: 2.3,
+                depth: 2.3,
+                height: 10.6,
                 quarter_turns: 1,
                 style_variant: 3,
             },
+            // --- Row 2 (Lower-Mid Plaza & Viaduct Core: Blocks 9..12) ---
             BuildingPlacement {
                 id: 9,
-                archetype: BuildingArchetype::ClockworkBelfry,
-                x: 4.20,
-                z: 4.25,
-                width: 2.0,
-                depth: 2.0,
-                height: 6.9,
-                quarter_turns: 3,
-                style_variant: 0,
-            },
-            // --- Outer Perimeter Highway Bastions (Inside Outer Block Plots) ---
-            BuildingPlacement {
-                id: 10,
-                archetype: BuildingArchetype::IndustrialFoundry,
-                x: -6.40,
-                z: -0.15,
-                width: 1.4,
-                depth: 2.1,
-                height: 5.0,
+                archetype: BuildingArchetype::ViaductStation,
+                x: -7.86,
+                z: 2.35,
+                width: 2.4,
+                depth: 3.0,
+                height: 9.6,
                 quarter_turns: 0,
-                style_variant: 1,
-            },
-            BuildingPlacement {
-                id: 11,
-                archetype: BuildingArchetype::SyndicateTower,
-                x: 6.50,
-                z: -0.15,
-                width: 1.2,
-                depth: 2.1,
-                height: 5.8,
-                quarter_turns: 1,
                 style_variant: 2,
             },
             BuildingPlacement {
-                id: 12,
-                archetype: BuildingArchetype::ArtDecoZiggurat,
-                x: -0.15,
-                z: -6.35,
-                width: 2.1,
-                depth: 1.4,
-                height: 6.8,
-                quarter_turns: 0,
+                id: 10,
+                archetype: BuildingArchetype::AtlasDecoTower,
+                x: -2.75,
+                z: 2.80,
+                width: 2.3,
+                depth: 2.5,
+                height: 13.6,
+                quarter_turns: 2,
                 style_variant: 0,
             },
             BuildingPlacement {
-                id: 13,
-                archetype: BuildingArchetype::CathedralKeep,
-                x: 6.10,
-                z: -6.10,
-                width: 1.9,
-                depth: 1.9,
-                height: 7.5,
-                quarter_turns: 2,
+                id: 11,
+                archetype: BuildingArchetype::GothicMonumentPlaza,
+                x: 3.05,
+                z: 2.40,
+                width: 2.6,
+                depth: 2.3,
+                height: 5.4,
+                quarter_turns: 0,
                 style_variant: 1,
+            },
+            BuildingPlacement {
+                id: 12,
+                archetype: BuildingArchetype::IndustrialFoundry,
+                x: 7.96,
+                z: 2.85,
+                width: 2.6,
+                depth: 1.5,
+                height: 6.4,
+                quarter_turns: 1,
+                style_variant: 3,
+            },
+            // --- Row 3 (South Foreground & Industrial Ward: Blocks 13..16) ---
+            BuildingPlacement {
+                id: 13,
+                archetype: BuildingArchetype::IndustrialFoundry,
+                x: -7.90,
+                z: 7.96,
+                width: 2.4,
+                depth: 2.3,
+                height: 6.8,
+                quarter_turns: 0,
+                style_variant: 2,
             },
             BuildingPlacement {
                 id: 14,
-                archetype: BuildingArchetype::ClockworkBelfry,
-                x: -6.35,
-                z: -6.25,
-                width: 1.5,
-                depth: 1.6,
-                height: 5.6,
-                quarter_turns: 1,
-                style_variant: 3,
+                archetype: BuildingArchetype::OctagonalCitadel,
+                x: -1.80,
+                z: 7.96,
+                width: 2.2,
+                depth: 2.2,
+                height: 9.8,
+                quarter_turns: 3,
+                style_variant: 0,
             },
             BuildingPlacement {
                 id: 15,
-                archetype: BuildingArchetype::IndustrialFoundry,
-                x: -6.35,
-                z: 6.20,
-                width: 1.5,
-                depth: 1.6,
-                height: 5.0,
-                quarter_turns: 3,
-                style_variant: 2,
+                archetype: BuildingArchetype::ChanceryArcadeKeep,
+                x: 3.45,
+                z: 7.56,
+                width: 2.5,
+                depth: 2.7,
+                height: 11.2,
+                quarter_turns: 2,
+                style_variant: 1,
             },
             BuildingPlacement {
                 id: 16,
+                archetype: BuildingArchetype::ArtDecoZiggurat,
+                x: 8.36,
+                z: 7.56,
+                width: 2.0,
+                depth: 2.5,
+                height: 9.4,
+                quarter_turns: 1,
+                style_variant: 3,
+            },
+            // --- Compound Annexes & Asymmetric Secondary Spires on Larger Blocks ---
+            // Building 17: East Octagonal Turret Annex on Block 2 (beside Building 2)
+            BuildingPlacement {
+                id: 17,
+                archetype: BuildingArchetype::OctagonalCitadel,
+                x: -1.85,
+                z: -8.25,
+                width: 1.25,
+                depth: 1.25,
+                height: 8.2,
+                quarter_turns: 2,
+                style_variant: 3,
+            },
+            // Building 18: North Citadel Bastion on Block 3 (behind Building 3)
+            BuildingPlacement {
+                id: 18,
                 archetype: BuildingArchetype::SyndicateTower,
-                x: 6.50,
-                z: 4.25,
-                width: 1.2,
-                depth: 1.9,
-                height: 5.5,
+                x: 2.05,
+                z: -8.85,
+                width: 1.8,
+                depth: 1.2,
+                height: 8.8,
+                quarter_turns: 1,
+                style_variant: 0,
+            },
+            // Building 19: NE Civic Shrine Plaza on Block 4 (beside CathedralKeep Building 4)
+            BuildingPlacement {
+                id: 19,
+                archetype: BuildingArchetype::GothicMonumentPlaza,
+                x: 8.95,
+                z: -8.55,
+                width: 1.3,
+                depth: 1.4,
+                height: 4.4,
+                quarter_turns: 3,
+                style_variant: 1,
+            },
+            // Building 20: East Herald Campanile on Block 7 (flanking Crown Ziggurat Building 7)
+            BuildingPlacement {
+                id: 20,
+                archetype: BuildingArchetype::ClockworkBelfry,
+                x: 3.92,
+                z: -2.05,
+                width: 1.15,
+                depth: 1.5,
+                height: 10.2,
+                quarter_turns: 0,
+                style_variant: 2,
+            },
+            // Building 21: Central Plaza Alchemical Observatory on Block 10 (flanking Building 10)
+            BuildingPlacement {
+                id: 21,
+                archetype: BuildingArchetype::AlchemicalObservatory,
+                x: -0.85,
+                z: 2.80,
+                width: 1.35,
+                depth: 1.8,
+                height: 8.6,
+                quarter_turns: 0,
+                style_variant: 1,
+            },
+            // Building 22: Axis Chemical Boiler Annex on Block 13 (beside Foundry Building 13)
+            BuildingPlacement {
+                id: 22,
+                archetype: BuildingArchetype::IndustrialFoundry,
+                x: -5.85,
+                z: 7.96,
+                width: 1.3,
+                depth: 1.8,
+                height: 5.4,
                 quarter_turns: 2,
                 style_variant: 1,
             },
         ];
 
-        // Multi-layered elevated walkways spanning across the canyon avenues at 3 distinct heights
+        // Helper that snaps both walkway endpoints onto the exact structural facade walls
+        // of `start_b_id` and `end_b_id` at `elevation`, guaranteeing 100% solid connections.
+        let make_walkway = |id: u32,
+                            start_b_id: u32,
+                            end_b_id: u32,
+                            hint_start: [f32; 2],
+                            hint_end: [f32; 2],
+                            elevation: f32,
+                            width: f32,
+                            style: WalkwayStyle|
+         -> WalkwaySpan {
+            let b_start = buildings
+                .iter()
+                .find(|b| b.id == start_b_id)
+                .expect("valid start_building_id");
+            let b_end = buildings
+                .iter()
+                .find(|b| b.id == end_b_id)
+                .expect("valid end_building_id");
+            let start =
+                b_start.snap_facade_anchor(elevation, hint_start, [b_end.x, b_end.z], width);
+            let end = b_end.snap_facade_anchor(elevation, hint_end, [b_start.x, b_start.z], width);
+            WalkwaySpan {
+                id,
+                start_building_id: start_b_id,
+                end_building_id: end_b_id,
+                start,
+                end,
+                elevation,
+                width,
+                style,
+            }
+        };
+
+        // 18 Multi-layered elevated walkways across 4 vertical tiers (y = 1.65 .. 8.10),
+        // every span anchored directly into the elevation-specific cross-sections of its buildings.
         let walkways = vec![
-            // Tier 1: Lower Plaza Bridges (y = 1.65)
-            WalkwaySpan {
-                id: 1,
-                start: [-3.45, -0.15],
-                end: [-1.45, -0.15],
-                elevation: 1.65,
-                width: 0.42,
-                style: WalkwayStyle::StoneArchBridge,
-            },
-            WalkwaySpan {
-                id: 2,
-                start: [1.15, -0.15],
-                end: [3.10, -0.15],
-                elevation: 1.65,
-                width: 0.42,
-                style: WalkwayStyle::StoneArchBridge,
-            },
-            WalkwaySpan {
-                id: 3,
-                start: [-0.15, 1.15],
-                end: [-0.15, 3.15],
-                elevation: 1.65,
-                width: 0.42,
-                style: WalkwayStyle::StoneArchBridge,
-            },
-            // Tier 2: Mid-Level Gothic Skybridges (y = 3.65, clearing the y = 2.6 elevated train!)
-            WalkwaySpan {
-                id: 4,
-                start: [-0.15, -3.40],
-                end: [-0.15, -1.45],
-                elevation: 3.65,
-                width: 0.38,
-                style: WalkwayStyle::CoveredGallery,
-            },
-            WalkwaySpan {
-                id: 5,
-                start: [-3.45, -4.50],
-                end: [-1.35, -4.50],
-                elevation: 3.65,
-                width: 0.36,
-                style: WalkwayStyle::IronTrussSkybridge,
-            },
-            WalkwaySpan {
-                id: 6,
-                start: [1.05, -4.50],
-                end: [3.20, -4.50],
-                elevation: 3.65,
-                width: 0.36,
-                style: WalkwayStyle::IronTrussSkybridge,
-            },
-            WalkwaySpan {
-                id: 7,
-                start: [-3.45, 4.28],
-                end: [-1.30, 4.28],
-                elevation: 3.55,
-                width: 0.36,
-                style: WalkwayStyle::IronTrussSkybridge,
-            },
-            WalkwaySpan {
-                id: 8,
-                start: [1.00, 4.25],
-                end: [3.20, 4.25],
-                elevation: 3.55,
-                width: 0.36,
-                style: WalkwayStyle::StoneArchBridge,
-            },
-            // Tier 3: High Spire Skybridges (y = 5.45)
-            WalkwaySpan {
-                id: 9,
-                start: [1.15, 0.35],
-                end: [3.10, 0.35],
-                elevation: 5.45,
-                width: 0.34,
-                style: WalkwayStyle::CoveredGallery,
-            },
-            WalkwaySpan {
-                id: 10,
-                start: [-0.70, -3.40],
-                end: [-0.70, -1.45],
-                elevation: 5.65,
-                width: 0.34,
-                style: WalkwayStyle::IronTrussSkybridge,
-            },
-            WalkwaySpan {
-                id: 11,
-                start: [4.20, -3.55],
-                end: [4.20, -1.35],
-                elevation: 4.85,
-                width: 0.34,
-                style: WalkwayStyle::IronTrussSkybridge,
-            },
-            WalkwaySpan {
-                id: 12,
-                start: [4.20, 1.05],
-                end: [4.20, 3.25],
-                elevation: 4.65,
-                width: 0.34,
-                style: WalkwayStyle::StoneArchBridge,
-            },
+            // Tier 1: Lower Plaza Stone Arch Bridges (y = 1.65 .. 1.75, on canyons without elevated train)
+            make_walkway(
+                1,
+                6,
+                7,
+                [-1.50, -2.15],
+                [0.85, -2.05],
+                1.65,
+                0.42,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            make_walkway(
+                2,
+                1,
+                2,
+                [-7.25, -7.96],
+                [-4.65, -7.96],
+                1.65,
+                0.40,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            make_walkway(
+                3,
+                3,
+                4,
+                [3.25, -6.95],
+                [5.80, -7.05],
+                1.65,
+                0.40,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            make_walkway(
+                4,
+                14,
+                15,
+                [-0.85, 7.80],
+                [2.20, 7.65],
+                1.70,
+                0.42,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            make_walkway(
+                5,
+                15,
+                16,
+                [4.70, 7.56],
+                [7.36, 7.56],
+                1.70,
+                0.40,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            // Tier 2: Mid-Level Gothic Skybridges (y = 3.60 .. 4.25, clearing the y = 2.6 elevated train!)
+            make_walkway(
+                6,
+                5,
+                6,
+                [-6.61, -2.85],
+                [-3.74, -2.55],
+                3.70,
+                0.38,
+                WalkwayStyle::CoveredGallery,
+            ),
+            make_walkway(
+                7,
+                6,
+                10,
+                [-2.80, -0.95],
+                [-2.75, 1.55],
+                3.75,
+                0.38,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            make_walkway(
+                8,
+                10,
+                21,
+                [-1.60, 2.80],
+                [-1.52, 2.80],
+                3.65,
+                0.36,
+                WalkwayStyle::CoveredGallery,
+            ),
+            make_walkway(
+                9,
+                4,
+                8,
+                [7.45, -5.80],
+                [7.75, -2.75],
+                3.80,
+                0.36,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            make_walkway(
+                10,
+                20,
+                8,
+                [4.41, -1.95],
+                [6.81, -1.70],
+                3.65,
+                0.36,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            make_walkway(
+                11,
+                9,
+                10,
+                [-6.75, 2.55],
+                [-3.90, 2.75],
+                4.25,
+                0.38,
+                WalkwayStyle::StoneArchBridge,
+            ),
+            make_walkway(
+                12,
+                8,
+                12,
+                [7.96, -0.45],
+                [7.96, 2.12],
+                3.60,
+                0.36,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            make_walkway(
+                13,
+                10,
+                14,
+                [-2.45, 4.05],
+                [-1.95, 7.01],
+                3.65,
+                0.36,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            // Tier 3: High Spire Skybridges (y = 5.35 .. 5.65)
+            make_walkway(
+                14,
+                2,
+                6,
+                [-3.25, -6.92],
+                [-2.95, -3.36],
+                5.35,
+                0.34,
+                WalkwayStyle::CoveredGallery,
+            ),
+            make_walkway(
+                15,
+                3,
+                7,
+                [2.05, -5.86],
+                [2.10, -3.20],
+                5.55,
+                0.34,
+                WalkwayStyle::IronTrussSkybridge,
+            ),
+            make_walkway(
+                16,
+                6,
+                7,
+                [-1.50, -2.55],
+                [0.85, -2.25],
+                5.25,
+                0.36,
+                WalkwayStyle::CoveredGallery,
+            ),
+            // Tier 4: Sovereign High-Altitude Vaulted Skybridges (y = 7.45 .. 8.10)
+            make_walkway(
+                17,
+                6,
+                7,
+                [-1.86, -2.20],
+                [1.12, -2.05],
+                8.10,
+                0.38,
+                WalkwayStyle::GrandVaultedArcade,
+            ),
+            make_walkway(
+                18,
+                6,
+                10,
+                [-2.78, -1.34],
+                [-2.75, 1.77],
+                7.45,
+                0.36,
+                WalkwayStyle::GrandVaultedArcade,
+            ),
         ];
 
-        // Closed elevated train viaduct loop at y = 2.6.
-        // Passes straight through the ViaductStation at x = -4.55, z = -2.4 .. 2.1,
-        // then weaves through the southern canyon (z = 2.1), down x = 2.1 to z = 6.25,
-        // up the eastern tower corridor (x = 5.60), and across the northern canyon (z = -2.4).
+        // Winding non-grid elevated train viaduct loop at y = 2.6.
+        // Passes straight through the West ViaductStation (Building 9 at x = -7.86, z = 2.35),
+        // angles along the SW canyon into the West Mid Canyon (x = -5.20), cuts across the
+        // Central Grand Plaza (z = 0.20), jogs down the South Central Spine (x = 0.70) to the
+        // SE canyon (z = 4.60), climbs the East Mid Canyon (x = 5.40) to the NE canyon (z = -4.30),
+        // jogs at the North Spine (x = -0.40) into the NW canyon (z = -5.40), and returns via
+        // the staggered Mid-West Outer Avenue (z = -0.70).
         let unique_viaduct_waypoints = vec![
-            [-4.55, -2.4], // 0: North portal of ViaductStation
-            [-4.55, 2.1],  // 1: South portal of ViaductStation (platform segment 0 -> 1)
-            [-3.8, 2.1],   // 2: Turn into south canyon
-            [2.1, 2.1],    // 3: Eastward along south canyon
-            [2.1, 6.25],   // 4: South-east outer loop extension
-            [5.60, 6.25],  // 5: Outer south-east corner
-            [5.60, -2.4],  // 6: Outer east viaduct corridor between inner and outer east towers
-            [2.1, -2.4],   // 7: Re-enter inner north-east junction
+            [-7.86, -0.70], // 0: North portal approach to ViaductStation
+            [-7.86, 4.90],  // 1: South portal exit of ViaductStation (platform segment 0 -> 1)
+            [-5.20, 5.40],  // 2: Oblique viaduct span into West Mid Canyon junction
+            [-5.20, 0.20],  // 3: Northward along West Mid Canyon to Central Plaza
+            [0.70, 0.20],   // 4: Eastward along Central Grand Plaza Avenue
+            [0.70, 4.60],   // 5: Southward jog along South Central Spine
+            [5.40, 4.60],   // 6: Eastward along South-East Avenue
+            [5.40, -4.30],  // 7: Northward along East Mid Canyon Avenue
+            [-0.40, -4.30], // 8: Westward along North-East Avenue
+            [-0.40, -5.40], // 9: Northward dogleg at North Central Spine
+            [-5.20, -5.40], // 10: Westward along North-West Avenue
+            [-5.20, -0.70], // 11: Southward to Mid-West Outer Avenue dogleg
         ];
 
-        // Connected street network: 4 inner canyon avenues + 4 outer perimeter highway segments
+        // Staggered non-grid street network: 15 dogleg/T-junction canyon segments + 4 outer ring highway segments
         let avenues = vec![
-            // Inner North-South Canyon Avenues (terminating into the outer ring highway at z = ±8.2)
+            // --- Staggered East-West Canyon Avenues ---
             StreetAvenue {
-                start: [-2.4, -8.2],
-                end: [-2.4, 8.2],
+                start: [-10.6, -5.4],
+                end: [-0.4, -5.4],
                 width: 1.10,
                 is_highway: false,
             },
             StreetAvenue {
-                start: [2.1, -8.2],
-                end: [2.1, 8.2],
-                width: 1.10,
-                is_highway: false,
-            },
-            // Inner East-West Canyon Avenues (terminating into the outer ring highway at x = ±8.2)
-            StreetAvenue {
-                start: [-8.2, -2.4],
-                end: [8.2, -2.4],
+                start: [-0.4, -4.3],
+                end: [10.6, -4.3],
                 width: 1.10,
                 is_highway: false,
             },
             StreetAvenue {
-                start: [-8.2, 2.1],
-                end: [8.2, 2.1],
+                start: [-10.6, -0.7],
+                end: [-5.2, -0.7],
                 width: 1.10,
                 is_highway: false,
             },
-            // Outer Perimeter Ring Highway (4-sided loop encircling the city at ±8.2)
             StreetAvenue {
-                start: [-8.2, -8.2],
-                end: [8.2, -8.2],
+                start: [-5.2, 0.2],
+                end: [5.4, 0.2],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [5.4, 1.1],
+                end: [10.6, 1.1],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [-10.6, 5.4],
+                end: [0.7, 5.4],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [0.7, 4.6],
+                end: [10.6, 4.6],
+                width: 1.10,
+                is_highway: false,
+            },
+            // --- Staggered North-South Canyon Avenues ---
+            StreetAvenue {
+                start: [-5.8, -10.6],
+                end: [-5.8, -5.4],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [-5.2, -5.4],
+                end: [-5.2, 5.4],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [-4.3, 5.4],
+                end: [-4.3, 10.6],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [-0.4, -10.6],
+                end: [-0.4, 0.2],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [0.7, 0.2],
+                end: [0.7, 10.6],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [4.5, -10.6],
+                end: [4.5, -4.3],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [5.4, -4.3],
+                end: [5.4, 4.6],
+                width: 1.10,
+                is_highway: false,
+            },
+            StreetAvenue {
+                start: [6.2, 4.6],
+                end: [6.2, 10.6],
+                width: 1.10,
+                is_highway: false,
+            },
+            // --- Outer Perimeter Ring Highway (4-sided loop encircling the 4x4 city at ±10.6) ---
+            StreetAvenue {
+                start: [-10.6, -10.6],
+                end: [10.6, -10.6],
                 width: 1.28,
                 is_highway: true,
             },
             StreetAvenue {
-                start: [8.2, -8.2],
-                end: [8.2, 8.2],
+                start: [10.6, -10.6],
+                end: [10.6, 10.6],
                 width: 1.28,
                 is_highway: true,
             },
             StreetAvenue {
-                start: [8.2, 8.2],
-                end: [-8.2, 8.2],
+                start: [10.6, 10.6],
+                end: [-10.6, 10.6],
                 width: 1.28,
                 is_highway: true,
             },
             StreetAvenue {
-                start: [-8.2, 8.2],
-                end: [-8.2, -8.2],
+                start: [-10.6, 10.6],
+                end: [-10.6, -10.6],
                 width: 1.28,
                 is_highway: true,
             },
         ];
 
-        // 8 Subterranean Parking Garage Entrances recessed into major building bases
+        // 10 Subterranean Parking Garage Entrances recessed into major building bases across the 4x4 districts
         let garages = vec![
-            // Garage 1: CathedralKeep (Building 1) West facade onto West Avenue (x = -2.4)
+            // Garage 1: CathedralKeep (Building 6) East facade onto North Central Spine (x = -0.4)
             GaragePortal {
                 id: 1,
-                building_id: 1,
-                street_entry: [-2.4, 0.48],
-                portal_pos: [-1.45, 0.48],
-                inward_dir: [1.0, 0.0],
+                building_id: 6,
+                street_entry: [-0.40, -1.65],
+                portal_pos: [-1.50, -1.65],
+                inward_dir: [-1.0, 0.0],
                 width: 0.68,
             },
-            // Garage 2: ArtDecoZiggurat (Building 2) South facade onto South Avenue (z = 2.1)
+            // Garage 2: ArtDecoZiggurat (Building 7) South facade onto Central Grand Plaza Avenue (z = 0.2)
             GaragePortal {
                 id: 2,
-                building_id: 2,
-                street_entry: [3.65, 2.1],
-                portal_pos: [3.65, 1.05],
+                building_id: 7,
+                street_entry: [2.10, 0.20],
+                portal_pos: [2.10, -0.90],
                 inward_dir: [0.0, -1.0],
                 width: 0.68,
             },
-            // Garage 3: ArtDecoZiggurat (Building 4) East facade onto East Avenue (x = 2.1)
+            // Garage 3: SyndicateTower (Building 2) South facade onto North-West Avenue (z = -5.4)
             GaragePortal {
                 id: 3,
-                building_id: 4,
-                street_entry: [2.1, -3.85],
-                portal_pos: [1.05, -3.85],
-                inward_dir: [-1.0, 0.0],
-                width: 0.68,
-            },
-            // Garage 4: SyndicateTower (Building 5) South facade onto North Avenue (z = -2.4)
-            GaragePortal {
-                id: 4,
-                building_id: 5,
-                street_entry: [-3.95, -2.4],
-                portal_pos: [-3.95, -3.45],
+                building_id: 2,
+                street_entry: [-3.55, -5.40],
+                portal_pos: [-3.55, -6.76],
                 inward_dir: [0.0, -1.0],
                 width: 0.68,
             },
-            // Garage 5: SyndicateTower (Building 7) West facade onto West Avenue (x = -2.4)
+            // Garage 4: CathedralKeep (Building 4) North facade onto Outer North Highway (z = -10.6)
             GaragePortal {
-                id: 5,
-                building_id: 7,
-                street_entry: [-2.4, 3.65],
-                portal_pos: [-1.30, 3.65],
-                inward_dir: [1.0, 0.0],
-                width: 0.68,
-            },
-            // Garage 6: IndustrialFoundry (Building 8) East facade onto West Avenue (x = -2.4)
-            GaragePortal {
-                id: 6,
-                building_id: 8,
-                street_entry: [-2.4, 5.05],
-                portal_pos: [-3.45, 5.05],
-                inward_dir: [-1.0, 0.0],
-                width: 0.68,
-            },
-            // Garage 7: SyndicateTower (Building 11) East facade onto Outer East Highway (x = 8.2)
-            GaragePortal {
-                id: 7,
-                building_id: 11,
-                street_entry: [8.2, -0.15],
-                portal_pos: [7.10, -0.15],
-                inward_dir: [-1.0, 0.0],
-                width: 0.68,
-            },
-            // Garage 8: CathedralKeep (Building 13) North facade onto Outer North Highway (z = -8.2)
-            GaragePortal {
-                id: 8,
-                building_id: 13,
-                street_entry: [6.10, -8.2],
-                portal_pos: [6.10, -7.05],
+                id: 4,
+                building_id: 4,
+                street_entry: [7.10, -10.60],
+                portal_pos: [7.10, -8.40],
                 inward_dir: [0.0, 1.0],
                 width: 0.68,
             },
+            // Garage 5: ClockworkBelfry (Building 8) East facade onto Outer East Highway (x = 10.6)
+            GaragePortal {
+                id: 5,
+                building_id: 8,
+                street_entry: [10.60, -1.60],
+                portal_pos: [9.06, -1.60],
+                inward_dir: [-1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 6: SyndicateTower (Building 5) West facade onto Outer West Highway (x = -10.6)
+            GaragePortal {
+                id: 6,
+                building_id: 5,
+                street_entry: [-10.60, -3.05],
+                portal_pos: [-9.11, -3.05],
+                inward_dir: [1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 7: ArtDecoZiggurat (Building 10) North facade onto Central Grand Plaza Avenue (z = 0.2)
+            GaragePortal {
+                id: 7,
+                building_id: 10,
+                street_entry: [-2.75, 0.20],
+                portal_pos: [-2.75, 1.55],
+                inward_dir: [0.0, 1.0],
+                width: 0.68,
+            },
+            // Garage 8: SyndicateTower (Building 16) West facade onto SE Alley (x = 6.2)
+            GaragePortal {
+                id: 8,
+                building_id: 16,
+                street_entry: [6.20, 7.56],
+                portal_pos: [7.36, 7.56],
+                inward_dir: [1.0, 0.0],
+                width: 0.68,
+            },
+            // Garage 9: IndustrialFoundry (Building 13) North facade onto South-West Avenue (z = 5.4)
+            GaragePortal {
+                id: 9,
+                building_id: 13,
+                street_entry: [-7.90, 5.40],
+                portal_pos: [-7.90, 6.81],
+                inward_dir: [0.0, 1.0],
+                width: 0.68,
+            },
+            // Garage 10: CathedralKeep (Building 15) West facade onto South Central Spine (x = 0.7)
+            GaragePortal {
+                id: 10,
+                building_id: 15,
+                street_entry: [0.70, 7.56],
+                portal_pos: [2.20, 7.56],
+                inward_dir: [1.0, 0.0],
+                width: 0.68,
+            },
         ];
 
-        // 8 Connected Vehicle Routes:
-        // - Routes 0..4 are continuous closed loops around the Outer Perimeter Highway & Inner Avenues.
-        // - Routes 4..8 are Garage-to-Garage commuter routes that emerge from one building's
-        //   underground parking garage, traverse the connected avenues/highway, and descend into
-        //   another building's underground parking garage!
+        // 10 Connected Vehicle Routes:
+        // - Routes 0..5 are continuous closed loops navigating the Outer Ring Highway & dogleg inner avenues.
+        // - Routes 5..10 are subterranean Garage-to-Garage commuter routes across the 4x4 city.
         let vehicle_routes = vec![
-            // Route 0: Outer Perimeter Ring Highway (Clockwise Loop)
+            // Route 1: Outer Perimeter Ring Highway (Clockwise Loop)
             VehicleRoute {
                 id: 1,
-                waypoints: vec![[-8.2, -8.2], [8.2, -8.2], [8.2, 8.2], [-8.2, 8.2]],
+                waypoints: vec![[-10.6, -10.6], [10.6, -10.6], [10.6, 10.6], [-10.6, 10.6]],
                 is_closed_loop: true,
             },
-            // Route 1: Outer Perimeter Ring Highway (Counter-Clockwise Loop)
+            // Route 2: Outer Perimeter Ring Highway (Counter-Clockwise Loop)
             VehicleRoute {
                 id: 2,
-                waypoints: vec![[-8.2, -8.2], [-8.2, 8.2], [8.2, 8.2], [8.2, -8.2]],
+                waypoints: vec![[-10.6, -10.6], [-10.6, 10.6], [10.6, 10.6], [10.6, -10.6]],
                 is_closed_loop: true,
             },
-            // Route 2: Grand Metropolis Figure-8 (Inner Avenues + Outer Highway Loop)
+            // Route 3: Grand Staggered Inner Citadel Circuit (navigating the dogleg central blocks)
             VehicleRoute {
                 id: 3,
                 waypoints: vec![
-                    [-2.4, 2.1],
-                    [-2.4, -8.2],
-                    [2.1, -8.2],
-                    [2.1, 2.1],
-                    [8.2, 2.1],
-                    [8.2, 8.2],
-                    [-2.4, 8.2],
+                    [-5.2, 0.2],
+                    [5.4, 0.2],
+                    [5.4, 4.6],
+                    [0.7, 4.6],
+                    [0.7, 5.4],
+                    [-5.2, 5.4],
                 ],
                 is_closed_loop: true,
             },
-            // Route 3: Cross-Town Canyon & West/North Highway Circuit
+            // Route 4: North-East & North-West Dogleg Canyon Circuit
             VehicleRoute {
                 id: 4,
                 waypoints: vec![
-                    [-8.2, -2.4],
-                    [8.2, -2.4],
-                    [8.2, -8.2],
-                    [2.1, -8.2],
-                    [2.1, 8.2],
-                    [-8.2, 8.2],
+                    [-5.2, -5.4],
+                    [-0.4, -5.4],
+                    [-0.4, -4.3],
+                    [5.4, -4.3],
+                    [5.4, 0.2],
+                    [-5.2, 0.2],
                 ],
                 is_closed_loop: true,
             },
-            // Route 4: Underground Garage 1 (CathedralKeep) <-> Underground Garage 7 (East Highway Tower)
+            // Route 5: Cross-Metropolis Winding Boulevard & South Highway Loop
             VehicleRoute {
                 id: 5,
                 waypoints: vec![
-                    [-0.80, 0.48], // Inside Garage 1 subterranean vault
-                    [-1.45, 0.48], // Garage 1 portal mouth
-                    [-2.4, 0.48],  // Turn onto West Avenue
-                    [-2.4, -2.4],  // Intersection with North Avenue
-                    [8.2, -2.4],   // Turn onto Outer East Highway
-                    [8.2, -0.15],  // Turn into Garage 7 ramp
-                    [7.10, -0.15], // Garage 7 portal mouth
-                    [6.45, -0.15], // Inside Garage 7 subterranean vault
+                    [-10.6, -5.4],
+                    [-0.4, -5.4],
+                    [-0.4, 0.2],
+                    [0.7, 0.2],
+                    [0.7, 4.6],
+                    [10.6, 4.6],
+                    [10.6, 10.6],
+                    [-10.6, 10.6],
                 ],
-                is_closed_loop: false,
+                is_closed_loop: true,
             },
-            // Route 5: Underground Garage 2 (East Ziggurat) <-> Underground Garage 4 (NW Syndicate Tower)
+            // Route 6: Underground Garage 1 (CathedralKeep) <-> Underground Garage 5 (East Highway Belfry)
             VehicleRoute {
                 id: 6,
                 waypoints: vec![
-                    [3.65, 0.40],   // Inside Garage 2 subterranean vault
-                    [3.65, 1.05],   // Garage 2 portal mouth
-                    [3.65, 2.1],    // Turn onto South Avenue
-                    [-2.4, 2.1],    // Intersection with West Avenue
-                    [-2.4, -2.4],   // Intersection with North Avenue
-                    [-3.95, -2.4],  // Turn into Garage 4 ramp
-                    [-3.95, -3.45], // Garage 4 portal mouth
-                    [-3.95, -4.10], // Inside Garage 4 subterranean vault
+                    [-2.15, -1.65],
+                    [-1.50, -1.65],
+                    [-0.40, -1.65],
+                    [-0.40, -4.30],
+                    [10.60, -4.30],
+                    [10.60, -1.60],
+                    [9.06, -1.60],
+                    [8.40, -1.60],
                 ],
                 is_closed_loop: false,
             },
-            // Route 6: Underground Garage 3 (North Ziggurat) <-> Underground Garage 8 (NE Cathedral Highway)
+            // Route 7: Underground Garage 2 (Crown Ziggurat) <-> Underground Garage 3 (NW Syndicate Tower)
             VehicleRoute {
                 id: 7,
                 waypoints: vec![
-                    [0.40, -3.85], // Inside Garage 3 subterranean vault
-                    [1.05, -3.85], // Garage 3 portal mouth
-                    [2.1, -3.85],  // Turn onto East Avenue
-                    [2.1, 2.1],    // Intersection with South Avenue
-                    [8.2, 2.1],    // Turn onto Outer East Highway
-                    [8.2, -8.2],   // Outer NE Highway corner
-                    [6.10, -8.2],  // Turn into Garage 8 ramp
-                    [6.10, -7.05], // Garage 8 portal mouth
-                    [6.10, -6.40], // Inside Garage 8 subterranean vault
+                    [2.10, -1.55],
+                    [2.10, -0.90],
+                    [2.10, 0.20],
+                    [-0.40, 0.20],
+                    [-0.40, -5.40],
+                    [-3.55, -5.40],
+                    [-3.55, -6.76],
+                    [-3.55, -7.40],
                 ],
                 is_closed_loop: false,
             },
-            // Route 7: Underground Garage 6 (SW Foundry) <-> Underground Garage 5 (South Syndicate Tower)
+            // Route 8: Underground Garage 7 (Central Ziggurat) <-> Underground Garage 9 (SW Chemical Foundry)
             VehicleRoute {
                 id: 8,
                 waypoints: vec![
-                    [-4.10, 5.05], // Inside Garage 6 subterranean vault
-                    [-3.45, 5.05], // Garage 6 portal mouth
-                    [-2.4, 5.05],  // Turn onto West Avenue
-                    [-2.4, 8.2],   // Turn onto Outer South Highway
-                    [-8.2, 8.2],   // Outer SW Highway corner
-                    [-8.2, 2.1],   // Turn onto South Avenue
-                    [-2.4, 2.1],   // Turn onto West Avenue
-                    [-2.4, 3.65],  // Turn into Garage 5 ramp
-                    [-1.30, 3.65], // Garage 5 portal mouth
-                    [-0.65, 3.65], // Inside Garage 5 subterranean vault
+                    [-2.75, 2.20],
+                    [-2.75, 1.55],
+                    [-2.75, 0.20],
+                    [-5.20, 0.20],
+                    [-5.20, 5.40],
+                    [-7.90, 5.40],
+                    [-7.90, 6.81],
+                    [-7.90, 7.45],
+                ],
+                is_closed_loop: false,
+            },
+            // Route 9: Underground Garage 8 (SE Syndicate Bastion) <-> Underground Garage 4 (NE Cathedral Citadel)
+            VehicleRoute {
+                id: 9,
+                waypoints: vec![
+                    [8.00, 7.56],
+                    [7.36, 7.56],
+                    [6.20, 7.56],
+                    [6.20, 4.60],
+                    [5.40, 4.60],
+                    [5.40, -4.30],
+                    [10.60, -4.30],
+                    [10.60, -10.60],
+                    [7.10, -10.60],
+                    [7.10, -8.40],
+                    [7.10, -7.75],
+                ],
+                is_closed_loop: false,
+            },
+            // Route 10: Underground Garage 6 (West Syndicate) <-> Underground Garage 10 (SE Cathedral Keep)
+            VehicleRoute {
+                id: 10,
+                waypoints: vec![
+                    [-8.45, -3.05],
+                    [-9.11, -3.05],
+                    [-10.60, -3.05],
+                    [-10.60, 5.40],
+                    [0.70, 5.40],
+                    [0.70, 7.56],
+                    [2.20, 7.56],
+                    [2.85, 7.56],
                 ],
                 is_closed_loop: false,
             },
         ];
 
-        // Street-level steam grates and rooftop industrial smokestacks
+        // Street-level steam grates and rooftop industrial smokestacks across the 4x4 metropolis
         let steam_sources = vec![
-            // Rooftop foundry smokestacks (aligned with Buildings 8, 10, 15)
+            // Rooftop foundry smokestacks (aligned with Buildings 12, 13, 22)
             SteamSource {
-                pos: [-5.08, 7.05, 4.00],
+                pos: [-8.48, 8.30, 7.63],
                 rate_scale: 1.25,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [-4.02, 7.05, 4.60],
-                rate_scale: 1.1,
+                pos: [-7.32, 8.30, 8.29],
+                rate_scale: 1.15,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [-6.74, 6.10, -0.45],
-                rate_scale: 1.0,
+                pos: [-6.16, 6.59, 7.70],
+                rate_scale: 1.05,
                 is_rooftop: true,
             },
             SteamSource {
-                pos: [-5.99, 6.10, 6.43],
-                rate_scale: 1.0,
+                pos: [7.34, 7.81, 2.63],
+                rate_scale: 1.15,
                 is_rooftop: true,
             },
-            // Canyon street steam grates
             SteamSource {
-                pos: [-2.4, 0.08, 0.8],
+                pos: [8.58, 7.81, 3.07],
+                rate_scale: 1.05,
+                is_rooftop: true,
+            },
+            // Canyon street steam grates at dogleg junctions
+            SteamSource {
+                pos: [-5.20, 0.08, 0.20],
                 rate_scale: 0.85,
                 is_rooftop: false,
             },
             SteamSource {
-                pos: [2.1, 0.08, -1.1],
+                pos: [-0.40, 0.08, -2.10],
                 rate_scale: 0.85,
                 is_rooftop: false,
             },
             SteamSource {
-                pos: [-0.8, 0.08, 2.1],
+                pos: [0.70, 0.08, 2.40],
+                rate_scale: 0.80,
+                is_rooftop: false,
+            },
+            SteamSource {
+                pos: [5.40, 0.08, -1.20],
+                rate_scale: 0.80,
+                is_rooftop: false,
+            },
+            SteamSource {
+                pos: [-2.60, 0.08, 5.40],
                 rate_scale: 0.75,
                 is_rooftop: false,
             },
@@ -849,7 +1494,8 @@ impl CityBlueprint {
 
         Self {
             name: "Gotham Spire Core".into(),
-            plinth_half_extent: 9.8,
+            plinth_half_extent: 12.2,
+            blocks,
             buildings,
             walkways,
             viaduct_waypoints: unique_viaduct_waypoints,
@@ -1376,69 +2022,89 @@ impl GothicMetropolisState {
         let airships = vec![
             GothicAirship {
                 id: 1,
-                orbit_center: [-0.4, -0.4],
-                orbit_rx: 6.4,
-                orbit_rz: 5.4,
-                altitude: 10.4,
+                orbit_center: [-0.4, -0.3],
+                orbit_rx: 8.6,
+                orbit_rz: 7.4,
+                altitude: 14.2,
                 angle: 0.65,
-                angular_speed: 0.024,
-                hull_length: 2.15,
+                angular_speed: 0.022,
+                hull_length: 2.25,
                 searchlight_phase: 0.0,
             },
             GothicAirship {
                 id: 2,
-                orbit_center: [0.6, 0.4],
-                orbit_rx: 4.8,
-                orbit_rz: 6.2,
-                altitude: 11.6,
+                orbit_center: [0.5, 0.4],
+                orbit_rx: 6.8,
+                orbit_rz: 8.2,
+                altitude: 15.6,
                 angle: 3.8,
-                angular_speed: -0.019,
-                hull_length: 1.85,
+                angular_speed: -0.018,
+                hull_length: 1.95,
                 searchlight_phase: 2.1,
             },
         ];
 
-        // Authored rooftop searchlights on the high towers
+        // Authored rooftop searchlights on the high towers across the 4x4 districts
         let searchlights = vec![
-            // SyndicateTower NW rooftop beacon (Building 5)
+            // ChanceryArcadeKeep NW rooftop beacon (Building 2)
             SearchlightBeam {
-                origin: [-4.55, 7.55, -4.55],
-                base_yaw: 0.8,
+                origin: [-3.55, 11.95, -7.96],
+                base_yaw: 0.85,
                 sweep_amp: 0.95,
                 sweep_speed: 0.14,
                 tilt_from_vertical: 0.34,
-                length: 6.2,
+                length: 7.2,
                 phase_offset: 0.0,
             },
-            // ArtDecoZiggurat East crown beacon (Building 2)
+            // ArtDecoZiggurat Crown Spire beacon (Building 7)
             SearchlightBeam {
-                origin: [4.20, 8.75, -0.15],
-                base_yaw: 2.6,
+                origin: [2.10, 15.55, -2.05],
+                base_yaw: 2.5,
                 sweep_amp: 0.85,
                 sweep_speed: 0.12,
                 tilt_from_vertical: 0.30,
-                length: 6.6,
-                phase_offset: 1.7,
+                length: 7.8,
+                phase_offset: 1.5,
             },
-            // SyndicateTower South rooftop beacon (Building 7)
+            // AtlasDecoTower North-East rooftop beacon (Building 3)
             SearchlightBeam {
-                origin: [-0.15, 7.35, 4.25],
-                base_yaw: -1.4,
-                sweep_amp: 0.90,
-                sweep_speed: 0.16,
-                tilt_from_vertical: 0.32,
-                length: 5.8,
-                phase_offset: 3.3,
-            },
-            // North ArtDecoZiggurat beacon (Building 4)
-            SearchlightBeam {
-                origin: [-0.15, 9.15, -4.45],
-                base_yaw: 1.5,
-                sweep_amp: 0.78,
+                origin: [2.05, 14.55, -6.85],
+                base_yaw: 1.4,
+                sweep_amp: 0.80,
                 sweep_speed: 0.11,
                 tilt_from_vertical: 0.28,
-                length: 6.4,
-                phase_offset: 4.8,
+                length: 7.4,
+                phase_offset: 3.1,
+            },
+            // AtlasDecoTower Central Plaza beacon (Building 10)
+            SearchlightBeam {
+                origin: [-2.75, 13.75, 2.80],
+                base_yaw: -1.3,
+                sweep_amp: 0.90,
+                sweep_speed: 0.15,
+                tilt_from_vertical: 0.32,
+                length: 7.2,
+                phase_offset: 4.4,
+            },
+            // SyndicateTower West Bastion beacon (Building 5)
+            SearchlightBeam {
+                origin: [-7.86, 11.15, -3.05],
+                base_yaw: 0.35,
+                sweep_amp: 0.82,
+                sweep_speed: 0.13,
+                tilt_from_vertical: 0.33,
+                length: 6.8,
+                phase_offset: 5.5,
+            },
+            // AlchemicalObservatory East rooftop beacon (Building 8)
+            SearchlightBeam {
+                origin: [7.96, 10.75, -1.60],
+                base_yaw: -2.2,
+                sweep_amp: 0.86,
+                sweep_speed: 0.14,
+                tilt_from_vertical: 0.31,
+                length: 6.8,
+                phase_offset: 2.3,
             },
         ];
 
@@ -1490,8 +2156,8 @@ impl GothicMetropolisState {
 
         // 1. Advance elevated trains along the closed viaduct loop
         let track_len = self.blueprint.viaduct_total_length();
-        // Station platform is along segment 0 (track_dist 1.4 .. 2.8)
-        let station_center_dist = 2.25f32;
+        // Station platform is along segment 0 (track_dist 1.8 .. 4.3, centered at z = 2.35 -> dist 3.05)
+        let station_center_dist = 3.05f32;
         for train in &mut self.trains {
             if train.station_dwell_secs > 0.0 {
                 train.station_dwell_secs = (train.station_dwell_secs - dt).max(0.0);
@@ -1656,9 +2322,9 @@ impl GothicMetropolisState {
             self.airships.push(GothicAirship {
                 id: new_id,
                 orbit_center: [0.0, 0.0],
-                orbit_rx: 5.5 + (new_id as f32 * 0.55),
-                orbit_rz: 5.2 + (new_id as f32 * 0.45),
-                altitude: 9.6 + (new_id as f32 * 0.65),
+                orbit_rx: 6.2 + (new_id as f32 * 0.55),
+                orbit_rz: 5.8 + (new_id as f32 * 0.45),
+                altitude: 13.4 + (new_id as f32 * 0.65),
                 angle: self.rng.range(0.0, TAU),
                 angular_speed: dir * 0.026,
                 hull_length: 2.0,
@@ -1747,14 +2413,15 @@ mod tests {
             bp1, bp2,
             "CityBlueprint must be 100% consistent across calls"
         );
-        assert!(bp1.buildings.len() >= 12);
-        assert!(bp1.walkways.len() >= 10);
-        assert!(bp1.viaduct_waypoints.len() >= 6);
-        assert!(bp1.avenues.len() >= 8);
+        assert_eq!(bp1.blocks.len(), 16, "4x4 layout must have 16 city blocks");
+        assert!(bp1.buildings.len() >= 20);
+        assert!(bp1.walkways.len() >= 14);
+        assert!(bp1.viaduct_waypoints.len() >= 10);
+        assert!(bp1.avenues.len() >= 16);
         assert_eq!(bp1.avenues.iter().filter(|a| a.is_highway).count(), 4);
-        assert!(bp1.garages.len() >= 6);
-        assert!(bp1.vehicle_routes.len() >= 6);
-        assert!(bp1.viaduct_total_length() > 20.0);
+        assert!(bp1.garages.len() >= 8);
+        assert!(bp1.vehicle_routes.len() >= 8);
+        assert!(bp1.viaduct_total_length() > 35.0);
     }
 
     #[test]
@@ -1832,5 +2499,115 @@ mod tests {
         assert_eq!(state.palette, GothicPalette::GothamAmber);
         state.cycle_palette();
         assert_eq!(state.palette, GothicPalette::CathedralMoonlight);
+    }
+
+    #[test]
+    fn walkways_connect_to_building_facades_at_elevation() {
+        let bp = CityBlueprint::default_gothic_metropolis();
+        assert!(
+            bp.walkways.len() >= 18,
+            "Expected at least 18 multi-tier walkways"
+        );
+
+        for span in &bp.walkways {
+            let b_start = bp
+                .buildings
+                .iter()
+                .find(|b| b.id == span.start_building_id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Walkway {} missing start_building_id {}",
+                        span.id, span.start_building_id
+                    )
+                });
+            let b_end = bp
+                .buildings
+                .iter()
+                .find(|b| b.id == span.end_building_id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Walkway {} missing end_building_id {}",
+                        span.id, span.end_building_id
+                    )
+                });
+
+            assert!(
+                span.elevation + 0.4 <= b_start.height,
+                "Walkway {} elevation {} is too close to or above start building {} height {}",
+                span.id,
+                span.elevation,
+                b_start.id,
+                b_start.height
+            );
+            assert!(
+                span.elevation + 0.4 <= b_end.height,
+                "Walkway {} elevation {} is too close to or above end building {} height {}",
+                span.id,
+                span.elevation,
+                b_end.id,
+                b_end.height
+            );
+
+            for (label, pt, bld) in [("start", span.start, b_start), ("end", span.end, b_end)] {
+                let (x0, x1, z0, z1) = bld
+                    .cross_section_bounds_at(span.elevation)
+                    .expect("building cross section at walkway elevation");
+                let eps = 0.03;
+                let inside_x = pt[0] >= x0 - eps && pt[0] <= x1 + eps;
+                let inside_z = pt[1] >= z0 - eps && pt[1] <= z1 + eps;
+                let on_wall_x = (pt[0] - x0).abs() <= eps || (pt[0] - x1).abs() <= eps;
+                let on_wall_z = (pt[1] - z0).abs() <= eps || (pt[1] - z1).abs() <= eps;
+                assert!(
+                    inside_x && inside_z && (on_wall_x || on_wall_z),
+                    "Walkway {} {} point {:?} does not touch building {} ({:?}) facade bounds ({:.2}..{:.2}, {:.2}..{:.2}) at y={:.2}",
+                    span.id,
+                    label,
+                    pt,
+                    bld.id,
+                    bld.archetype,
+                    x0,
+                    x1,
+                    z0,
+                    z1,
+                    span.elevation
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn buildings_exhibit_height_and_archetype_variety() {
+        let bp = CityBlueprint::default_gothic_metropolis();
+        let min_h = bp
+            .buildings
+            .iter()
+            .map(|b| b.height)
+            .fold(f32::INFINITY, f32::min);
+        let max_h = bp.buildings.iter().map(|b| b.height).fold(0.0f32, f32::max);
+        assert!(
+            max_h >= 15.0 && (max_h - min_h) >= 10.5,
+            "Buildings must span a dramatic vertical range (got {min_h:.1}..{max_h:.1})"
+        );
+
+        let required_archetypes = [
+            BuildingArchetype::CathedralKeep,
+            BuildingArchetype::ArtDecoZiggurat,
+            BuildingArchetype::ClockworkBelfry,
+            BuildingArchetype::IndustrialFoundry,
+            BuildingArchetype::SyndicateTower,
+            BuildingArchetype::ViaductStation,
+            BuildingArchetype::OctagonalCitadel,
+            BuildingArchetype::GothicMonumentPlaza,
+            BuildingArchetype::AtlasDecoTower,
+            BuildingArchetype::ChanceryArcadeKeep,
+            BuildingArchetype::AlchemicalObservatory,
+        ];
+        for arch in required_archetypes {
+            assert!(
+                bp.buildings.iter().any(|b| b.archetype == arch),
+                "Missing building archetype {:?}",
+                arch
+            );
+        }
     }
 }

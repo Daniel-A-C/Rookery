@@ -64,7 +64,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Deep canyon ambient occlusion: lower street chasms are dramatic and shadowed,
     // while upper setbacks, buttresses, and spires catch crisp moonlight/rim light.
-    let height_ao = smoothstep(-0.8, 7.2, in.world_pos.y);
+    let height_ao = smoothstep(-0.8, 12.0, in.world_pos.y);
     let canyon_ao = mix(0.38, 1.08, height_ao);
 
     // Warm upward bounce light from street avenues (y ~ 0.2..3.2) onto vertical canyon facades
