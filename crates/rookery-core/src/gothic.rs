@@ -389,6 +389,36 @@ pub struct GaragePortal {
     pub width: f32,
 }
 
+/// A 2nd-level elevated highway bridge/overpass spanning above an outer perimeter edge.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ElevatedHighwaySpan {
+    pub id: u32,
+    /// Start `[x, z]` of the full span (including approach ramp at ground level `y = 0.0`).
+    pub start: [f32; 2],
+    /// End `[x, z]` of the full span (including exit ramp back to `y = 0.0`).
+    pub end: [f32; 2],
+    /// Length along the span occupied by each sloped ramp at `start` and `end`.
+    pub ramp_length: f32,
+    /// Elevated deck height above ground level.
+    pub elevation: f32,
+    /// Roadway deck width.
+    pub width: f32,
+}
+
+/// A sunken roadside/highway portal where vehicles descend into an unsimulated underground section.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UndergroundPortal {
+    pub id: u32,
+    /// Point `[x, z]` at ground level where the ramp begins descending.
+    pub entry_pos: [f32; 2],
+    /// Point `[x, z]` at the subterranean tunnel mouth (`y < 0`).
+    pub portal_pos: [f32; 2],
+    /// Unit horizontal direction `[dx, dz]` pointing into the tunnel mouth.
+    pub inward_dir: [f32; 2],
+    /// Width of the sunken ramp and tunnel portal.
+    pub width: f32,
+}
+
 /// A connected multi-segment route for street and highway vehicles.
 ///
 /// Either forms a continuous closed circuit around the connected avenues & outer ring highway
@@ -399,6 +429,12 @@ pub struct VehicleRoute {
     pub id: u32,
     pub waypoints: Vec<[f32; 2]>,
     pub is_closed_loop: bool,
+    /// Optional per-waypoint vertical elevation (`y`). Empty defaults to `0.025` (street level).
+    #[serde(default)]
+    pub waypoint_elevations: Vec<f32>,
+    /// Segment indices `[i -> (i + 1) % n]` where vehicles are underground and hidden from rendering.
+    #[serde(default)]
+    pub underground_segments: Vec<usize>,
 }
 
 /// A steam emitter source (either a street grate or a high rooftop smokestack/vent).
@@ -445,6 +481,10 @@ pub struct CityBlueprint {
     pub avenues: Vec<StreetAvenue>,
     #[serde(default)]
     pub garages: Vec<GaragePortal>,
+    #[serde(default)]
+    pub elevated_highways: Vec<ElevatedHighwaySpan>,
+    #[serde(default)]
+    pub underground_portals: Vec<UndergroundPortal>,
     #[serde(default)]
     pub vehicle_routes: Vec<VehicleRoute>,
     pub steam_sources: Vec<SteamSource>,
@@ -1299,21 +1339,73 @@ impl CityBlueprint {
             },
         ];
 
-        // 10 Connected Vehicle Routes:
+        // 2nd-Level Elevated Highway Overpass along the South foreground outer edge (`z = +10.6`)
+        let elevated_highways = vec![ElevatedHighwaySpan {
+            id: 1,
+            start: [-9.8, 10.6],
+            end: [9.8, 10.6],
+            ramp_length: 3.4,
+            elevation: 1.85,
+            width: 1.18,
+        }];
+
+        // 4 Sunken Underground Tunnel Portals for subterranean crosstown shortcuts
+        let underground_portals = vec![
+            // Portal 1: East Outer Highway -> Block 8 South Plaza
+            UndergroundPortal {
+                id: 1,
+                entry_pos: [10.60, 0.05],
+                portal_pos: [8.80, 0.05],
+                inward_dir: [-1.0, 0.0],
+                width: 0.78,
+            },
+            // Portal 2: South-West Avenue -> Block 14 NW Plaza
+            UndergroundPortal {
+                id: 2,
+                entry_pos: [-3.35, 5.40],
+                portal_pos: [-3.35, 7.20],
+                inward_dir: [0.0, 1.0],
+                width: 0.78,
+            },
+            // Portal 3: East Outer Highway -> Block 4 SE Plaza
+            UndergroundPortal {
+                id: 3,
+                entry_pos: [10.60, -5.60],
+                portal_pos: [8.85, -5.60],
+                inward_dir: [-1.0, 0.0],
+                width: 0.78,
+            },
+            // Portal 4: West Outer Highway -> Block 1 SW Plaza
+            UndergroundPortal {
+                id: 4,
+                entry_pos: [-10.60, -6.50],
+                portal_pos: [-8.85, -6.50],
+                inward_dir: [1.0, 0.0],
+                width: 0.78,
+            },
+        ];
+
+        // 13 Connected Vehicle Routes:
         // - Routes 0..5 are continuous closed loops navigating the Outer Ring Highway & dogleg inner avenues.
         // - Routes 5..10 are subterranean Garage-to-Garage commuter routes across the 4x4 city.
+        // - Route 10 is the 2nd-Level South Overpass Express Loop (climbs to y = 1.875).
+        // - Routes 11..13 are Subterranean Express Tunnel Loops connecting sunken UndergroundPortals.
         let vehicle_routes = vec![
             // Route 1: Outer Perimeter Ring Highway (Clockwise Loop)
             VehicleRoute {
                 id: 1,
                 waypoints: vec![[-10.6, -10.6], [10.6, -10.6], [10.6, 10.6], [-10.6, 10.6]],
                 is_closed_loop: true,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 2: Outer Perimeter Ring Highway (Counter-Clockwise Loop)
             VehicleRoute {
                 id: 2,
                 waypoints: vec![[-10.6, -10.6], [-10.6, 10.6], [10.6, 10.6], [10.6, -10.6]],
                 is_closed_loop: true,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 3: Grand Staggered Inner Citadel Circuit (navigating the dogleg central blocks)
             VehicleRoute {
@@ -1327,6 +1419,8 @@ impl CityBlueprint {
                     [-5.2, 5.4],
                 ],
                 is_closed_loop: true,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 4: North-East & North-West Dogleg Canyon Circuit
             VehicleRoute {
@@ -1340,6 +1434,8 @@ impl CityBlueprint {
                     [-5.2, 0.2],
                 ],
                 is_closed_loop: true,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 5: Cross-Metropolis Winding Boulevard & South Highway Loop
             VehicleRoute {
@@ -1355,6 +1451,8 @@ impl CityBlueprint {
                     [-10.6, 10.6],
                 ],
                 is_closed_loop: true,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 6: Underground Garage 1 (CathedralKeep) <-> Underground Garage 5 (East Highway Belfry)
             VehicleRoute {
@@ -1370,6 +1468,8 @@ impl CityBlueprint {
                     [8.40, -1.60],
                 ],
                 is_closed_loop: false,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 7: Underground Garage 2 (Crown Ziggurat) <-> Underground Garage 3 (NW Syndicate Tower)
             VehicleRoute {
@@ -1385,6 +1485,8 @@ impl CityBlueprint {
                     [-3.55, -7.40],
                 ],
                 is_closed_loop: false,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 8: Underground Garage 7 (Central Ziggurat) <-> Underground Garage 9 (SW Chemical Foundry)
             VehicleRoute {
@@ -1400,6 +1502,8 @@ impl CityBlueprint {
                     [-7.90, 7.45],
                 ],
                 is_closed_loop: false,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 9: Underground Garage 8 (SE Syndicate Bastion) <-> Underground Garage 4 (NE Cathedral Citadel)
             VehicleRoute {
@@ -1418,6 +1522,8 @@ impl CityBlueprint {
                     [7.10, -7.75],
                 ],
                 is_closed_loop: false,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
             },
             // Route 10: Underground Garage 6 (West Syndicate) <-> Underground Garage 10 (SE Cathedral Keep)
             VehicleRoute {
@@ -1433,6 +1539,56 @@ impl CityBlueprint {
                     [2.85, 7.56],
                 ],
                 is_closed_loop: false,
+                waypoint_elevations: Vec::new(),
+                underground_segments: Vec::new(),
+            },
+            // Route 11: 2nd-Level South Overpass & Outer Ring Express Loop
+            VehicleRoute {
+                id: 11,
+                waypoints: vec![
+                    [-10.6, 10.6],
+                    [-9.8, 10.6],
+                    [-6.4, 10.6],
+                    [6.4, 10.6],
+                    [9.8, 10.6],
+                    [10.6, 10.6],
+                    [10.6, -10.6],
+                    [-10.6, -10.6],
+                ],
+                is_closed_loop: true,
+                waypoint_elevations: vec![0.025, 0.025, 1.875, 1.875, 0.025, 0.025, 0.025, 0.025],
+                underground_segments: Vec::new(),
+            },
+            // Route 12: Subterranean Tunnel Loop (Portal 1 East Outer -> Portal 2 SW Avenue)
+            VehicleRoute {
+                id: 12,
+                waypoints: vec![
+                    [10.60, 0.05],
+                    [8.80, 0.05],
+                    [-3.35, 7.20],
+                    [-3.35, 5.40],
+                    [0.70, 5.40],
+                    [0.70, 4.60],
+                    [10.60, 4.60],
+                ],
+                is_closed_loop: true,
+                waypoint_elevations: vec![0.025, -0.22, -0.22, 0.025, 0.025, 0.025, 0.025],
+                underground_segments: vec![1],
+            },
+            // Route 13: Subterranean Crosstown Loop (Portal 3 NE Outer -> Portal 4 NW Outer)
+            VehicleRoute {
+                id: 13,
+                waypoints: vec![
+                    [10.60, -5.60],
+                    [8.85, -5.60],
+                    [-8.85, -6.50],
+                    [-10.60, -6.50],
+                    [-10.60, -10.60],
+                    [10.60, -10.60],
+                ],
+                is_closed_loop: true,
+                waypoint_elevations: vec![0.025, -0.22, -0.22, 0.025, 0.025, 0.025],
+                underground_segments: vec![1],
             },
         ];
 
@@ -1503,6 +1659,8 @@ impl CityBlueprint {
             station_waypoint_idx: 0,
             avenues,
             garages,
+            elevated_highways,
+            underground_portals,
             vehicle_routes,
             steam_sources,
         }
@@ -1510,11 +1668,21 @@ impl CityBlueprint {
 
     /// Sample a vehicle's 3D world position `[x, y, z]`, unit forward tangent `[fx, fz]`,
     /// and whether the vehicle is currently deep inside a subterranean parking garage vault
-    /// (`is_subterranean_hidden`).
+    /// or underground tunnel (`is_subterranean_hidden`).
     ///
     /// Applies right-hand lane offsets along street and highway segments, centers vehicles on
-    /// underground garage ramps, and rounds 90-degree corners with smooth Quadratic Bezier curves.
+    /// underground garage/tunnel ramps, and rounds 90-degree corners with smooth Quadratic Bezier curves.
     pub fn sample_vehicle_pose(&self, veh: &GothicVehicle) -> Option<([f32; 3], [f32; 2], bool)> {
+        self.sample_vehicle_pose_3d(veh)
+            .map(|(pos, fwd, _slope, hidden)| (pos, fwd, hidden))
+    }
+
+    /// Extended variant of [`Self::sample_vehicle_pose`] that also returns the vertical ramp
+    /// slope `dy / ds` along the vehicle's forward direction for realistic chassis pitching.
+    pub fn sample_vehicle_pose_3d(
+        &self,
+        veh: &GothicVehicle,
+    ) -> Option<([f32; 3], [f32; 2], f32, bool)> {
         if self.vehicle_routes.is_empty() {
             // Fallback for custom minimal blueprints with only straight `avenues`
             let ave = self.avenues.get(veh.avenue_idx)?;
@@ -1527,7 +1695,7 @@ impl CityBlueprint {
             let vx = ave.start[0] + dx * veh.progress + u_right[0] * lane_offset;
             let vz = ave.start[1] + dz * veh.progress + u_right[1] * lane_offset;
             let car_fwd = [u_fwd[0] * veh.dir.signum(), u_fwd[1] * veh.dir.signum()];
-            return Some(([vx, 0.025, vz], car_fwd, false));
+            return Some(([vx, 0.025, vz], car_fwd, 0.0, false));
         }
 
         let route = self
@@ -1541,13 +1709,27 @@ impl CityBlueprint {
         let dir_sign = if veh.dir >= 0.0 { 1.0f32 } else { -1.0f32 };
         let lane_mag = 0.23f32 * dir_sign;
 
+        // Check if waypoint `i` is a portal mouth or street approach for an underground tunnel segment.
+        let is_tunnel_mouth = |idx: usize| -> bool {
+            route
+                .underground_segments
+                .iter()
+                .any(|&s| s == idx || (s + 1) % n == idx)
+        };
+        let is_tunnel_approach = |idx: usize| -> bool {
+            route
+                .underground_segments
+                .iter()
+                .any(|&s| (s + n - 1) % n == idx || (s + 2) % n == idx)
+        };
+
         // Build lane-offset waypoints so vehicles stay in their right-hand lane on roads
-        // and align with the ramp centerline when entering/exiting underground garages.
+        // and align with the ramp centerline when entering/exiting underground garages or tunnels.
         let mut pts = Vec::with_capacity(n);
         for i in 0..n {
             let p = route.waypoints[i];
             let is_garage_pt = !route.is_closed_loop && (i <= 1 || i + 2 >= n);
-            if is_garage_pt {
+            if is_garage_pt || is_tunnel_mouth(i) || is_tunnel_approach(i) {
                 pts.push(p);
                 continue;
             }
@@ -1622,7 +1804,7 @@ impl CityBlueprint {
             let start_vault_len = seg_lens[0] * 0.68;
             let end_vault_len = seg_lens[seg_count - 1] * 0.68;
             if target_dist < start_vault_len || target_dist > total_len - end_vault_len {
-                return Some(([pts[0][0], -0.10, pts[0][1]], [1.0, 0.0], true));
+                return Some(([pts[0][0], -0.10, pts[0][1]], [1.0, 0.0], 0.0, true));
             }
         }
 
@@ -1637,16 +1819,32 @@ impl CityBlueprint {
             rem -= slen;
         }
 
+        // Hide vehicles while they traverse an unsimulated underground tunnel segment
+        if route.underground_segments.contains(&seg_idx) {
+            return Some((
+                [pts[seg_idx][0], -0.45, pts[seg_idx][1]],
+                [1.0, 0.0],
+                0.0,
+                true,
+            ));
+        }
+
+        // Hide vehicles while they traverse an unsimulated underground tunnel segment
+        if route.underground_segments.contains(&seg_idx) {
+            return Some(([pts[seg_idx][0], -0.45, pts[seg_idx][1]], [1.0, 0.0], 0.0, true));
+        }
+
         let a = pts[seg_idx];
         let b = pts[(seg_idx + 1) % n];
         let slen = seg_lens[seg_idx];
         let dir_curr = [(b[0] - a[0]) / slen, (b[1] - a[1]) / slen];
 
         let corner_r = 0.36f32;
-        let can_round_start = route.is_closed_loop || seg_idx > 0;
-        let can_round_end = route.is_closed_loop || (seg_idx + 1 < seg_count);
+        let can_round_start = (route.is_closed_loop || seg_idx > 0) && !is_tunnel_mouth(seg_idx);
+        let can_round_end = (route.is_closed_loop || (seg_idx + 1 < seg_count))
+            && !is_tunnel_mouth((seg_idx + 1) % n);
 
-        let (mut pos_xz, mut tangent) = if can_round_start && rem < corner_r.min(slen * 0.45) {
+        let (pos_xz, mut tangent) = if can_round_start && rem < corner_r.min(slen * 0.45) {
             let prev_idx = (seg_idx + n - 1) % n;
             let prev_len = seg_lens[if seg_idx > 0 {
                 seg_idx - 1
@@ -1696,9 +1894,17 @@ impl CityBlueprint {
             tangent = [-tangent[0], -tangent[1]];
         }
 
-        // Smoothly slope elevation down (`y = 0.025 -> -0.06`) when on a subterranean garage ramp
+        // Compute vertical elevation `y` and ramp slope `dy / ds`
         let mut y = 0.025f32;
-        if !route.is_closed_loop {
+        let mut slope = 0.0f32;
+        if route.waypoint_elevations.len() == n {
+            let y0 = route.waypoint_elevations[seg_idx];
+            let y1 = route.waypoint_elevations[(seg_idx + 1) % n];
+            let t = (rem / slen).clamp(0.0, 1.0);
+            y = y0 + (y1 - y0) * t;
+            slope = ((y1 - y0) / slen) * dir_sign;
+        } else if !route.is_closed_loop {
+            // Smoothly slope elevation down (`y = 0.025 -> -0.06`) when on a subterranean garage ramp
             let ramp_span = seg_lens[0] + seg_lens[1];
             let end_ramp_span = seg_lens[seg_count - 1] + seg_lens[seg_count - 2];
             if target_dist < ramp_span {
@@ -1711,9 +1917,8 @@ impl CityBlueprint {
                 y = 0.025 - ramp_t * 0.09;
             }
         }
-        let _ = &mut pos_xz;
 
-        Some(([pos_xz[0], y, pos_xz[1]], tangent, false))
+        Some(([pos_xz[0], y, pos_xz[1]], tangent, slope, false))
     }
 
     /// Total length of the closed viaduct track loop.
@@ -2367,8 +2572,8 @@ impl GothicMetropolisState {
                     target_speed = base_speed * 2.05;
                 }
 
-                // Functional gothic traffic signals (Vigilante blasts through during pursuit)
-                if !is_active_vigilante && self.green_wave_timer <= 0.0 {
+                // Functional gothic traffic signals (only on ground-level streets; Vigilante blasts through)
+                if pos[1] < 0.4 && !is_active_vigilante && self.green_wave_timer <= 0.0 {
                     let moving_ns = fwd[1].abs() >= fwd[0].abs();
                     for sig in &self.traffic_signals {
                         let dx = sig.pos[0] - pos[0];
@@ -2396,7 +2601,7 @@ impl GothicMetropolisState {
                         continue;
                     }
                     if let Some((opos, _, o_sub)) = other_pose {
-                        if *o_sub {
+                        if *o_sub || (opos[1] - pos[1]).abs() > 0.65 {
                             continue;
                         }
                         let dx = opos[0] - pos[0];
@@ -2501,8 +2706,8 @@ impl GothicMetropolisState {
                     target_speed = base_speed * 2.05;
                 }
 
-                // Functional gothic traffic signals (Vigilante blasts through during pursuit)
-                if !is_active_vigilante && self.green_wave_timer <= 0.0 {
+                // Functional gothic traffic signals (only on ground-level streets; Vigilante blasts through)
+                if pos[1] < 0.4 && !is_active_vigilante && self.green_wave_timer <= 0.0 {
                     let moving_ns = fwd[1].abs() >= fwd[0].abs();
                     for sig in &self.traffic_signals {
                         let dx = sig.pos[0] - pos[0];
@@ -2810,13 +3015,14 @@ impl GothicMetropolisState {
             }
             TrafficDensity::MidnightRushHour => {
                 self.traffic_density = TrafficDensity::NocturnalCruise;
+                let base_non_vigilante = self.blueprint.vehicle_routes.len().max(1) * 2;
                 let mut kept = 0usize;
                 self.vehicles.retain(|v| {
                     if v.kind == GothicVehicleKind::VigilanteInterceptor {
                         return true;
                     }
                     kept += 1;
-                    kept <= 20
+                    kept <= base_non_vigilante
                 });
             }
         }
@@ -2942,7 +3148,9 @@ mod tests {
         assert!(bp1.avenues.len() >= 16);
         assert_eq!(bp1.avenues.iter().filter(|a| a.is_highway).count(), 4);
         assert!(bp1.garages.len() >= 8);
-        assert!(bp1.vehicle_routes.len() >= 8);
+        assert!(!bp1.elevated_highways.is_empty());
+        assert!(bp1.underground_portals.len() >= 2);
+        assert!(bp1.vehicle_routes.len() >= 11);
         assert!(bp1.viaduct_total_length() > 35.0);
     }
 
@@ -2951,17 +3159,29 @@ mod tests {
         let mut state = GothicMetropolisState::new(42);
         let max_bound = state.blueprint.plinth_half_extent - 0.5;
         let mut saw_garage_subterranean = false;
+        let mut saw_elevated_highway_car = false;
+        let mut saw_tunnel_portal_subterranean = false;
 
-        for _ in 0..240 {
+        for _ in 0..360 {
             state.tick(0.1);
             for veh in &state.vehicles {
                 let (pos, fwd, is_subterranean) = state
                     .blueprint
                     .sample_vehicle_pose(veh)
                     .expect("valid vehicle pose");
+                let route_idx = veh.avenue_idx % state.blueprint.vehicle_routes.len();
+                let has_underground_seg = !state.blueprint.vehicle_routes[route_idx]
+                    .underground_segments
+                    .is_empty();
                 if is_subterranean {
                     saw_garage_subterranean = true;
+                    if has_underground_seg {
+                        saw_tunnel_portal_subterranean = true;
+                    }
                 } else {
+                    if pos[1] > 1.5 {
+                        saw_elevated_highway_car = true;
+                    }
                     assert!(
                         pos[0].abs() <= max_bound && pos[2].abs() <= max_bound,
                         "Vehicle {} left city bounds at {:?}",
@@ -2976,6 +3196,14 @@ mod tests {
         assert!(
             saw_garage_subterranean,
             "Garage commuter vehicles should enter and exit subterranean building garages"
+        );
+        assert!(
+            saw_elevated_highway_car,
+            "Vehicles on the elevated highway route should climb onto the 2nd-level overpass"
+        );
+        assert!(
+            saw_tunnel_portal_subterranean,
+            "Vehicles on underground tunnel routes should enter and exit sunken portals"
         );
     }
 

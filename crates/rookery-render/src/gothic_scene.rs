@@ -19,9 +19,9 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::gothic::{
-    BuildingArchetype, BuildingPlacement, CityBlockPlot, CityBlueprint, GaragePortal,
-    GothicMetropolisState, GothicPalette, GothicVehicle, GothicVehicleKind, StreetAvenue,
-    WalkwaySpan, WalkwayStyle,
+    BuildingArchetype, BuildingPlacement, CityBlockPlot, CityBlueprint, ElevatedHighwaySpan,
+    GaragePortal, GothicMetropolisState, GothicPalette, GothicVehicle, GothicVehicleKind,
+    StreetAvenue, UndergroundPortal, WalkwaySpan, WalkwayStyle,
 };
 use wgpu::util::DeviceExt;
 
@@ -335,6 +335,92 @@ impl MeshBuilder {
         self.push_quad(f_r_b, b_r_b, b_r_t, f_r_t, [rx, 0.0, rz], color, emissive);
         // Left (-right)
         self.push_quad(b_l_b, f_l_b, f_l_t, b_l_t, [-rx, 0.0, -rz], color, emissive);
+    }
+
+    /// Sloped 3D box whose bottom centerline runs from `start_bottom` to `end_bottom`,
+    /// with vertical thickness `height` and horizontal `width`. Includes underside face.
+    #[allow(clippy::too_many_arguments)]
+    fn push_sloped_box(
+        &mut self,
+        start_bottom: [f32; 3],
+        end_bottom: [f32; 3],
+        height: f32,
+        width: f32,
+        color: [f32; 4],
+        emissive: f32,
+    ) {
+        let dx = end_bottom[0] - start_bottom[0];
+        let dy = end_bottom[1] - start_bottom[1];
+        let dz = end_bottom[2] - start_bottom[2];
+        let horiz_len = (dx * dx + dz * dz).sqrt().max(0.001);
+        let len_3d = (dx * dx + dy * dy + dz * dz).sqrt().max(0.001);
+        let fx = dx / horiz_len;
+        let fz = dz / horiz_len;
+        let rx = -fz;
+        let rz = fx;
+        let hw = width * 0.5;
+
+        let f3 = [dx / len_3d, dy / len_3d, dz / len_3d];
+        let up_n = [
+            -f3[1] * fx,
+            (dx * dx + dz * dz).sqrt() / len_3d,
+            -f3[1] * fz,
+        ];
+
+        let s_l_b = [
+            start_bottom[0] - rx * hw,
+            start_bottom[1],
+            start_bottom[2] - rz * hw,
+        ];
+        let s_r_b = [
+            start_bottom[0] + rx * hw,
+            start_bottom[1],
+            start_bottom[2] + rz * hw,
+        ];
+        let s_l_t = [s_l_b[0], s_l_b[1] + height, s_l_b[2]];
+        let s_r_t = [s_r_b[0], s_r_b[1] + height, s_r_b[2]];
+
+        let e_l_b = [
+            end_bottom[0] - rx * hw,
+            end_bottom[1],
+            end_bottom[2] - rz * hw,
+        ];
+        let e_r_b = [
+            end_bottom[0] + rx * hw,
+            end_bottom[1],
+            end_bottom[2] + rz * hw,
+        ];
+        let e_l_t = [e_l_b[0], e_l_b[1] + height, e_l_b[2]];
+        let e_r_t = [e_r_b[0], e_r_b[1] + height, e_r_b[2]];
+
+        // Top
+        self.push_quad(s_l_t, e_l_t, e_r_t, s_r_t, up_n, color, emissive);
+        // Bottom
+        self.push_quad(
+            s_r_b,
+            e_r_b,
+            e_l_b,
+            s_l_b,
+            [-up_n[0], -up_n[1], -up_n[2]],
+            color,
+            emissive,
+        );
+        // End (+fwd)
+        self.push_quad(e_l_b, e_r_b, e_r_t, e_l_t, f3, color, emissive);
+        // Start (-fwd)
+        self.push_quad(
+            s_r_b,
+            s_l_b,
+            s_l_t,
+            s_r_t,
+            [-f3[0], -f3[1], -f3[2]],
+            color,
+            emissive,
+        );
+        // Right (+right)
+        self.push_quad(e_r_b, s_r_b, s_r_t, e_r_t, [rx, 0.0, rz], color, emissive);
+        // Left (-right)
+        self.push_quad(s_l_b, e_l_b, e_l_t, s_l_t, [-rx, 0.0, -rz], color, emissive);
     }
 
     /// 4-sided pyramid / gothic spire centered at `(cx, cz)` from `y0` to `y0 + h`.
@@ -696,6 +782,16 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
         build_garage_portal_mesh(&mut mb, garage, theme);
     }
 
+    // 5b. 2nd-Level Outer Elevated Highway Overpasses & Straddling Arch Piers
+    for span in &bp.elevated_highways {
+        build_elevated_highway_mesh(&mut mb, bp, span, theme);
+    }
+
+    // 5c. Sunken Roadside Underground Tunnel Portals
+    for portal in &bp.underground_portals {
+        build_underground_portal_mesh(&mut mb, portal, theme);
+    }
+
     // 6. Multi-Level Elevated Walkways / Skybridges
     for span in &bp.walkways {
         build_walkway_mesh(&mut mb, span, theme);
@@ -948,47 +1044,57 @@ fn build_sidewalks_and_curbs_mesh(
             // Outer highway art-deco light standards every 3rd paver
             if i % 3 == 1 {
                 let lamp_pos = sign * (hwy_outer + 0.16);
-                mb.push_box(
-                    coord,
-                    sw_h,
-                    lamp_pos,
-                    0.07,
-                    0.42,
-                    0.07,
-                    theme.stone_dark,
-                    0.0,
-                );
-                mb.push_box(
-                    coord,
-                    sw_h + 0.42,
-                    lamp_pos,
-                    0.13,
-                    0.10,
-                    0.13,
-                    theme.window_warm,
-                    1.0,
-                );
+                let blocks_ew_elev = bp.elevated_highways.iter().any(|eh| {
+                    (eh.start[1] - lamp_pos).abs() < 1.1 && (eh.end[1] - lamp_pos).abs() < 1.1
+                });
+                if !blocks_ew_elev {
+                    mb.push_box(
+                        coord,
+                        sw_h,
+                        lamp_pos,
+                        0.07,
+                        0.42,
+                        0.07,
+                        theme.stone_dark,
+                        0.0,
+                    );
+                    mb.push_box(
+                        coord,
+                        sw_h + 0.42,
+                        lamp_pos,
+                        0.13,
+                        0.10,
+                        0.13,
+                        theme.window_warm,
+                        1.0,
+                    );
+                }
 
-                mb.push_box(
-                    lamp_pos,
-                    sw_h,
-                    coord,
-                    0.07,
-                    0.42,
-                    0.07,
-                    theme.stone_dark,
-                    0.0,
-                );
-                mb.push_box(
-                    lamp_pos,
-                    sw_h + 0.42,
-                    coord,
-                    0.13,
-                    0.10,
-                    0.13,
-                    theme.window_warm,
-                    1.0,
-                );
+                let blocks_ns_elev = bp.elevated_highways.iter().any(|eh| {
+                    (eh.start[0] - lamp_pos).abs() < 1.1 && (eh.end[0] - lamp_pos).abs() < 1.1
+                });
+                if !blocks_ns_elev {
+                    mb.push_box(
+                        lamp_pos,
+                        sw_h,
+                        coord,
+                        0.07,
+                        0.42,
+                        0.07,
+                        theme.stone_dark,
+                        0.0,
+                    );
+                    mb.push_box(
+                        lamp_pos,
+                        sw_h + 0.42,
+                        coord,
+                        0.13,
+                        0.10,
+                        0.13,
+                        theme.window_warm,
+                        1.0,
+                    );
+                }
             }
         }
     }
@@ -1337,6 +1443,338 @@ fn build_garage_portal_mesh(
         let bx = sign_x + right[0] * (w * 0.52) * side;
         let bz = sign_z + right[1] * (w * 0.52) * side;
         mb.push_oriented_box([bx, 0.34, bz], fwd, 0.06, 0.08, 0.06, theme.beacon_red, 1.0);
+    }
+}
+
+/// Build a 2nd-level elevated outer highway overpass with sloped approach/exit ramps,
+/// gothic parapet guardrails, brass/amber median reflectors, bridge lamps, and straddling
+/// arch piers that clear the ground-level perimeter highway below.
+fn build_elevated_highway_mesh(
+    mb: &mut MeshBuilder,
+    bp: &CityBlueprint,
+    span: &ElevatedHighwaySpan,
+    theme: &GothicThemeColors,
+) {
+    let dx = span.end[0] - span.start[0];
+    let dz = span.end[1] - span.start[1];
+    let total_len = (dx * dx + dz * dz).sqrt().max(0.5);
+    let fwd = [dx / total_len, dz / total_len];
+    let right = [-fwd[1], fwd[0]];
+    let ramp_len = span.ramp_length.min(total_len * 0.42);
+    let deck_len = (total_len - ramp_len * 2.0).max(0.2);
+    let elev = span.elevation;
+    let w = span.width;
+
+    let start_top = [
+        span.start[0] + fwd[0] * ramp_len,
+        span.start[1] + fwd[1] * ramp_len,
+    ];
+    let end_top = [
+        span.end[0] - fwd[0] * ramp_len,
+        span.end[1] - fwd[1] * ramp_len,
+    ];
+
+    // 1. Sloped approach & exit ramps
+    for (p0, y0, p1, y1) in [
+        (span.start, 0.0f32, start_top, elev),
+        (end_top, elev, span.end, 0.0f32),
+    ] {
+        // Steel/stone structural ramp girder
+        mb.push_sloped_box(
+            [p0[0], y0 - 0.14, p0[1]],
+            [p1[0], y1 - 0.14, p1[1]],
+            0.14,
+            w + 0.12,
+            theme.steel_viaduct,
+            0.0,
+        );
+        // Asphalt ramp deck
+        mb.push_sloped_box(
+            [p0[0], y0 - 0.005, p0[1]],
+            [p1[0], y1 - 0.005, p1[1]],
+            0.03,
+            w * 0.92,
+            theme.asphalt,
+            0.0,
+        );
+        // Flanking ramp parapet guardrails
+        for side in [-1.0f32, 1.0f32] {
+            let ox = right[0] * (w * 0.50) * side;
+            let oz = right[1] * (w * 0.50) * side;
+            mb.push_sloped_box(
+                [p0[0] + ox, y0, p0[1] + oz],
+                [p1[0] + ox, y1, p1[1] + oz],
+                0.15,
+                0.08,
+                theme.stone_secondary,
+                0.0,
+            );
+        }
+    }
+
+    // 2. Flat elevated bridge deck
+    let deck_cx = (start_top[0] + end_top[0]) * 0.5;
+    let deck_cz = (start_top[1] + end_top[1]) * 0.5;
+    mb.push_oriented_box(
+        [deck_cx, elev - 0.18, deck_cz],
+        fwd,
+        deck_len + 0.12,
+        0.18,
+        w + 0.14,
+        theme.steel_viaduct,
+        0.0,
+    );
+    mb.push_oriented_box(
+        [deck_cx, elev - 0.005, deck_cz],
+        fwd,
+        deck_len + 0.12,
+        0.03,
+        w * 0.92,
+        theme.asphalt,
+        0.0,
+    );
+
+    // Flanking gothic parapet walls + brass top trim along elevated deck
+    for side in [-1.0f32, 1.0f32] {
+        let px = deck_cx + right[0] * (w * 0.50) * side;
+        let pz = deck_cz + right[1] * (w * 0.50) * side;
+        mb.push_oriented_box(
+            [px, elev, pz],
+            fwd,
+            deck_len + 0.08,
+            0.16,
+            0.09,
+            theme.stone_secondary,
+            0.0,
+        );
+        mb.push_oriented_box(
+            [px, elev + 0.16, pz],
+            fwd,
+            deck_len + 0.08,
+            0.04,
+            0.11,
+            theme.accent_trim,
+            0.0,
+        );
+    }
+
+    // 3. Elevated median brass/amber reflector dashes & bridge lamps
+    let dash_steps = (deck_len / 0.95).floor().max(4.0) as usize;
+    for i in 0..dash_steps {
+        let t = (i as f32 + 0.5) / dash_steps as f32;
+        let mx = start_top[0] + (end_top[0] - start_top[0]) * t;
+        let mz = start_top[1] + (end_top[1] - start_top[1]) * t;
+        mb.push_oriented_box(
+            [mx, elev + 0.022, mz],
+            fwd,
+            0.44,
+            0.012,
+            0.07,
+            theme.accent_trim,
+            0.0,
+        );
+        if i % 2 == 0 {
+            mb.push_oriented_box(
+                [mx, elev + 0.032, mz],
+                fwd,
+                0.10,
+                0.014,
+                0.05,
+                theme.window_dim,
+                0.75,
+            );
+        }
+        if i % 3 == 1 {
+            for side in [-1.0f32, 1.0f32] {
+                let lx = mx + right[0] * (w * 0.50) * side;
+                let lz = mz + right[1] * (w * 0.50) * side;
+                mb.push_box(lx, elev + 0.20, lz, 0.05, 0.30, 0.05, theme.stone_dark, 0.0);
+                mb.push_box(
+                    lx,
+                    elev + 0.50,
+                    lz,
+                    0.09,
+                    0.08,
+                    0.09,
+                    theme.window_warm,
+                    1.0,
+                );
+            }
+        }
+    }
+
+    // 4. Straddling gothic arch piers (clearing the ground-level highway & cross avenues)
+    let pier_count = (total_len / 2.6).ceil().max(4.0) as usize;
+    for i in 1..pier_count {
+        let t = i as f32 / pier_count as f32;
+        let dist = t * total_len;
+        let px = span.start[0] + dx * t;
+        let pz = span.start[1] + dz * t;
+
+        // Compute deck underside height at `dist`
+        let local_elev = if dist < ramp_len {
+            elev * (dist / ramp_len)
+        } else if dist > total_len - ramp_len {
+            elev * ((total_len - dist) / ramp_len)
+        } else {
+            elev
+        };
+        if local_elev < 0.45 {
+            continue;
+        }
+
+        // Skip piers that would land inside an intersecting cross street
+        let hits_cross_street = bp.avenues.iter().any(|ave| {
+            !ave.is_highway && point_to_avenue_dist(px, pz, ave) < ave.width * 0.5 + 0.35
+        });
+        if hits_cross_street {
+            continue;
+        }
+
+        let col_offset = (w * 0.62).max(0.72);
+        for side in [-1.0f32, 1.0f32] {
+            let cx = px + right[0] * col_offset * side;
+            let cz = pz + right[1] * col_offset * side;
+            mb.push_box(
+                cx,
+                0.0,
+                cz,
+                0.18,
+                local_elev - 0.14,
+                0.18,
+                theme.stone_dark,
+                0.0,
+            );
+            mb.push_box(cx, 0.0, cz, 0.24, 0.22, 0.24, theme.stone_secondary, 0.0);
+        }
+        // Overhead cross-girder connecting twin columns beneath the elevated deck
+        mb.push_oriented_box(
+            [px, local_elev - 0.34, pz],
+            fwd,
+            0.22,
+            0.20,
+            col_offset * 2.0 + 0.18,
+            theme.stone_secondary,
+            0.0,
+        );
+    }
+}
+
+/// Build a sunken roadside underground tunnel portal with a sloped descent ramp,
+/// gothic stone retaining wing-walls, overhanging tunnel archway, pitch-black tunnel void,
+/// and clearance beacons.
+fn build_underground_portal_mesh(
+    mb: &mut MeshBuilder,
+    portal: &UndergroundPortal,
+    theme: &GothicThemeColors,
+) {
+    let fwd = portal.inward_dir;
+    let right = [-fwd[1], fwd[0]];
+    let w = portal.width;
+
+    // 1. Sloped asphalt ramp descending from street level into the sunken tunnel mouth
+    mb.push_sloped_box(
+        [portal.entry_pos[0], -0.02, portal.entry_pos[1]],
+        [portal.portal_pos[0], -0.24, portal.portal_pos[1]],
+        0.04,
+        w * 0.90,
+        theme.asphalt,
+        0.0,
+    );
+    // Amber center guide stripe descending into the tunnel
+    mb.push_sloped_box(
+        [portal.entry_pos[0], 0.022, portal.entry_pos[1]],
+        [portal.portal_pos[0], -0.195, portal.portal_pos[1]],
+        0.01,
+        0.06,
+        theme.accent_trim,
+        0.0,
+    );
+
+    // 2. Flanking stone retaining walls bordering the sunken ramp
+    let dx = portal.portal_pos[0] - portal.entry_pos[0];
+    let dz = portal.portal_pos[1] - portal.entry_pos[1];
+    let ramp_len = (dx * dx + dz * dz).sqrt().max(0.4);
+    let mid_x = (portal.entry_pos[0] + portal.portal_pos[0]) * 0.5;
+    let mid_z = (portal.entry_pos[1] + portal.portal_pos[1]) * 0.5;
+    for side in [-1.0f32, 1.0f32] {
+        let wx = mid_x + right[0] * (w * 0.50 + 0.06) * side;
+        let wz = mid_z + right[1] * (w * 0.50 + 0.06) * side;
+        mb.push_oriented_box(
+            [wx, 0.0, wz],
+            fwd,
+            ramp_len * 0.92,
+            0.22,
+            0.12,
+            theme.stone_secondary,
+            0.0,
+        );
+        mb.push_oriented_box(
+            [wx, 0.22, wz],
+            fwd,
+            ramp_len * 0.92,
+            0.04,
+            0.14,
+            theme.accent_trim,
+            0.0,
+        );
+    }
+
+    // 3. Heavy gothic stone tunnel portal housing & overhanging cornice lintel
+    let portal_h = 0.78f32;
+    let arch_cx = portal.portal_pos[0] + fwd[0] * 0.18;
+    let arch_cz = portal.portal_pos[1] + fwd[1] * 0.18;
+    mb.push_oriented_box(
+        [arch_cx, 0.0, arch_cz],
+        fwd,
+        0.52,
+        portal_h,
+        w + 0.36,
+        theme.stone_secondary,
+        0.0,
+    );
+    mb.push_oriented_box(
+        [arch_cx - fwd[0] * 0.04, portal_h, arch_cz - fwd[1] * 0.04],
+        fwd,
+        0.60,
+        0.12,
+        w + 0.44,
+        theme.accent_trim,
+        0.0,
+    );
+
+    // 4. Pitch-black subterranean tunnel mouth void
+    let void_color = [0.01, 0.01, 0.018, 1.0];
+    mb.push_oriented_box(
+        [
+            portal.portal_pos[0] - fwd[0] * 0.05,
+            -0.18,
+            portal.portal_pos[1] - fwd[1] * 0.05,
+        ],
+        fwd,
+        0.38,
+        portal_h - 0.04,
+        w * 0.86,
+        void_color,
+        0.0,
+    );
+
+    // 5. Overhead illuminated clearance bar & twin ruby tunnel beacons
+    let sign_x = portal.portal_pos[0] - fwd[0] * 0.12;
+    let sign_z = portal.portal_pos[1] - fwd[1] * 0.12;
+    mb.push_oriented_box(
+        [sign_x, portal_h - 0.16, sign_z],
+        fwd,
+        0.05,
+        0.07,
+        w * 0.72,
+        theme.window_warm,
+        0.95,
+    );
+    for side in [-1.0f32, 1.0f32] {
+        let bx = sign_x + right[0] * (w * 0.54) * side;
+        let bz = sign_z + right[1] * (w * 0.54) * side;
+        mb.push_oriented_box([bx, 0.36, bz], fwd, 0.06, 0.09, 0.06, theme.beacon_red, 1.0);
     }
 }
 
@@ -4370,11 +4808,14 @@ impl GothicMetropolisScene {
         }
 
         for veh in &guard.vehicles {
-            if let Some((pos, car_fwd, is_subterranean)) = guard.blueprint.sample_vehicle_pose(veh)
+            if let Some((pos, car_fwd, slope, is_subterranean)) =
+                guard.blueprint.sample_vehicle_pose_3d(veh)
             {
                 if is_subterranean {
                     continue;
                 }
+                let opaque_start = opaque_mb.verts.len();
+                let trans_start = trans_mb.verts.len();
                 push_vehicle_mesh(
                     &mut opaque_mb,
                     &mut trans_mb,
@@ -4384,6 +4825,36 @@ impl GothicMetropolisScene {
                     guard.time,
                     &theme,
                 );
+                if slope.abs() > 1e-4 {
+                    let pitch = slope.atan();
+                    let (sin_p, cos_p) = pitch.sin_cos();
+                    for verts in [
+                        &mut opaque_mb.verts[opaque_start..],
+                        &mut trans_mb.verts[trans_start..],
+                    ] {
+                        for v in verts {
+                            let dx = v.pos[0] - pos[0];
+                            let dy = v.pos[1] - pos[1];
+                            let dz = v.pos[2] - pos[2];
+                            let along = dx * car_fwd[0] + dz * car_fwd[1];
+                            let new_along = along * cos_p - dy * sin_p;
+                            let new_dy = along * sin_p + dy * cos_p;
+                            let d_along = new_along - along;
+                            v.pos[0] += car_fwd[0] * d_along;
+                            v.pos[2] += car_fwd[1] * d_along;
+                            v.pos[1] = pos[1] + new_dy;
+
+                            let n_along = v.normal[0] * car_fwd[0] + v.normal[2] * car_fwd[1];
+                            let n_y = v.normal[1];
+                            let new_n_along = n_along * cos_p - n_y * sin_p;
+                            let new_n_y = n_along * sin_p + n_y * cos_p;
+                            let dn = new_n_along - n_along;
+                            v.normal[0] += car_fwd[0] * dn;
+                            v.normal[2] += car_fwd[1] * dn;
+                            v.normal[1] = new_n_y;
+                        }
+                    }
+                }
             }
         }
 
