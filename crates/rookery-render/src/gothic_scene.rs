@@ -1045,7 +1045,12 @@ fn build_sidewalks_and_curbs_mesh(
             if i % 3 == 1 {
                 let lamp_pos = sign * (hwy_outer + 0.16);
                 let blocks_ew_elev = bp.elevated_highways.iter().any(|eh| {
-                    (eh.start[1] - lamp_pos).abs() < 1.1 && (eh.end[1] - lamp_pos).abs() < 1.1
+                    let min_x = eh.start[0].min(eh.end[0]) - 0.6;
+                    let max_x = eh.start[0].max(eh.end[0]) + 0.6;
+                    (eh.start[1] - lamp_pos).abs() < 1.1
+                        && (eh.end[1] - lamp_pos).abs() < 1.1
+                        && coord >= min_x
+                        && coord <= max_x
                 });
                 if !blocks_ew_elev {
                     mb.push_box(
@@ -1071,7 +1076,12 @@ fn build_sidewalks_and_curbs_mesh(
                 }
 
                 let blocks_ns_elev = bp.elevated_highways.iter().any(|eh| {
-                    (eh.start[0] - lamp_pos).abs() < 1.1 && (eh.end[0] - lamp_pos).abs() < 1.1
+                    let min_z = eh.start[1].min(eh.end[1]) - 0.6;
+                    let max_z = eh.start[1].max(eh.end[1]) + 0.6;
+                    (eh.start[0] - lamp_pos).abs() < 1.1
+                        && (eh.end[0] - lamp_pos).abs() < 1.1
+                        && coord >= min_z
+                        && coord <= max_z
                 });
                 if !blocks_ns_elev {
                     mb.push_box(
@@ -1446,9 +1456,180 @@ fn build_garage_portal_mesh(
     }
 }
 
-/// Build a 2nd-level elevated outer highway overpass with sloped approach/exit ramps,
-/// gothic parapet guardrails, brass/amber median reflectors, bridge lamps, and straddling
-/// arch piers that clear the ground-level perimeter highway below.
+/// Shortest 2D distance from point `(px, pz)` to elevated highway span centerline `span`.
+fn point_to_elev_span_dist(px: f32, pz: f32, span: &ElevatedHighwaySpan) -> f32 {
+    let vx = span.end[0] - span.start[0];
+    let vz = span.end[1] - span.start[1];
+    let len_sq = vx * vx + vz * vz;
+    if len_sq < 1e-4 {
+        return ((px - span.start[0]).powi(2) + (pz - span.start[1]).powi(2)).sqrt();
+    }
+    let t = (((px - span.start[0]) * vx + (pz - span.start[1]) * vz) / len_sq).clamp(0.0, 1.0);
+    let qx = span.start[0] + vx * t;
+    let qz = span.start[1] + vz * t;
+    ((px - qx).powi(2) + (pz - qz).powi(2)).sqrt()
+}
+
+/// Emit an overhead gothic steel-and-brass highway gantry arch with glowing signage and beacons.
+fn push_highway_gantry(
+    mb: &mut MeshBuilder,
+    center: [f32; 3],
+    fwd: [f32; 2],
+    right: [f32; 2],
+    width: f32,
+    clearance_h: f32,
+    theme: &GothicThemeColors,
+) {
+    let base_y = center[1];
+    let post_offset = width * 0.54;
+    for side in [-1.0f32, 1.0f32] {
+        let px = center[0] + right[0] * post_offset * side;
+        let pz = center[2] + right[1] * post_offset * side;
+        // Stepped stone-and-iron pylon
+        mb.push_box(px, base_y, pz, 0.16, 0.14, 0.16, theme.stone_secondary, 0.0);
+        mb.push_box(
+            px,
+            base_y + 0.14,
+            pz,
+            0.10,
+            clearance_h - 0.14,
+            0.10,
+            theme.stone_dark,
+            0.0,
+        );
+        mb.push_box(
+            px,
+            base_y + clearance_h,
+            pz,
+            0.14,
+            0.06,
+            0.14,
+            theme.accent_trim,
+            0.0,
+        );
+        mb.push_pyramid(
+            px,
+            base_y + clearance_h + 0.06,
+            pz,
+            0.13,
+            0.18,
+            0.13,
+            theme.stone_secondary,
+            0.0,
+        );
+        // Glowing clearance beacon
+        mb.push_box(
+            px,
+            base_y + clearance_h + 0.24,
+            pz,
+            0.06,
+            0.05,
+            0.06,
+            theme.beacon_red,
+            1.0,
+        );
+    }
+
+    // Overhead steel cross-beam & brass cornice
+    let beam_y = base_y + clearance_h - 0.06;
+    mb.push_oriented_box(
+        [center[0], beam_y, center[2]],
+        fwd,
+        0.10,
+        0.10,
+        post_offset * 2.0 + 0.08,
+        theme.steel_viaduct,
+        0.0,
+    );
+    mb.push_oriented_box(
+        [center[0], beam_y + 0.10, center[2]],
+        fwd,
+        0.12,
+        0.03,
+        post_offset * 2.0 + 0.10,
+        theme.accent_trim,
+        0.0,
+    );
+
+    // Illuminated highway directional signplate centered on the gantry
+    mb.push_oriented_box(
+        [center[0], beam_y - 0.04, center[2]],
+        fwd,
+        0.13,
+        0.14,
+        width * 0.56,
+        theme.stone_dark,
+        0.0,
+    );
+    mb.push_oriented_box(
+        [center[0], beam_y - 0.02, center[2]],
+        fwd,
+        0.14,
+        0.08,
+        width * 0.46,
+        theme.window_dim,
+        0.85,
+    );
+}
+
+/// Emit an ornate cantilevered gothic streetlamp on an elevated deck or ramp parapet.
+fn push_elevated_cantilever_lamp(
+    mb: &mut MeshBuilder,
+    px: f32,
+    base_y: f32,
+    pz: f32,
+    right: [f32; 2],
+    side: f32,
+    theme: &GothicThemeColors,
+) {
+    mb.push_box(px, base_y, pz, 0.07, 0.06, 0.07, theme.stone_secondary, 0.0);
+    mb.push_box(
+        px,
+        base_y + 0.06,
+        pz,
+        0.045,
+        0.28,
+        0.045,
+        theme.stone_dark,
+        0.0,
+    );
+    // Brass cantilever arm reaching slightly inward over the roadway
+    let inward_x = px - right[0] * 0.08 * side;
+    let inward_z = pz - right[1] * 0.08 * side;
+    mb.push_oriented_box(
+        [(px + inward_x) * 0.5, base_y + 0.34, (pz + inward_z) * 0.5],
+        [-right[1] * side, right[0] * side],
+        0.04,
+        0.03,
+        0.14,
+        theme.accent_trim,
+        0.0,
+    );
+    mb.push_box(
+        inward_x,
+        base_y + 0.28,
+        inward_z,
+        0.08,
+        0.07,
+        0.08,
+        theme.window_warm,
+        1.0,
+    );
+    mb.push_pyramid(
+        inward_x,
+        base_y + 0.35,
+        inward_z,
+        0.09,
+        0.06,
+        0.09,
+        theme.stone_dark,
+        0.0,
+    );
+}
+
+/// Build a 2nd-level elevated highway span with optional sloped approach/exit ramps,
+/// road-grade entrance gantries & markings, ornate upper-level gothic lamps & pilasters,
+/// seamless elevated corner/T-junction openings, and straddling arch piers.
 fn build_elevated_highway_mesh(
     mb: &mut MeshBuilder,
     bp: &CityBlueprint,
@@ -1460,30 +1641,75 @@ fn build_elevated_highway_mesh(
     let total_len = (dx * dx + dz * dz).sqrt().max(0.5);
     let fwd = [dx / total_len, dz / total_len];
     let right = [-fwd[1], fwd[0]];
-    let ramp_len = span.ramp_length.min(total_len * 0.42);
-    let deck_len = (total_len - ramp_len * 2.0).max(0.2);
+    let start_ramp_len = if span.start_has_ramp {
+        span.ramp_length.min(total_len * 0.42)
+    } else {
+        0.0
+    };
+    let end_ramp_len = if span.end_has_ramp {
+        span.ramp_length.min(total_len * 0.42)
+    } else {
+        0.0
+    };
+    let deck_len = (total_len - start_ramp_len - end_ramp_len).max(0.2);
     let elev = span.elevation;
     let w = span.width;
 
     let start_top = [
-        span.start[0] + fwd[0] * ramp_len,
-        span.start[1] + fwd[1] * ramp_len,
+        span.start[0] + fwd[0] * start_ramp_len,
+        span.start[1] + fwd[1] * start_ramp_len,
     ];
     let end_top = [
-        span.end[0] - fwd[0] * ramp_len,
-        span.end[1] - fwd[1] * ramp_len,
+        span.end[0] - fwd[0] * end_ramp_len,
+        span.end[1] - fwd[1] * end_ramp_len,
     ];
 
-    // 1. Sloped approach & exit ramps
-    for (p0, y0, p1, y1) in [
-        (span.start, 0.0f32, start_top, elev),
-        (end_top, elev, span.end, 0.0f32),
-    ] {
+    struct RampSegment {
+        p0: [f32; 2],
+        y0: f32,
+        p1: [f32; 2],
+        y1: f32,
+        ground_entry: [f32; 2],
+    }
+
+    // 1. Sloped approach & exit ramps (with normal-road lane markings, brass rails & entrance gantries)
+    let mut ramps = Vec::new();
+    if span.start_has_ramp {
+        ramps.push(RampSegment {
+            p0: span.start,
+            y0: 0.0,
+            p1: start_top,
+            y1: elev,
+            ground_entry: span.start,
+        });
+    }
+    if span.end_has_ramp {
+        ramps.push(RampSegment {
+            p0: end_top,
+            y0: elev,
+            p1: span.end,
+            y1: 0.0,
+            ground_entry: span.end,
+        });
+    }
+
+    for RampSegment {
+        p0,
+        y0,
+        p1,
+        y1,
+        ground_entry,
+    } in ramps
+    {
+        let rdx = p1[0] - p0[0];
+        let rdz = p1[1] - p0[1];
+        let rlen = (rdx * rdx + rdz * rdz).sqrt().max(0.2);
+
         // Steel/stone structural ramp girder
         mb.push_sloped_box(
-            [p0[0], y0 - 0.14, p0[1]],
-            [p1[0], y1 - 0.14, p1[1]],
-            0.14,
+            [p0[0], y0 - 0.13, p0[1]],
+            [p1[0], y1 - 0.13, p1[1]],
+            0.13,
             w + 0.12,
             theme.steel_viaduct,
             0.0,
@@ -1497,7 +1723,8 @@ fn build_elevated_highway_mesh(
             theme.asphalt,
             0.0,
         );
-        // Flanking ramp parapet guardrails
+
+        // Flanking ramp parapet guardrails + brass top trim
         for side in [-1.0f32, 1.0f32] {
             let ox = right[0] * (w * 0.50) * side;
             let oz = right[1] * (w * 0.50) * side;
@@ -1509,17 +1736,105 @@ fn build_elevated_highway_mesh(
                 theme.stone_secondary,
                 0.0,
             );
+            mb.push_sloped_box(
+                [p0[0] + ox, y0 + 0.15, p0[1] + oz],
+                [p1[0] + ox, y1 + 0.15, p1[1] + oz],
+                0.035,
+                0.10,
+                theme.accent_trim,
+                0.0,
+            );
         }
+
+        // Sloped edge lane stripes along both sides of the ramp asphalt
+        for side in [-1.0f32, 1.0f32] {
+            let ox = right[0] * (w * 0.38) * side;
+            let oz = right[1] * (w * 0.38) * side;
+            mb.push_sloped_box(
+                [p0[0] + ox, y0 + 0.022, p0[1] + oz],
+                [p1[0] + ox, y1 + 0.022, p1[1] + oz],
+                0.008,
+                0.04,
+                theme.sidewalk_paver,
+                0.0,
+            );
+        }
+
+        // Ramp centerline double-brass dashes & glowing amber cat's-eye reflectors
+        let ramp_dashes = (rlen / 0.72).floor().max(3.0) as usize;
+        for i in 0..ramp_dashes {
+            let t0 = (i as f32 + 0.20) / ramp_dashes as f32;
+            let t1 = (i as f32 + 0.78) / ramp_dashes as f32;
+            let d0 = [p0[0] + rdx * t0, p0[1] + rdz * t0];
+            let d1 = [p0[0] + rdx * t1, p0[1] + rdz * t1];
+            let dy0 = y0 + (y1 - y0) * t0;
+            let dy1 = y0 + (y1 - y0) * t1;
+            mb.push_sloped_box(
+                [d0[0], dy0 + 0.024, d0[1]],
+                [d1[0], dy1 + 0.024, d1[1]],
+                0.012,
+                0.07,
+                theme.accent_trim,
+                0.0,
+            );
+            let tm = 0.5 * (t0 + t1);
+            let mx = p0[0] + rdx * tm;
+            let mz = p0[1] + rdz * tm;
+            let my = y0 + (y1 - y0) * tm;
+            mb.push_oriented_box(
+                [mx, my + 0.036, mz],
+                fwd,
+                0.09,
+                0.014,
+                0.05,
+                theme.window_dim,
+                0.80,
+            );
+        }
+
+        // Ramp-side gothic streetlamps at midpoint of the ramp
+        let mid_x = (p0[0] + p1[0]) * 0.5;
+        let mid_z = (p0[1] + p1[1]) * 0.5;
+        let mid_y = (y0 + y1) * 0.5;
+        for side in [-1.0f32, 1.0f32] {
+            let lx = mid_x + right[0] * (w * 0.50) * side;
+            let lz = mid_z + right[1] * (w * 0.50) * side;
+            push_elevated_cantilever_lamp(mb, lx, mid_y + 0.185, lz, right, side, theme);
+        }
+
+        // Ground-level entrance threshold & monumental gothic highway gantry arch
+        mb.push_oriented_box(
+            [ground_entry[0], 0.022, ground_entry[1]],
+            fwd,
+            0.16,
+            0.016,
+            w * 0.96,
+            theme.accent_trim,
+            0.0,
+        );
+        push_highway_gantry(
+            mb,
+            [ground_entry[0], 0.02, ground_entry[1]],
+            fwd,
+            right,
+            w,
+            0.58,
+            theme,
+        );
     }
 
-    // 2. Flat elevated bridge deck
-    let deck_cx = (start_top[0] + end_top[0]) * 0.5;
-    let deck_cz = (start_top[1] + end_top[1]) * 0.5;
+    // 2. Flat elevated bridge deck (extended by w * 0.5 at non-ramp ends for seamless corners/T-junctions)
+    let start_ext = if span.start_has_ramp { 0.0 } else { w * 0.5 };
+    let end_ext = if span.end_has_ramp { 0.0 } else { w * 0.5 };
+    let deck_ext_len = deck_len + start_ext + end_ext + 0.08;
+    let deck_cx = (start_top[0] + end_top[0]) * 0.5 + fwd[0] * (end_ext - start_ext) * 0.5;
+    let deck_cz = (start_top[1] + end_top[1]) * 0.5 + fwd[1] * (end_ext - start_ext) * 0.5;
+
     mb.push_oriented_box(
-        [deck_cx, elev - 0.18, deck_cz],
+        [deck_cx, elev - 0.15, deck_cz],
         fwd,
-        deck_len + 0.12,
-        0.18,
+        deck_ext_len,
+        0.15,
         w + 0.14,
         theme.steel_viaduct,
         0.0,
@@ -1527,43 +1842,96 @@ fn build_elevated_highway_mesh(
     mb.push_oriented_box(
         [deck_cx, elev - 0.005, deck_cz],
         fwd,
-        deck_len + 0.12,
+        deck_ext_len,
         0.03,
         w * 0.92,
         theme.asphalt,
         0.0,
     );
 
-    // Flanking gothic parapet walls + brass top trim along elevated deck
+    // Flanking gothic parapet walls + brass top trim + pilasters (opened cleanly at elevated junctions)
+    let parapet_steps = (deck_ext_len / 0.48).ceil().max(4.0) as usize;
+    let seg_len = deck_ext_len / parapet_steps as f32 + 0.02;
     for side in [-1.0f32, 1.0f32] {
-        let px = deck_cx + right[0] * (w * 0.50) * side;
-        let pz = deck_cz + right[1] * (w * 0.50) * side;
-        mb.push_oriented_box(
-            [px, elev, pz],
-            fwd,
-            deck_len + 0.08,
-            0.16,
-            0.09,
-            theme.stone_secondary,
-            0.0,
-        );
-        mb.push_oriented_box(
-            [px, elev + 0.16, pz],
-            fwd,
-            deck_len + 0.08,
-            0.04,
-            0.11,
-            theme.accent_trim,
-            0.0,
-        );
+        for i in 0..parapet_steps {
+            let t = (i as f32 + 0.5) / parapet_steps as f32 - 0.5;
+            let px = deck_cx + fwd[0] * (t * deck_ext_len) + right[0] * (w * 0.50) * side;
+            let pz = deck_cz + fwd[1] * (t * deck_ext_len) + right[1] * (w * 0.50) * side;
+
+            let inside_other_deck = bp.elevated_highways.iter().any(|other| {
+                other.id != span.id
+                    && point_to_elev_span_dist(px, pz, other) < other.width * 0.5 - 0.02
+            });
+            if inside_other_deck {
+                continue;
+            }
+
+            mb.push_oriented_box(
+                [px, elev, pz],
+                fwd,
+                seg_len,
+                0.16,
+                0.09,
+                theme.stone_secondary,
+                0.0,
+            );
+            mb.push_oriented_box(
+                [px, elev + 0.16, pz],
+                fwd,
+                seg_len,
+                0.04,
+                0.11,
+                theme.accent_trim,
+                0.0,
+            );
+
+            // Gothic stone pilaster & miniature spire finial every 4th segment
+            if i % 4 == 2 {
+                mb.push_box(px, elev, pz, 0.13, 0.22, 0.13, theme.stone_secondary, 0.0);
+                mb.push_pyramid(
+                    px,
+                    elev + 0.22,
+                    pz,
+                    0.11,
+                    0.12,
+                    0.11,
+                    theme.accent_trim,
+                    0.0,
+                );
+            }
+        }
     }
 
-    // 3. Elevated median brass/amber reflector dashes & bridge lamps
-    let dash_steps = (deck_len / 0.95).floor().max(4.0) as usize;
+    // 3. Upper-level edge lane stripes, median reflector dashes, cantilevered lamps & sign gantries
+    let dash_steps = (deck_len / 0.90).floor().max(4.0) as usize;
     for i in 0..dash_steps {
         let t = (i as f32 + 0.5) / dash_steps as f32;
         let mx = start_top[0] + (end_top[0] - start_top[0]) * t;
         let mz = start_top[1] + (end_top[1] - start_top[1]) * t;
+
+        let near_elev_junction = bp.elevated_highways.iter().any(|other| {
+            other.id != span.id && point_to_elev_span_dist(mx, mz, other) < other.width * 0.5 + 0.28
+        });
+        if near_elev_junction {
+            continue;
+        }
+
+        // Edge lane markings
+        for side in [-1.0f32, 1.0f32] {
+            let ex = mx + right[0] * (w * 0.38) * side;
+            let ez = mz + right[1] * (w * 0.38) * side;
+            mb.push_oriented_box(
+                [ex, elev + 0.022, ez],
+                fwd,
+                0.68,
+                0.008,
+                0.038,
+                theme.sidewalk_paver,
+                0.0,
+            );
+        }
+
+        // Center double-brass median & glowing amber cat's-eye reflector
         mb.push_oriented_box(
             [mx, elev + 0.022, mz],
             fwd,
@@ -1581,29 +1949,32 @@ fn build_elevated_highway_mesh(
                 0.014,
                 0.05,
                 theme.window_dim,
-                0.75,
+                0.80,
             );
         }
+
+        // Ornate cantilevered gothic streetlamps every 3rd dash
         if i % 3 == 1 {
             for side in [-1.0f32, 1.0f32] {
                 let lx = mx + right[0] * (w * 0.50) * side;
                 let lz = mz + right[1] * (w * 0.50) * side;
-                mb.push_box(lx, elev + 0.20, lz, 0.05, 0.30, 0.05, theme.stone_dark, 0.0);
-                mb.push_box(
-                    lx,
-                    elev + 0.50,
-                    lz,
-                    0.09,
-                    0.08,
-                    0.09,
-                    theme.window_warm,
-                    1.0,
-                );
+                let lamp_blocked = bp.elevated_highways.iter().any(|other| {
+                    other.id != span.id
+                        && point_to_elev_span_dist(lx, lz, other) < other.width * 0.5 + 0.15
+                });
+                if !lamp_blocked {
+                    push_elevated_cantilever_lamp(mb, lx, elev + 0.20, lz, right, side, theme);
+                }
             }
+        }
+
+        // Overhead gothic highway sign gantries along the upper deck
+        if i == dash_steps / 3 || (dash_steps >= 10 && i == (dash_steps * 2) / 3) {
+            push_highway_gantry(mb, [mx, elev + 0.02, mz], fwd, right, w, 0.58, theme);
         }
     }
 
-    // 4. Straddling gothic arch piers (clearing the ground-level highway & cross avenues)
+    // 4. Straddling gothic arch piers (clearing ground-level highway & cross avenues)
     let pier_count = (total_len / 2.6).ceil().max(4.0) as usize;
     for i in 1..pier_count {
         let t = i as f32 / pier_count as f32;
@@ -1612,22 +1983,31 @@ fn build_elevated_highway_mesh(
         let pz = span.start[1] + dz * t;
 
         // Compute deck underside height at `dist`
-        let local_elev = if dist < ramp_len {
-            elev * (dist / ramp_len)
-        } else if dist > total_len - ramp_len {
-            elev * ((total_len - dist) / ramp_len)
+        let local_elev = if span.start_has_ramp && dist < start_ramp_len {
+            elev * (dist / start_ramp_len)
+        } else if span.end_has_ramp && dist > total_len - end_ramp_len {
+            elev * ((total_len - dist) / end_ramp_len)
         } else {
             elev
         };
-        if local_elev < 0.45 {
+        if local_elev < 0.42 {
             continue;
         }
 
-        // Skip piers that would land inside an intersecting cross street
+        // Skip piers that would land inside an intersecting cross street or another span's junction
         let hits_cross_street = bp.avenues.iter().any(|ave| {
-            !ave.is_highway && point_to_avenue_dist(px, pz, ave) < ave.width * 0.5 + 0.35
+            let adx = ave.end[0] - ave.start[0];
+            let adz = ave.end[1] - ave.start[1];
+            let alen = (adx * adx + adz * adz).sqrt().max(0.1);
+            let dot = ((adx / alen) * fwd[0] + (adz / alen) * fwd[1]).abs();
+            let is_perpendicular = dot < 0.5;
+            (!ave.is_highway || is_perpendicular)
+                && point_to_avenue_dist(px, pz, ave) < ave.width * 0.5 + 0.35
         });
-        if hits_cross_street {
+        let near_other_junction = bp.elevated_highways.iter().any(|other| {
+            other.id != span.id && point_to_elev_span_dist(px, pz, other) < other.width * 0.5 + 0.55
+        });
+        if hits_cross_street || near_other_junction {
             continue;
         }
 
@@ -1639,20 +2019,21 @@ fn build_elevated_highway_mesh(
                 cx,
                 0.0,
                 cz,
-                0.18,
-                local_elev - 0.14,
-                0.18,
+                0.17,
+                local_elev - 0.12,
+                0.17,
                 theme.stone_dark,
                 0.0,
             );
-            mb.push_box(cx, 0.0, cz, 0.24, 0.22, 0.24, theme.stone_secondary, 0.0);
+            mb.push_box(cx, 0.0, cz, 0.24, 0.16, 0.24, theme.stone_secondary, 0.0);
+            mb.push_box(cx, 0.16, cz, 0.21, 0.04, 0.21, theme.accent_trim, 0.0);
         }
         // Overhead cross-girder connecting twin columns beneath the elevated deck
         mb.push_oriented_box(
-            [px, local_elev - 0.34, pz],
+            [px, local_elev - 0.26, pz],
             fwd,
-            0.22,
             0.20,
+            0.14,
             col_offset * 2.0 + 0.18,
             theme.stone_secondary,
             0.0,

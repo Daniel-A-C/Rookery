@@ -389,20 +389,30 @@ pub struct GaragePortal {
     pub width: f32,
 }
 
-/// A 2nd-level elevated highway bridge/overpass spanning above an outer perimeter edge.
+fn default_true() -> bool {
+    true
+}
+
+/// A 2nd-level elevated highway bridge/overpass spanning above an outer perimeter edge or city avenue.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ElevatedHighwaySpan {
     pub id: u32,
-    /// Start `[x, z]` of the full span (including approach ramp at ground level `y = 0.0`).
+    /// Start `[x, z]` of the full span.
     pub start: [f32; 2],
-    /// End `[x, z]` of the full span (including exit ramp back to `y = 0.0`).
+    /// End `[x, z]` of the full span.
     pub end: [f32; 2],
-    /// Length along the span occupied by each sloped ramp at `start` and `end`.
+    /// Length along the span occupied by each sloped ramp at `start` and `end` (when enabled).
     pub ramp_length: f32,
     /// Elevated deck height above ground level.
     pub elevation: f32,
     /// Roadway deck width.
     pub width: f32,
+    /// Whether `start` has a sloped ramp down to ground level (`false` = elevated junction).
+    #[serde(default = "default_true")]
+    pub start_has_ramp: bool,
+    /// Whether `end` has a sloped ramp down to ground level (`false` = elevated junction).
+    #[serde(default = "default_true")]
+    pub end_has_ramp: bool,
 }
 
 /// A sunken roadside/highway portal where vehicles descend into an unsimulated underground section.
@@ -1339,15 +1349,56 @@ impl CityBlueprint {
             },
         ];
 
-        // 2nd-Level Elevated Highway Overpass along the South foreground outer edge (`z = +10.6`)
-        let elevated_highways = vec![ElevatedHighwaySpan {
-            id: 1,
-            start: [-9.8, 10.6],
-            end: [9.8, 10.6],
-            ramp_length: 3.4,
-            elevation: 1.85,
-            width: 1.18,
-        }];
+        // 2nd-Level Elevated Highway Network: wraps around the West, South, and East outer
+        // perimeter edges at realistic overpass height (y = 0.82) with one branch into the city.
+        let elev_y = 0.82f32;
+        let elevated_highways = vec![
+            // Span 1: West outer edge (ramps up from y=0 at z=1.4, joins SW corner at [-10.6, 10.6])
+            ElevatedHighwaySpan {
+                id: 1,
+                start: [-10.6, 1.4],
+                end: [-10.6, 10.6],
+                ramp_length: 2.4,
+                elevation: elev_y,
+                width: 1.18,
+                start_has_ramp: true,
+                end_has_ramp: false,
+            },
+            // Span 2: South outer edge (full elevated deck from SW corner to SE corner)
+            ElevatedHighwaySpan {
+                id: 2,
+                start: [-10.6, 10.6],
+                end: [10.6, 10.6],
+                ramp_length: 2.4,
+                elevation: elev_y,
+                width: 1.18,
+                start_has_ramp: false,
+                end_has_ramp: false,
+            },
+            // Span 3: East outer edge (joins SE corner at [10.6, 10.6], ramps down to y=0 at z=1.6)
+            ElevatedHighwaySpan {
+                id: 3,
+                start: [10.6, 10.6],
+                end: [10.6, 1.6],
+                ramp_length: 2.4,
+                elevation: elev_y,
+                width: 1.18,
+                start_has_ramp: false,
+                end_has_ramp: true,
+            },
+            // Span 4: City branch (T-junction at [0.7, 10.6], runs north over South Central Spine,
+            // ramps down to y=0 at [0.7, 1.8] before Central Grand Plaza)
+            ElevatedHighwaySpan {
+                id: 4,
+                start: [0.7, 10.6],
+                end: [0.7, 1.8],
+                ramp_length: 2.4,
+                elevation: elev_y,
+                width: 1.06,
+                start_has_ramp: false,
+                end_has_ramp: true,
+            },
+        ];
 
         // 4 Sunken Underground Tunnel Portals for subterranean crosstown shortcuts
         let underground_portals = vec![
@@ -1390,21 +1441,46 @@ impl CityBlueprint {
         // - Routes 5..10 are subterranean Garage-to-Garage commuter routes across the 4x4 city.
         // - Route 10 is the 2nd-Level South Overpass Express Loop (climbs to y = 1.875).
         // - Routes 11..13 are Subterranean Express Tunnel Loops connecting sunken UndergroundPortals.
+        let elev_car_y = elev_y + 0.025;
         let vehicle_routes = vec![
-            // Route 1: Outer Perimeter Ring Highway (Clockwise Loop)
+            // Route 1: Outer Perimeter Ring Highway (Clockwise Loop — climbs East ramp onto 2nd-level
+            // wrap-around highway and descends West ramp, never driving through ramps on the ground)
             VehicleRoute {
                 id: 1,
-                waypoints: vec![[-10.6, -10.6], [10.6, -10.6], [10.6, 10.6], [-10.6, 10.6]],
+                waypoints: vec![
+                    [-10.6, -10.6],
+                    [10.6, -10.6],
+                    [10.6, 1.6],
+                    [10.6, 4.0],
+                    [10.6, 10.6],
+                    [-10.6, 10.6],
+                    [-10.6, 3.8],
+                    [-10.6, 1.4],
+                ],
                 is_closed_loop: true,
-                waypoint_elevations: Vec::new(),
+                waypoint_elevations: vec![
+                    0.025, 0.025, 0.025, elev_car_y, elev_car_y, elev_car_y, elev_car_y, 0.025,
+                ],
                 underground_segments: Vec::new(),
             },
-            // Route 2: Outer Perimeter Ring Highway (Counter-Clockwise Loop)
+            // Route 2: Outer Perimeter Ring Highway (Counter-Clockwise Loop — climbs West ramp onto
+            // 2nd-level wrap-around highway and descends East ramp)
             VehicleRoute {
                 id: 2,
-                waypoints: vec![[-10.6, -10.6], [-10.6, 10.6], [10.6, 10.6], [10.6, -10.6]],
+                waypoints: vec![
+                    [-10.6, -10.6],
+                    [-10.6, 1.4],
+                    [-10.6, 3.8],
+                    [-10.6, 10.6],
+                    [10.6, 10.6],
+                    [10.6, 4.0],
+                    [10.6, 1.6],
+                    [10.6, -10.6],
+                ],
                 is_closed_loop: true,
-                waypoint_elevations: Vec::new(),
+                waypoint_elevations: vec![
+                    0.025, 0.025, elev_car_y, elev_car_y, elev_car_y, elev_car_y, 0.025, 0.025,
+                ],
                 underground_segments: Vec::new(),
             },
             // Route 3: Grand Staggered Inner Citadel Circuit (navigating the dogleg central blocks)
@@ -1437,7 +1513,7 @@ impl CityBlueprint {
                 waypoint_elevations: Vec::new(),
                 underground_segments: Vec::new(),
             },
-            // Route 5: Cross-Metropolis Winding Boulevard & South Highway Loop
+            // Route 5: Cross-Metropolis Boulevard -> City Branch Ramp -> South/West 2nd-Level Highway
             VehicleRoute {
                 id: 5,
                 waypoints: vec![
@@ -1445,13 +1521,18 @@ impl CityBlueprint {
                     [-0.4, -5.4],
                     [-0.4, 0.2],
                     [0.7, 0.2],
-                    [0.7, 4.6],
-                    [10.6, 4.6],
-                    [10.6, 10.6],
+                    [0.7, 1.8],
+                    [0.7, 4.2],
+                    [0.7, 10.6],
                     [-10.6, 10.6],
+                    [-10.6, 3.8],
+                    [-10.6, 1.4],
                 ],
                 is_closed_loop: true,
-                waypoint_elevations: Vec::new(),
+                waypoint_elevations: vec![
+                    0.025, 0.025, 0.025, 0.025, 0.025, elev_car_y, elev_car_y, elev_car_y,
+                    elev_car_y, 0.025,
+                ],
                 underground_segments: Vec::new(),
             },
             // Route 6: Underground Garage 1 (CathedralKeep) <-> Underground Garage 5 (East Highway Belfry)
@@ -1526,13 +1607,16 @@ impl CityBlueprint {
                 underground_segments: Vec::new(),
             },
             // Route 10: Underground Garage 6 (West Syndicate) <-> Underground Garage 10 (SE Cathedral Keep)
+            // Uses Mid-West Avenue (z = -0.70) to stay clear of the West elevated highway ramp.
             VehicleRoute {
                 id: 10,
                 waypoints: vec![
                     [-8.45, -3.05],
                     [-9.11, -3.05],
                     [-10.60, -3.05],
-                    [-10.60, 5.40],
+                    [-10.60, -0.70],
+                    [-5.20, -0.70],
+                    [-5.20, 5.40],
                     [0.70, 5.40],
                     [0.70, 7.56],
                     [2.20, 7.56],
@@ -1542,24 +1626,30 @@ impl CityBlueprint {
                 waypoint_elevations: Vec::new(),
                 underground_segments: Vec::new(),
             },
-            // Route 11: 2nd-Level South Overpass & Outer Ring Express Loop
+            // Route 11: 2nd-Level East Ramp -> South Deck -> City Branch Express Loop
             VehicleRoute {
                 id: 11,
                 waypoints: vec![
-                    [-10.6, 10.6],
-                    [-9.8, 10.6],
-                    [-6.4, 10.6],
-                    [6.4, 10.6],
-                    [9.8, 10.6],
-                    [10.6, 10.6],
                     [10.6, -10.6],
-                    [-10.6, -10.6],
+                    [10.6, 1.6],
+                    [10.6, 4.0],
+                    [10.6, 10.6],
+                    [0.7, 10.6],
+                    [0.7, 4.2],
+                    [0.7, 1.8],
+                    [0.7, 0.2],
+                    [-0.4, 0.2],
+                    [-0.4, -10.6],
                 ],
                 is_closed_loop: true,
-                waypoint_elevations: vec![0.025, 0.025, 1.875, 1.875, 0.025, 0.025, 0.025, 0.025],
+                waypoint_elevations: vec![
+                    0.025, 0.025, elev_car_y, elev_car_y, elev_car_y, elev_car_y, 0.025, 0.025,
+                    0.025, 0.025,
+                ],
                 underground_segments: Vec::new(),
             },
             // Route 12: Subterranean Tunnel Loop (Portal 1 East Outer -> Portal 2 SW Avenue)
+            // Returns via East Mid Canyon (x = 5.40, z = 1.10) to avoid the East elevated highway ramp.
             VehicleRoute {
                 id: 12,
                 waypoints: vec![
@@ -1569,10 +1659,14 @@ impl CityBlueprint {
                     [-3.35, 5.40],
                     [0.70, 5.40],
                     [0.70, 4.60],
-                    [10.60, 4.60],
+                    [5.40, 4.60],
+                    [5.40, 1.10],
+                    [10.60, 1.10],
                 ],
                 is_closed_loop: true,
-                waypoint_elevations: vec![0.025, -0.22, -0.22, 0.025, 0.025, 0.025, 0.025],
+                waypoint_elevations: vec![
+                    0.025, -0.22, -0.22, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025,
+                ],
                 underground_segments: vec![1],
             },
             // Route 13: Subterranean Crosstown Loop (Portal 3 NE Outer -> Portal 4 NW Outer)
@@ -3184,8 +3278,23 @@ mod tests {
                         saw_tunnel_portal_subterranean = true;
                     }
                 } else {
-                    if pos[1] > 1.5 {
+                    if pos[1] > 0.65 {
                         saw_elevated_highway_car = true;
+                    }
+                    // Ground-level vehicles must never drive through any elevated highway ramp
+                    if pos[1] < 0.08 {
+                        let in_west_ramp =
+                            (pos[0] + 10.6).abs() < 0.45 && pos[2] > 1.65 && pos[2] < 3.55;
+                        let in_east_ramp =
+                            (pos[0] - 10.6).abs() < 0.45 && pos[2] > 1.85 && pos[2] < 3.75;
+                        let in_branch_ramp =
+                            (pos[0] - 0.7).abs() < 0.45 && pos[2] > 2.05 && pos[2] < 3.95;
+                        assert!(
+                            !in_west_ramp && !in_east_ramp && !in_branch_ramp,
+                            "Ground vehicle {} drove through an elevated highway ramp at {:?}",
+                            veh.id,
+                            pos
+                        );
                     }
                     assert!(
                         pos[0].abs() <= max_bound && pos[2].abs() <= max_bound,
