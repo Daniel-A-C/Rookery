@@ -1831,7 +1831,12 @@ impl CityBlueprint {
 
         // Hide vehicles while they traverse an unsimulated underground tunnel segment
         if route.underground_segments.contains(&seg_idx) {
-            return Some(([pts[seg_idx][0], -0.45, pts[seg_idx][1]], [1.0, 0.0], 0.0, true));
+            return Some((
+                [pts[seg_idx][0], -0.45, pts[seg_idx][1]],
+                [1.0, 0.0],
+                0.0,
+                true,
+            ));
         }
 
         let a = pts[seg_idx];
