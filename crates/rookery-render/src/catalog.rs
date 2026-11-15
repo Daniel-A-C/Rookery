@@ -752,7 +752,7 @@ impl AppCatalog {
                         id: "toggle_searchlights".into(),
                         label: "Searchlights".into(),
                         icon: Some("sun".into()),
-                        tooltip: Some("Toggle sweeping rooftop and airship searchlight beams".into()),
+                        tooltip: Some("Toggle sweeping airship searchlight beams".into()),
                     },
                     AppControl::Button {
                         id: "rotate_camera".into(),

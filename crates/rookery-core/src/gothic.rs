@@ -13,7 +13,7 @@
 //!   1. Canyon street vehicles (`GothicVehicle`) & street steam grates (`y = 0.05`).
 //!   2. Multi-level elevated walkways with pedestrians (`WalkwayPedestrian`) (`y = 1.6 .. 5.2`).
 //!   3. Elevated commuter train network (`ElevatedGothicTrain`) weaving around & through towers (`y = 2.6`).
-//!   4. Towering gothic spires with rising steam plumes (`SteamPlume`) & sweeping searchlights (`SearchlightBeam`).
+//!   4. Towering gothic spires with rising steam plumes (`SteamPlume`).
 //!   5. High-altitude patrol airships (`GothicAirship`) with downward spotlights (`y = 9.2 .. 11.8`).
 
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, TAU};
@@ -2044,69 +2044,8 @@ impl GothicMetropolisState {
             },
         ];
 
-        // Authored rooftop searchlights on the high towers across the 4x4 districts
-        let searchlights = vec![
-            // ChanceryArcadeKeep NW rooftop beacon (Building 2)
-            SearchlightBeam {
-                origin: [-3.55, 11.95, -7.96],
-                base_yaw: 0.85,
-                sweep_amp: 0.95,
-                sweep_speed: 0.14,
-                tilt_from_vertical: 0.34,
-                length: 7.2,
-                phase_offset: 0.0,
-            },
-            // ArtDecoZiggurat Crown Spire beacon (Building 7)
-            SearchlightBeam {
-                origin: [2.10, 15.55, -2.05],
-                base_yaw: 2.5,
-                sweep_amp: 0.85,
-                sweep_speed: 0.12,
-                tilt_from_vertical: 0.30,
-                length: 7.8,
-                phase_offset: 1.5,
-            },
-            // AtlasDecoTower North-East rooftop beacon (Building 3)
-            SearchlightBeam {
-                origin: [2.05, 14.55, -6.85],
-                base_yaw: 1.4,
-                sweep_amp: 0.80,
-                sweep_speed: 0.11,
-                tilt_from_vertical: 0.28,
-                length: 7.4,
-                phase_offset: 3.1,
-            },
-            // AtlasDecoTower Central Plaza beacon (Building 10)
-            SearchlightBeam {
-                origin: [-2.75, 13.75, 2.80],
-                base_yaw: -1.3,
-                sweep_amp: 0.90,
-                sweep_speed: 0.15,
-                tilt_from_vertical: 0.32,
-                length: 7.2,
-                phase_offset: 4.4,
-            },
-            // SyndicateTower West Bastion beacon (Building 5)
-            SearchlightBeam {
-                origin: [-7.86, 11.15, -3.05],
-                base_yaw: 0.35,
-                sweep_amp: 0.82,
-                sweep_speed: 0.13,
-                tilt_from_vertical: 0.33,
-                length: 6.8,
-                phase_offset: 5.5,
-            },
-            // AlchemicalObservatory East rooftop beacon (Building 8)
-            SearchlightBeam {
-                origin: [7.96, 10.75, -1.60],
-                base_yaw: -2.2,
-                sweep_amp: 0.86,
-                sweep_speed: 0.14,
-                tilt_from_vertical: 0.31,
-                length: 6.8,
-                phase_offset: 2.3,
-            },
-        ];
+        // No rooftop searchlights on buildings (only patrol airships project searchlights)
+        let searchlights = Vec::new();
 
         let mut state = Self {
             seed,
@@ -2125,7 +2064,7 @@ impl GothicMetropolisState {
             camera_yaw: FRAC_PI_4,
             target_camera_yaw: FRAC_PI_4,
             camera_pitch: 0.54,
-            screen_occupancy: 0.60,
+            screen_occupancy: 0.675,
             steam_accum: 0.0,
         };
 
