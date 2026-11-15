@@ -638,17 +638,20 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
 
     // 1. Stepped Citadel Foundation Plinth floating in the black void
     let ext = bp.plinth_half_extent;
-    // Lower dark obsidian/slate deck slab (y = -0.26 .. 0.0)
-    mb.push_box(
-        0.0,
-        -0.26,
-        0.0,
-        ext * 2.0,
-        0.26,
-        ext * 2.0,
-        theme.plinth_dark,
-        0.0,
-    );
+    let plinth_cutouts = collect_underground_plinth_cutouts(bp);
+    // Lower dark obsidian/slate deck slab (y = -0.26 .. 0.0), carved open at sunken tunnel ramps
+    for r in subtract_cutouts([-ext, -ext, ext, ext], &plinth_cutouts) {
+        mb.push_box(
+            (r[0] + r[2]) * 0.5,
+            -0.26,
+            (r[1] + r[3]) * 0.5,
+            r[2] - r[0],
+            0.26,
+            r[3] - r[1],
+            theme.plinth_dark,
+            0.0,
+        );
+    }
     // Outer fortified parapet wall around the city island perimeter
     let wall_t = 0.24;
     let wall_h = 0.32;
@@ -779,7 +782,7 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
 
     // 5. Subterranean Building Parking Garage Portals & Ramps
     for garage in &bp.garages {
-        build_garage_portal_mesh(&mut mb, garage, theme);
+        build_garage_portal_mesh(&mut mb, bp, garage, theme);
     }
 
     // 5b. 2nd-Level Outer Elevated Highway Overpasses & Straddling Arch Piers
@@ -789,7 +792,7 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
 
     // 5c. Sunken Roadside Underground Tunnel Portals
     for portal in &bp.underground_portals {
-        build_underground_portal_mesh(&mut mb, portal, theme);
+        build_underground_portal_mesh(&mut mb, bp, portal, theme);
     }
 
     // 6. Multi-Level Elevated Walkways / Skybridges
@@ -803,6 +806,131 @@ fn build_static_city_mesh(bp: &CityBlueprint, theme: &GothicThemeColors) -> Vec<
     mb.verts
 }
 
+/// Determine the half-width of the road segment containing `pos` from `bp.avenues`.
+fn road_half_width_at(bp: &CityBlueprint, pos: [f32; 2]) -> f32 {
+    bp.avenues
+        .iter()
+        .filter(|a| point_to_avenue_dist(pos[0], pos[1], a) < 0.25)
+        .map(|a| a.width * 0.5)
+        .fold(0.0f32, f32::max)
+        .max(0.55)
+}
+
+/// Compute an axis-aligned 2D bounding rectangle `[x0, z0, x1, z1]` spanning from `start`
+/// to `end` along `fwd` with total lateral width `width`.
+fn oriented_span_rect(start: [f32; 2], end: [f32; 2], fwd: [f32; 2], width: f32) -> [f32; 4] {
+    let right = [-fwd[1], fwd[0]];
+    let hw = width * 0.5;
+    let corners = [
+        [start[0] - right[0] * hw, start[1] - right[1] * hw],
+        [start[0] + right[0] * hw, start[1] + right[1] * hw],
+        [end[0] - right[0] * hw, end[1] - right[1] * hw],
+        [end[0] + right[0] * hw, end[1] + right[1] * hw],
+    ];
+    let mut x0 = f32::INFINITY;
+    let mut z0 = f32::INFINITY;
+    let mut x1 = f32::NEG_INFINITY;
+    let mut z1 = f32::NEG_INFINITY;
+    for [x, z] in corners {
+        x0 = x0.min(x);
+        z0 = z0.min(z);
+        x1 = x1.max(x);
+        z1 = z1.max(z);
+    }
+    [x0, z0, x1, z1]
+}
+
+fn rect_overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[2] > b[0] && a[0] < b[2] && a[3] > b[1] && a[1] < b[3]
+}
+
+fn subtract_rect_from_rects(rects: Vec<[f32; 4]>, cut: [f32; 4]) -> Vec<[f32; 4]> {
+    let mut out = Vec::with_capacity(rects.len());
+    for r in rects {
+        if !rect_overlaps(r, cut) {
+            out.push(r);
+            continue;
+        }
+        let ix0 = r[0].max(cut[0]);
+        let ix1 = r[2].min(cut[2]);
+        if cut[0] > r[0] {
+            out.push([r[0], r[1], cut[0], r[3]]);
+        }
+        if r[2] > cut[2] {
+            out.push([cut[2], r[1], r[2], r[3]]);
+        }
+        if ix1 > ix0 {
+            if cut[1] > r[1] {
+                out.push([ix0, r[1], ix1, cut[1]]);
+            }
+            if r[3] > cut[3] {
+                out.push([ix0, cut[3], ix1, r[3]]);
+            }
+        }
+    }
+    out
+}
+
+fn subtract_cutouts(initial: [f32; 4], cutouts: &[[f32; 4]]) -> Vec<[f32; 4]> {
+    let mut rects = vec![initial];
+    for &cut in cutouts {
+        rects = subtract_rect_from_rects(rects, cut);
+    }
+    rects
+}
+
+/// Plinth cutouts for sunken underground tunnel ramps so the driving channel opens below `y = 0`.
+fn collect_underground_plinth_cutouts(bp: &CityBlueprint) -> Vec<[f32; 4]> {
+    bp.underground_portals
+        .iter()
+        .map(|p| {
+            let fwd = p.inward_dir;
+            let road_half_w = road_half_width_at(bp, p.entry_pos);
+            let road_edge = [
+                p.entry_pos[0] + fwd[0] * road_half_w,
+                p.entry_pos[1] + fwd[1] * road_half_w,
+            ];
+            let pit_end = [
+                p.portal_pos[0] + fwd[0] * 0.25,
+                p.portal_pos[1] + fwd[1] * 0.25,
+            ];
+            oriented_span_rect(road_edge, pit_end, fwd, p.width + 0.04)
+        })
+        .collect()
+}
+
+/// Sidewalk/curb/paver cutouts for both sunken underground tunnel portals and garage driveways.
+fn collect_sidewalk_cutouts(bp: &CityBlueprint) -> Vec<[f32; 4]> {
+    let mut cutouts = Vec::with_capacity(bp.underground_portals.len() + bp.garages.len());
+    for p in &bp.underground_portals {
+        let fwd = p.inward_dir;
+        let road_half_w = road_half_width_at(bp, p.entry_pos);
+        let road_edge = [
+            p.entry_pos[0] + fwd[0] * road_half_w,
+            p.entry_pos[1] + fwd[1] * road_half_w,
+        ];
+        let pit_end = [
+            p.portal_pos[0] + fwd[0] * 0.45,
+            p.portal_pos[1] + fwd[1] * 0.45,
+        ];
+        cutouts.push(oriented_span_rect(road_edge, pit_end, fwd, p.width + 0.24));
+    }
+    for g in &bp.garages {
+        let fwd = g.inward_dir;
+        let road_half_w = road_half_width_at(bp, g.street_entry);
+        let road_edge = [
+            g.street_entry[0] + fwd[0] * road_half_w,
+            g.street_entry[1] + fwd[1] * road_half_w,
+        ];
+        let end = [
+            g.portal_pos[0] + fwd[0] * 0.12,
+            g.portal_pos[1] + fwd[1] * 0.12,
+        ];
+        cutouts.push(oriented_span_rect(road_edge, end, fwd, g.width + 0.18));
+    }
+    cutouts
+}
+
 /// Build raised stone sidewalks, distinct curb borders, flagstone paving courses, and corner bollards
 /// around all city blocks in the blueprint and along the outer perimeter ring highway promenade.
 fn build_sidewalks_and_curbs_mesh(
@@ -814,6 +942,7 @@ fn build_sidewalks_and_curbs_mesh(
     let curb_h = 0.095f32;
     let curb_w = 0.085f32;
     let walk_band = 0.42f32;
+    let sw_cutouts = collect_sidewalk_cutouts(bp);
 
     let fallback_blocks: Vec<CityBlockPlot>;
     let blocks: &[CityBlockPlot] = if !bp.blocks.is_empty() {
@@ -832,71 +961,75 @@ fn build_sidewalks_and_curbs_mesh(
         &fallback_blocks
     };
 
+    let push_cutout_box =
+        |mb: &mut MeshBuilder, rect: [f32; 4], y0: f32, h: f32, color: [f32; 4]| {
+            for r in subtract_cutouts(rect, &sw_cutouts) {
+                mb.push_box(
+                    (r[0] + r[2]) * 0.5,
+                    y0,
+                    (r[1] + r[3]) * 0.5,
+                    r[2] - r[0],
+                    h,
+                    r[3] - r[1],
+                    color,
+                    0.0,
+                );
+            }
+        };
+
     for block in blocks {
         let (x0, z0, x1, z1) = (block.x0, block.z0, block.x1, block.z1);
         let bw = x1 - x0;
         let bd = z1 - z0;
-        let cx = (x0 + x1) * 0.5;
-        let cz = (z0 + z1) * 0.5;
 
         // Main raised block sidewalk & plaza platform
-        mb.push_box(cx, 0.0, cz, bw, sw_h, bd, theme.sidewalk, 0.0);
+        push_cutout_box(mb, [x0, z0, x1, z1], 0.0, sw_h, theme.sidewalk);
 
         // Inner slightly recessed dark stone building plinth pad so the surrounding
         // 0.42m sidewalk walkway reads as a crisp perimeter pedestrian belt!
         if bw > walk_band * 2.2 && bd > walk_band * 2.2 {
-            mb.push_box(
-                cx,
+            push_cutout_box(
+                mb,
+                [
+                    x0 + walk_band,
+                    z0 + walk_band,
+                    x1 - walk_band,
+                    z1 - walk_band,
+                ],
                 sw_h,
-                cz,
-                bw - walk_band * 2.0,
                 0.015,
-                bd - walk_band * 2.0,
                 theme.stone_dark,
-                0.0,
             );
         }
 
         // Raised stone curbs along the 4 street-facing edges of the city block
-        mb.push_box(
-            cx,
+        push_cutout_box(
+            mb,
+            [x0, z0, x1, z0 + curb_w],
             0.0,
-            z0 + curb_w * 0.5,
-            bw,
             curb_h,
-            curb_w,
             theme.sidewalk_curb,
-            0.0,
         );
-        mb.push_box(
-            cx,
+        push_cutout_box(
+            mb,
+            [x0, z1 - curb_w, x1, z1],
             0.0,
-            z1 - curb_w * 0.5,
-            bw,
             curb_h,
-            curb_w,
             theme.sidewalk_curb,
-            0.0,
         );
-        mb.push_box(
-            x0 + curb_w * 0.5,
+        push_cutout_box(
+            mb,
+            [x0, z0, x0 + curb_w, z1],
             0.0,
-            cz,
-            curb_w,
             curb_h,
-            bd,
             theme.sidewalk_curb,
-            0.0,
         );
-        mb.push_box(
-            x1 - curb_w * 0.5,
+        push_cutout_box(
+            mb,
+            [x1 - curb_w, z0, x1, z1],
             0.0,
-            cz,
-            curb_w,
             curb_h,
-            bd,
             theme.sidewalk_curb,
-            0.0,
         );
 
         // Textured flagstone paving slabs along North & South block sidewalks
@@ -905,17 +1038,26 @@ fn build_sidewalks_and_curbs_mesh(
         for i in 0..x_pavers {
             let px = x0 + 0.18 + (i as f32 + 0.5) * x_step;
             let paver_w = (x_step * 0.76).min(0.42);
+            let paver_d = walk_band * 0.68;
             for pz in [z0 + walk_band * 0.52, z1 - walk_band * 0.52] {
-                mb.push_box(
-                    px,
-                    sw_h,
-                    pz,
-                    paver_w,
-                    0.012,
-                    walk_band * 0.68,
-                    theme.sidewalk_paver,
-                    0.0,
-                );
+                let r = [
+                    px - paver_w * 0.5,
+                    pz - paver_d * 0.5,
+                    px + paver_w * 0.5,
+                    pz + paver_d * 0.5,
+                ];
+                if !sw_cutouts.iter().any(|&c| rect_overlaps(r, c)) {
+                    mb.push_box(
+                        px,
+                        sw_h,
+                        pz,
+                        paver_w,
+                        0.012,
+                        paver_d,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                }
             }
         }
 
@@ -925,23 +1067,36 @@ fn build_sidewalks_and_curbs_mesh(
         for i in 0..z_pavers {
             let pz = z0 + 0.18 + (i as f32 + 0.5) * z_step;
             let paver_d = (z_step * 0.76).min(0.42);
+            let paver_w = walk_band * 0.68;
             for px in [x0 + walk_band * 0.52, x1 - walk_band * 0.52] {
-                mb.push_box(
-                    px,
-                    sw_h,
-                    pz,
-                    walk_band * 0.68,
-                    0.012,
-                    paver_d,
-                    theme.sidewalk_paver,
-                    0.0,
-                );
+                let r = [
+                    px - paver_w * 0.5,
+                    pz - paver_d * 0.5,
+                    px + paver_w * 0.5,
+                    pz + paver_d * 0.5,
+                ];
+                if !sw_cutouts.iter().any(|&c| rect_overlaps(r, c)) {
+                    mb.push_box(
+                        px,
+                        sw_h,
+                        pz,
+                        paver_w,
+                        0.012,
+                        paver_d,
+                        theme.sidewalk_paver,
+                        0.0,
+                    );
+                }
             }
         }
 
         // Gothic corner curb bollards at all 4 corners of the block
         for bx in [x0 + 0.14, x1 - 0.14] {
             for bz in [z0 + 0.14, z1 - 0.14] {
+                let r = [bx - 0.06, bz - 0.06, bx + 0.06, bz + 0.06];
+                if sw_cutouts.iter().any(|&c| rect_overlaps(r, c)) {
+                    continue;
+                }
                 mb.push_box(bx, sw_h, bz, 0.10, 0.16, 0.10, theme.sidewalk_curb, 0.0);
                 mb.push_box(
                     bx,
@@ -1169,11 +1324,15 @@ fn build_roads_and_highway_mesh(
             if near_junction {
                 continue;
             }
-            // Also skip garage turnoff points
+            // Also skip garage and underground portal turnoff points
             let near_garage = bp.garages.iter().any(|g| {
                 (mx - g.street_entry[0]).abs() < 0.55 && (mz - g.street_entry[1]).abs() < 0.55
             });
-            if near_garage {
+            let near_portal = bp
+                .underground_portals
+                .iter()
+                .any(|p| (mx - p.entry_pos[0]).abs() < 0.55 && (mz - p.entry_pos[1]).abs() < 0.55);
+            if near_garage || near_portal {
                 continue;
             }
 
@@ -1242,11 +1401,14 @@ fn build_roads_and_highway_mesh(
                     if !on_block_sidewalk {
                         continue;
                     }
-                    // Skip if a garage driveway apron occupies this sidewalk spot
+                    // Skip if a garage driveway apron or underground portal occupies this sidewalk spot
                     let blocks_garage = bp.garages.iter().any(|g| {
                         (px - g.portal_pos[0]).abs() < 0.75 && (pz - g.portal_pos[1]).abs() < 0.75
                     });
-                    if blocks_garage {
+                    let blocks_portal = bp.underground_portals.iter().any(|p| {
+                        (px - p.portal_pos[0]).abs() < 1.35 && (pz - p.portal_pos[1]).abs() < 1.35
+                    });
+                    if blocks_garage || blocks_portal {
                         continue;
                     }
                     mb.push_box(px, 0.075, pz, 0.06, 0.34, 0.06, theme.stone_dark, 0.0);
@@ -1339,6 +1501,7 @@ fn build_roads_and_highway_mesh(
 /// a heavy gothic portal arch, a pitch-black subterranean tunnel void, and glowing clearance lights.
 fn build_garage_portal_mesh(
     mb: &mut MeshBuilder,
+    bp: &CityBlueprint,
     garage: &GaragePortal,
     theme: &GothicThemeColors,
 ) {
@@ -1346,44 +1509,49 @@ fn build_garage_portal_mesh(
     let right = [-fwd[1], fwd[0]];
     let w = garage.width;
 
-    let dx = garage.portal_pos[0] - garage.street_entry[0];
-    let dz = garage.portal_pos[1] - garage.street_entry[1];
-    let dist = (dx * dx + dz * dz).sqrt().max(0.2);
+    let road_half_w = road_half_width_at(bp, garage.street_entry);
+    let road_edge = [
+        garage.street_entry[0] + fwd[0] * road_half_w,
+        garage.street_entry[1] + fwd[1] * road_half_w,
+    ];
+    let dx = garage.portal_pos[0] - road_edge[0];
+    let dz = garage.portal_pos[1] - road_edge[1];
+    let apron_len = (dx * dx + dz * dz).sqrt().max(0.25);
 
-    // 1. Asphalt driveway apron cutting across the raised sidewalk into the building portal
-    let apron_len = (dist - 0.32).max(0.35);
-    let apron_cx = garage.portal_pos[0] - fwd[0] * (apron_len * 0.5 - 0.12);
-    let apron_cz = garage.portal_pos[1] - fwd[1] * (apron_len * 0.5 - 0.12);
+    // 1. Asphalt driveway apron cutting across the raised sidewalk from road edge to building portal
+    let apron_cx = (road_edge[0] + garage.portal_pos[0]) * 0.5;
+    let apron_cz = (road_edge[1] + garage.portal_pos[1]) * 0.5;
     mb.push_oriented_box(
-        [apron_cx, 0.002, apron_cz],
+        [apron_cx, 0.005, apron_cz],
         fwd,
-        apron_len + 0.35,
-        0.078,
-        w * 0.92,
+        apron_len + 0.06,
+        0.022,
+        w * 0.96,
         theme.asphalt,
         0.0,
     );
-    // Amber center guide stripe leading into the subterranean ramp
+    // Amber center guide stripe leading into the garage portal (strictly inside the apron)
     mb.push_oriented_box(
-        [apron_cx, 0.076, apron_cz],
+        [apron_cx, 0.026, apron_cz],
         fwd,
-        apron_len * 0.85,
+        (apron_len - 0.08).max(0.15),
         0.008,
         0.06,
         theme.accent_trim,
         0.0,
     );
 
-    // 2. Flanking sloped stone curb wing-walls bordering the garage ramp across the sidewalk
+    // 2. Flanking stone curb wing-walls bordering the garage driveway across the sidewalk
     let cheek_w = 0.09f32;
+    let wall_len = (apron_len - 0.04).max(0.20);
     for side in [-1.0f32, 1.0f32] {
         let wx = apron_cx + right[0] * (w * 0.48 + cheek_w * 0.5) * side;
         let wz = apron_cz + right[1] * (w * 0.48 + cheek_w * 0.5) * side;
         mb.push_oriented_box(
-            [wx, 0.075, wz],
+            [wx, 0.0, wz],
             fwd,
-            apron_len * 0.88,
-            0.09,
+            wall_len,
+            0.14,
             cheek_w,
             theme.sidewalk_curb,
             0.0,
@@ -2046,6 +2214,7 @@ fn build_elevated_highway_mesh(
 /// and clearance beacons.
 fn build_underground_portal_mesh(
     mb: &mut MeshBuilder,
+    bp: &CityBlueprint,
     portal: &UndergroundPortal,
     theme: &GothicThemeColors,
 ) {
@@ -2053,18 +2222,25 @@ fn build_underground_portal_mesh(
     let right = [-fwd[1], fwd[0]];
     let w = portal.width;
 
-    // 1. Sloped asphalt ramp descending from street level into the sunken tunnel mouth
+    let road_half_w = road_half_width_at(bp, portal.entry_pos);
+    let road_edge = [
+        portal.entry_pos[0] + fwd[0] * road_half_w,
+        portal.entry_pos[1] + fwd[1] * road_half_w,
+    ];
+
+    // 1. Sloped asphalt ramp descending from the road edge into the sunken tunnel mouth
     mb.push_sloped_box(
-        [portal.entry_pos[0], -0.02, portal.entry_pos[1]],
+        [road_edge[0], -0.015, road_edge[1]],
         [portal.portal_pos[0], -0.24, portal.portal_pos[1]],
         0.04,
-        w * 0.90,
+        w * 0.94,
         theme.asphalt,
         0.0,
     );
-    // Amber center guide stripe descending into the tunnel
+    // Amber center guide stripe descending into the tunnel (inset inside the road edge)
+    let guide_start = [road_edge[0] + fwd[0] * 0.04, road_edge[1] + fwd[1] * 0.04];
     mb.push_sloped_box(
-        [portal.entry_pos[0], 0.022, portal.entry_pos[1]],
+        [guide_start[0], 0.018, guide_start[1]],
         [portal.portal_pos[0], -0.195, portal.portal_pos[1]],
         0.01,
         0.06,
@@ -2072,20 +2248,21 @@ fn build_underground_portal_mesh(
         0.0,
     );
 
-    // 2. Flanking stone retaining walls bordering the sunken ramp
-    let dx = portal.portal_pos[0] - portal.entry_pos[0];
-    let dz = portal.portal_pos[1] - portal.entry_pos[1];
+    // 2. Flanking stone retaining walls bordering the sunken ramp (strictly inside road edge)
+    let dx = portal.portal_pos[0] - road_edge[0];
+    let dz = portal.portal_pos[1] - road_edge[1];
     let ramp_len = (dx * dx + dz * dz).sqrt().max(0.4);
-    let mid_x = (portal.entry_pos[0] + portal.portal_pos[0]) * 0.5;
-    let mid_z = (portal.entry_pos[1] + portal.portal_pos[1]) * 0.5;
+    let mid_x = (road_edge[0] + portal.portal_pos[0]) * 0.5;
+    let mid_z = (road_edge[1] + portal.portal_pos[1]) * 0.5;
+    let wall_len = (ramp_len - 0.04).max(0.32);
     for side in [-1.0f32, 1.0f32] {
         let wx = mid_x + right[0] * (w * 0.50 + 0.06) * side;
         let wz = mid_z + right[1] * (w * 0.50 + 0.06) * side;
         mb.push_oriented_box(
-            [wx, 0.0, wz],
+            [wx, -0.26, wz],
             fwd,
-            ramp_len * 0.92,
-            0.22,
+            wall_len,
+            0.48,
             0.12,
             theme.stone_secondary,
             0.0,
@@ -2093,7 +2270,7 @@ fn build_underground_portal_mesh(
         mb.push_oriented_box(
             [wx, 0.22, wz],
             fwd,
-            ramp_len * 0.92,
+            wall_len,
             0.04,
             0.14,
             theme.accent_trim,
@@ -2101,16 +2278,32 @@ fn build_underground_portal_mesh(
         );
     }
 
-    // 3. Heavy gothic stone tunnel portal housing & overhanging cornice lintel
+    // 3. Heavy gothic stone tunnel portal piers, overhead lintel & overhanging cornice
     let portal_h = 0.78f32;
+    let lintel_y = portal_h - 0.22;
     let arch_cx = portal.portal_pos[0] + fwd[0] * 0.18;
     let arch_cz = portal.portal_pos[1] + fwd[1] * 0.18;
+    let pier_w = 0.18f32;
+    for side in [-1.0f32, 1.0f32] {
+        let px = arch_cx + right[0] * (w * 0.50 + pier_w * 0.5) * side;
+        let pz = arch_cz + right[1] * (w * 0.50 + pier_w * 0.5) * side;
+        mb.push_oriented_box(
+            [px, -0.26, pz],
+            fwd,
+            0.52,
+            portal_h + 0.26,
+            pier_w,
+            theme.stone_secondary,
+            0.0,
+        );
+    }
+    // Overhead stone lintel above the open tunnel mouth
     mb.push_oriented_box(
-        [arch_cx, 0.0, arch_cz],
+        [arch_cx, lintel_y, arch_cz],
         fwd,
         0.52,
-        portal_h,
-        w + 0.36,
+        portal_h - lintel_y,
+        w + pier_w * 2.0,
         theme.stone_secondary,
         0.0,
     );
@@ -2124,18 +2317,18 @@ fn build_underground_portal_mesh(
         0.0,
     );
 
-    // 4. Pitch-black subterranean tunnel mouth void
+    // 4. Pitch-black subterranean tunnel mouth void recessed behind the open portal piers
     let void_color = [0.01, 0.01, 0.018, 1.0];
     mb.push_oriented_box(
         [
-            portal.portal_pos[0] - fwd[0] * 0.05,
-            -0.18,
-            portal.portal_pos[1] - fwd[1] * 0.05,
+            portal.portal_pos[0] + fwd[0] * 0.18,
+            -0.26,
+            portal.portal_pos[1] + fwd[1] * 0.18,
         ],
         fwd,
-        0.38,
-        portal_h - 0.04,
-        w * 0.86,
+        0.48,
+        lintel_y + 0.26,
+        w,
         void_color,
         0.0,
     );
