@@ -36,6 +36,7 @@ pub use types::*;
 /// city sits a little lower in the viewport, centering it cleanly in the visible area below a
 /// top camera cutout / menu bar.
 const OVERVIEW_CAMERA_TARGET: [f32; 3] = [0.0, 5.95, 0.0];
+const DEFAULT_CAMERA_PITCH: f32 = 0.54;
 
 fn default_palette_cycle_speed() -> f32 {
     1.0
@@ -288,7 +289,7 @@ impl GothicMetropolisState {
             trains_dispatched: 2,
             camera_yaw: FRAC_PI_4,
             target_camera_yaw: FRAC_PI_4,
-            camera_pitch: 0.54,
+            camera_pitch: DEFAULT_CAMERA_PITCH,
             screen_occupancy: 0.675,
             traffic_signals,
             traffic_density: TrafficDensity::NocturnalCruise,
@@ -511,6 +512,16 @@ impl GothicMetropolisState {
         self.camera_yaw += delta_yaw;
         self.target_camera_yaw = self.camera_yaw;
         self.camera_pitch = (self.camera_pitch + delta_pitch).clamp(0.36, 0.82);
+    }
+
+    /// Smoothly reset the camera back to its default isometric angle and overview framing.
+    pub fn reset_camera(&mut self) {
+        let wrapped_offset = (self.camera_yaw - FRAC_PI_4 + std::f32::consts::PI).rem_euclid(TAU)
+            - std::f32::consts::PI;
+        self.camera_yaw = FRAC_PI_4 + wrapped_offset;
+        self.target_camera_yaw = FRAC_PI_4;
+        self.camera_pitch = DEFAULT_CAMERA_PITCH;
+        self.follow_car = false;
     }
 
     /// Cycle to the next gothic color palette.

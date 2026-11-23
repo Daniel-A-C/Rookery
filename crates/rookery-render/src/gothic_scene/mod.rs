@@ -1014,7 +1014,7 @@ impl Scene for GothicMetropolisScene {
                 let dx = (curr.x - prev.x) / (self.width.max(1) as f32);
                 let dy = (curr.y - prev.y) / (self.height.max(1) as f32);
                 if dx.abs() > 0.0001 || dy.abs() > 0.0001 {
-                    drag_delta = Some((dx * PI * 1.4, dy * 1.1));
+                    drag_delta = Some((-dx * PI * 1.4, dy * 1.1));
                 }
             }
             self.last_pointer = input.pointer;

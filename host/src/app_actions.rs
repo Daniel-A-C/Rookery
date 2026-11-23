@@ -454,6 +454,10 @@ pub(crate) fn dispatch_app_action(
                     g.rotate_camera_quarter_turn();
                     state.audio.play_sfx(SoundEffect::ModuleConstruct);
                 }
+                "reset_camera" => {
+                    g.reset_camera();
+                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                }
                 "cycle_palette" => {
                     g.cycle_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);

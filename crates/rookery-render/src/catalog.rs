@@ -784,6 +784,12 @@ impl AppCatalog {
                         icon: Some("compass".into()),
                         tooltip: Some("Rotate the isometric camera 90° around the city island".into()),
                     },
+                    AppControl::Button {
+                        id: "reset_camera".into(),
+                        label: "Reset View".into(),
+                        icon: Some("arrow-clockwise".into()),
+                        tooltip: Some("Reset the camera to its default isometric angle".into()),
+                    },
                     AppControl::Select {
                         id: "color_palette".into(),
                         label: "Color Palette".into(),

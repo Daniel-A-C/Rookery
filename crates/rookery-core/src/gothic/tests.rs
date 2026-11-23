@@ -128,6 +128,17 @@ fn interactive_actions_mutate_state_cleanly() {
     state.rotate_camera_quarter_turn();
     assert!((state.target_camera_yaw - (initial_yaw + FRAC_PI_2)).abs() < 1e-4);
 
+    state.orbit_camera(1.25, 0.20);
+    state.follow_car = true;
+    state.reset_camera();
+    assert!((state.target_camera_yaw - FRAC_PI_4).abs() < 1e-4);
+    assert!((state.camera_pitch - 0.54).abs() < 1e-4);
+    assert!(!state.follow_car);
+    for _ in 0..120 {
+        state.tick(1.0 / 60.0);
+    }
+    assert!((state.camera_yaw - FRAC_PI_4).abs() < 1e-3);
+
     assert_eq!(state.palette, GothicPalette::GothamAmber);
     state.cycle_palette();
     assert_eq!(state.palette, GothicPalette::CathedralMoonlight);
