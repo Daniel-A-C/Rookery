@@ -430,6 +430,9 @@ popoverRoot.addEventListener("mousedown", (ev) => {
   ) {
     return;
   }
+  if (target.scrollHeight > target.clientHeight && ev.offsetX >= target.clientWidth) {
+    return;
+  }
   ev.preventDefault();
   api.startDrag().catch(() => {});
 });
