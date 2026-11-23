@@ -2238,6 +2238,11 @@ pub struct GothicMetropolisStats {
     pub searchlights_lit: bool,
 }
 
+/// Default overview look-at target. Raised slightly above the geometric center (`5.20`) so the
+/// city sits a little lower in the viewport, centering it cleanly in the visible area below a
+/// top camera cutout / menu bar.
+const OVERVIEW_CAMERA_TARGET: [f32; 3] = [0.0, 5.95, 0.0];
+
 /// Complete deterministic simulation state for *Gothic Metropolis* (`gothic-metropolis`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GothicMetropolisState {
@@ -2481,7 +2486,7 @@ impl GothicMetropolisState {
             pursuit_timer: 0.0,
             vigilante_cooldown_secs: 300.0,
             follow_car: false,
-            camera_target: [0.0, 5.20, 0.0],
+            camera_target: OVERVIEW_CAMERA_TARGET,
             camera_zoom: 1.0,
             steam_accum: 0.0,
         };
@@ -2939,10 +2944,10 @@ impl GothicMetropolisState {
             {
                 ([pos[0], 0.45, pos[2]], 2.35)
             } else {
-                ([0.0, 5.20, 0.0], 1.0)
+                (OVERVIEW_CAMERA_TARGET, 1.0)
             }
         } else {
-            ([0.0, 5.20, 0.0], 1.0)
+            (OVERVIEW_CAMERA_TARGET, 1.0)
         };
         let cam_blend = (dt * 4.5).min(1.0);
         for (tgt, desired) in self.camera_target.iter_mut().zip(desired_target) {
