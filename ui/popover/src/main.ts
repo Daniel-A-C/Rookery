@@ -136,15 +136,242 @@ const BUILTIN_CSS_THEMES = new Set([
 
 const CUSTOM_THEME_VARS = [
   "--bg",
+  "--bg-pattern",
   "--card",
+  "--card-inner",
   "--border-outer",
+  "--border-inner",
+  "--border",
+  "--text",
+  "--muted",
   "--accent",
   "--accent-secondary",
+  "--accent-glow",
+  "--accent-active",
+  "--btn-surface",
+  "--btn-edge",
   "--crest-bg",
   "--ok",
   "--scrollbar-thumb",
   "--scrollbar-track",
 ];
+
+type Rgb = readonly [number, number, number];
+
+interface GothicMenuPalette {
+  bg: Rgb;
+  card: Rgb;
+  cardInner: Rgb;
+  borderOuter: Rgb;
+  accent: Rgb;
+  accentSecondary: Rgb;
+  crestA: Rgb;
+  crestB: Rgb;
+  text: Rgb;
+  muted: Rgb;
+  btnTop: Rgb;
+  btnBottom: Rgb;
+  btnEdge: Rgb;
+}
+
+const GOTHIC_MENU_PALETTES: readonly GothicMenuPalette[] = [
+  // 0: 1989 Furst Amber & Obsidian
+  {
+    bg: [12, 10, 14],
+    card: [22, 18, 26],
+    cardInner: [14, 11, 18],
+    borderOuter: [217, 119, 6],
+    accent: [245, 158, 11],
+    accentSecondary: [251, 191, 36],
+    crestA: [180, 83, 9],
+    crestB: [120, 53, 15],
+    text: [254, 243, 199],
+    muted: [184, 168, 148],
+    btnTop: [38, 30, 22],
+    btnBottom: [24, 19, 15],
+    btnEdge: [10, 8, 12],
+  },
+  // 1: Returns Ice & Gargoyle Slate
+  {
+    bg: [8, 14, 24],
+    card: [15, 25, 42],
+    cardInner: [10, 17, 30],
+    borderOuter: [56, 189, 248],
+    accent: [125, 211, 252],
+    accentSecondary: [253, 230, 138],
+    crestA: [2, 132, 199],
+    crestB: [30, 58, 95],
+    text: [224, 242, 254],
+    muted: [148, 176, 199],
+    btnTop: [22, 38, 61],
+    btnBottom: [14, 25, 42],
+    btnEdge: [6, 11, 19],
+  },
+  // 2: Crimson Noir & Brass
+  {
+    bg: [18, 8, 10],
+    card: [31, 14, 18],
+    cardInner: [21, 9, 12],
+    borderOuter: [225, 29, 72],
+    accent: [244, 63, 94],
+    accentSecondary: [251, 191, 36],
+    crestA: [190, 18, 60],
+    crestB: [124, 45, 18],
+    text: [255, 228, 230],
+    muted: [196, 153, 160],
+    btnTop: [46, 20, 26],
+    btnBottom: [30, 12, 16],
+    btnEdge: [14, 6, 8],
+  },
+  // 3: Axis Chemical Verdigris
+  {
+    bg: [7, 18, 14],
+    card: [14, 33, 26],
+    cardInner: [9, 22, 17],
+    borderOuter: [16, 185, 129],
+    accent: [52, 211, 153],
+    accentSecondary: [163, 230, 53],
+    crestA: [5, 150, 105],
+    crestB: [20, 83, 45],
+    text: [236, 253, 245],
+    muted: [142, 190, 168],
+    btnTop: [20, 48, 37],
+    btnBottom: [12, 31, 24],
+    btnEdge: [5, 14, 10],
+  },
+  // 4: Phantasm Violet & Fog
+  {
+    bg: [13, 8, 22],
+    card: [25, 16, 41],
+    cardInner: [16, 10, 28],
+    borderOuter: [147, 51, 234],
+    accent: [192, 132, 252],
+    accentSecondary: [244, 114, 182],
+    crestA: [126, 34, 206],
+    crestB: [76, 29, 149],
+    text: [243, 232, 255],
+    muted: [176, 155, 199],
+    btnTop: [39, 25, 64],
+    btnBottom: [25, 15, 43],
+    btnEdge: [11, 6, 19],
+  },
+  // 5: Clocktower Sepia & Bronze
+  {
+    bg: [17, 13, 9],
+    card: [32, 24, 17],
+    cardInner: [21, 16, 11],
+    borderOuter: [180, 83, 9],
+    accent: [245, 158, 11],
+    accentSecondary: [45, 212, 191],
+    crestA: [146, 64, 14],
+    crestB: [69, 26, 3],
+    text: [254, 243, 199],
+    muted: [191, 168, 142],
+    btnTop: [48, 36, 25],
+    btnBottom: [31, 23, 16],
+    btnEdge: [14, 10, 7],
+  },
+  // 6: Abyssal Cobalt & Neon
+  {
+    bg: [6, 11, 24],
+    card: [13, 22, 46],
+    cardInner: [8, 14, 31],
+    borderOuter: [2, 132, 199],
+    accent: [34, 211, 238],
+    accentSecondary: [251, 146, 60],
+    crestA: [3, 105, 161],
+    crestB: [30, 58, 138],
+    text: [224, 242, 254],
+    muted: [140, 168, 204],
+    btnTop: [19, 34, 69],
+    btnBottom: [11, 21, 46],
+    btnEdge: [5, 9, 20],
+  },
+  // 7: Monochrome Noir & Ivory
+  {
+    bg: [9, 9, 11],
+    card: [22, 22, 26],
+    cardInner: [14, 14, 17],
+    borderOuter: [113, 113, 122],
+    accent: [228, 228, 231],
+    accentSecondary: [248, 113, 113],
+    crestA: [82, 82, 91],
+    crestB: [39, 39, 42],
+    text: [250, 250, 250],
+    muted: [161, 161, 170],
+    btnTop: [39, 39, 44],
+    btnBottom: [24, 24, 28],
+    btnEdge: [9, 9, 11],
+  },
+];
+
+function lerpRgb(a: Rgb, b: Rgb, t: number): Rgb {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
+function rgbCss(c: Rgb): string {
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+function rgbaCss(c: Rgb, alpha: number): string {
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`;
+}
+
+let lastGothicThemeKey = "";
+
+function applyGothicPaletteTheme(palette: number, blend: number): void {
+  const count = GOTHIC_MENU_PALETTES.length;
+  const idxA = ((Math.floor(palette) % count) + count) % count;
+  const idxB = (idxA + 1) % count;
+  const t = Math.max(0, Math.min(1, Number.isFinite(blend) ? blend : 0));
+  const key = `${idxA}:${Math.round(t * 255)}`;
+  if (key === lastGothicThemeKey) return;
+  lastGothicThemeKey = key;
+
+  const a = GOTHIC_MENU_PALETTES[idxA];
+  const b = GOTHIC_MENU_PALETTES[idxB];
+  const bg = lerpRgb(a.bg, b.bg, t);
+  const card = lerpRgb(a.card, b.card, t);
+  const cardInner = lerpRgb(a.cardInner, b.cardInner, t);
+  const borderOuter = lerpRgb(a.borderOuter, b.borderOuter, t);
+  const accent = lerpRgb(a.accent, b.accent, t);
+  const accentSecondary = lerpRgb(a.accentSecondary, b.accentSecondary, t);
+  const crestA = lerpRgb(a.crestA, b.crestA, t);
+  const crestB = lerpRgb(a.crestB, b.crestB, t);
+  const text = lerpRgb(a.text, b.text, t);
+  const muted = lerpRgb(a.muted, b.muted, t);
+  const btnTop = lerpRgb(a.btnTop, b.btnTop, t);
+  const btnBottom = lerpRgb(a.btnBottom, b.btnBottom, t);
+  const btnEdge = lerpRgb(a.btnEdge, b.btnEdge, t);
+
+  const s = popoverRoot.style;
+  s.setProperty("--bg", rgbCss(bg));
+  s.setProperty(
+    "--bg-pattern",
+    `radial-gradient(circle at 20% 15%, ${rgbaCss(accent, 0.16)}, transparent 55%), radial-gradient(circle at 80% 85%, ${rgbaCss(accentSecondary, 0.12)}, transparent 55%)`,
+  );
+  s.setProperty("--card", rgbaCss(card, 0.94));
+  s.setProperty("--card-inner", rgbaCss(cardInner, 0.88));
+  s.setProperty("--border-outer", rgbCss(borderOuter));
+  s.setProperty("--border-inner", rgbaCss(accentSecondary, 0.3));
+  s.setProperty("--border", rgbaCss(accent, 0.25));
+  s.setProperty("--text", rgbCss(text));
+  s.setProperty("--muted", rgbCss(muted));
+  s.setProperty("--accent", rgbCss(accent));
+  s.setProperty("--accent-secondary", rgbCss(accentSecondary));
+  s.setProperty("--accent-glow", rgbaCss(accent, 0.25));
+  s.setProperty("--accent-active", rgbCss(accentSecondary));
+  s.setProperty("--btn-surface", `linear-gradient(180deg, ${rgbCss(btnTop)} 0%, ${rgbCss(btnBottom)} 100%)`);
+  s.setProperty("--btn-edge", rgbCss(btnEdge));
+  s.setProperty("--crest-bg", `linear-gradient(135deg, ${rgbCss(crestA)}, ${rgbCss(crestB)})`);
+  s.setProperty("--ok", rgbCss(accent));
+  s.setProperty("--scrollbar-thumb", rgbCss(borderOuter));
+  s.setProperty("--scrollbar-track", rgbCss(bg));
+}
 
 const appThemes: Record<string, AppThemeMeta> = {
   "living-rookery": {
@@ -277,6 +504,7 @@ function applyThemeForApp(appId: string, force = false): void {
     return;
   }
   lastAppliedThemeApp = appId;
+  lastGothicThemeKey = "";
   popoverRoot.setAttribute("data-theme", appId);
   const meta = appThemes[appId];
 
@@ -1035,6 +1263,9 @@ function renderStatus(s: HostStatus): void {
   // Active App Theme & Cards (memoized unless activeApp changed)
   const activeApp = s.active_app || "living-rookery";
   applyThemeForApp(activeApp);
+  if (activeApp === "gothic-metropolis" && s.gothic) {
+    applyGothicPaletteTheme(s.gothic.palette, s.gothic.palette_blend);
+  }
 
   if (activeView === "library" && prevApp !== activeApp) {
     renderLibraryGrid();

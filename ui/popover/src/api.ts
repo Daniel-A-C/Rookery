@@ -109,6 +109,11 @@ export interface OrbitalStatus {
   focus: string;
 }
 
+export interface GothicStatus {
+  palette: number;
+  palette_blend: number;
+}
+
 export type ScheduleMode = "manual" | "interval" | "day_night";
 
 export interface AudioSettings {
@@ -134,6 +139,7 @@ export interface HostStatus {
   koi?: KoiStatus;
   nebula?: NebulaStatus;
   orbital?: OrbitalStatus;
+  gothic?: GothicStatus;
   app_stats?: Record<string, Record<string, string>>;
   app_controls?: Record<string, Record<string, string>>;
 }

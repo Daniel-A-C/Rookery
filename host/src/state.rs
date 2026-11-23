@@ -150,6 +150,12 @@ pub struct OrbitalStatus {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct GothicStatus {
+    pub palette: u8,
+    pub palette_blend: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct HostStatus {
     pub displays: Vec<DisplayStatus>,
     pub power: PowerState,
@@ -162,6 +168,7 @@ pub struct HostStatus {
     pub koi: Option<KoiStatus>,
     pub nebula: Option<NebulaStatus>,
     pub orbital: Option<OrbitalStatus>,
+    pub gothic: Option<GothicStatus>,
     pub app_stats: BTreeMap<String, BTreeMap<String, String>>,
     pub app_controls: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -329,6 +336,7 @@ impl HostState {
         let mut koi = None;
         let mut nebula = None;
         let mut orbital = None;
+        let mut gothic = None;
 
         match active_app.as_str() {
             "living-rookery" => {
@@ -483,6 +491,10 @@ impl HostState {
                         format!("{}: {}", g.palette as u8, st.palette_name),
                         None,
                     );
+                    gothic = Some(GothicStatus {
+                        palette: g.palette as u8,
+                        palette_blend: g.palette_blend,
+                    });
                 }
             }
             _ => {}
@@ -500,6 +512,7 @@ impl HostState {
             koi,
             nebula,
             orbital,
+            gothic,
             app_stats: self.catalog_state.all_stats(),
             app_controls: self.catalog_state.all_controls(),
         }
