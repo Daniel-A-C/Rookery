@@ -1,5 +1,6 @@
 //! Rookery Core Desktop Host (Milestone 1).
 
+pub mod app_actions;
 pub mod commands;
 pub mod hotkey;
 pub mod monitors;

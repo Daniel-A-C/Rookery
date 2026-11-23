@@ -1,0 +1,87 @@
+//! State persistence, migrations, and shareable URI encoding for *Orbital Haven*.
+
+use std::fs;
+use std::path::Path;
+
+use base64::Engine as _;
+
+use super::OrbitalHavenState;
+use super::types::ORBITAL_HAVEN_STATE_VERSION;
+
+impl OrbitalHavenState {
+    /// Ensure deserialized v1 or partial states have a populated megastructure graph and robotics crew.
+    pub fn ensure_migrated(&mut self) {
+        if self.modules.is_empty() {
+            let fresh = Self::new(self.seed);
+            self.modules = fresh.modules;
+            self.robots = fresh.robots;
+            self.asteroids = fresh.asteroids;
+            self.version = ORBITAL_HAVEN_STATE_VERSION;
+        }
+        self.recompute_telemetry();
+    }
+
+    /// Load state from disk or initialize a fresh station with `default_seed`.
+    pub fn load_or_init(path: &Path, default_seed: u64) -> Self {
+        if let Ok(bytes) = fs::read(path)
+            && let Ok(mut state) = serde_json::from_slice::<Self>(&bytes)
+        {
+            state.ensure_migrated();
+            return state;
+        }
+        Self::new(default_seed)
+    }
+
+    /// Atomically persist Orbital Haven state to disk.
+    pub fn save_atomic(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let tmp_path = path.with_extension("json.tmp");
+        let json = serde_json::to_vec_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        fs::write(&tmp_path, json)?;
+        fs::rename(&tmp_path, path)?;
+        Ok(())
+    }
+
+    /// Compact shareable seed URI (`rookery://orbital/seed-<hex>`).
+    pub fn seed_uri(&self) -> String {
+        format!("rookery://orbital/seed-{:016x}", self.seed)
+    }
+
+    /// Full base64-encoded state URI (`rookery://orbital/state-<base64>`).
+    pub fn state_uri(&self) -> Result<String, String> {
+        let bytes = serde_json::to_vec(self).map_err(|e| e.to_string())?;
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        Ok(format!("rookery://orbital/state-{encoded}"))
+    }
+
+    /// Parse a `rookery://orbital/...` seed or state string.
+    pub fn from_share_string(input: &str) -> Result<Self, String> {
+        let trimmed = input.trim();
+        if let Some(rest) = trimmed.strip_prefix("rookery://orbital/state-") {
+            let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(rest.trim())
+                .map_err(|e| format!("Invalid base64 orbital state: {e}"))?;
+            let mut state: Self =
+                serde_json::from_slice(&bytes).map_err(|e| format!("Invalid orbital JSON: {e}"))?;
+            state.ensure_migrated();
+            return Ok(state);
+        }
+
+        let seed_hex = if let Some(rest) = trimmed.strip_prefix("rookery://orbital/seed-") {
+            Some(rest.trim())
+        } else {
+            trimmed.strip_prefix("orbital-seed-").map(|s| s.trim())
+        };
+
+        if let Some(hex_str) = seed_hex {
+            let seed = u64::from_str_radix(hex_str, 16)
+                .map_err(|e| format!("Invalid hex seed '{hex_str}': {e}"))?;
+            return Ok(Self::new(seed));
+        }
+
+        Err("Unrecognized orbital share string. Expected 'rookery://orbital/seed-...' or 'rookery://orbital/state-...'".into())
+    }
+}
