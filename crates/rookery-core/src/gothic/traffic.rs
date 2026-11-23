@@ -27,35 +27,63 @@ impl GothicMetropolisState {
             self.camera_yaw = self.target_camera_yaw;
         }
 
-        // 1. Advance elevated trains along the closed viaduct loop
+        // 1. Advance elevated trains along the closed viaduct loop with station dwell & safe headway
         let track_len = self.blueprint.viaduct_total_length();
-        // Station platform is along segment 0 (track_dist 1.8 .. 4.3, centered at z = 2.35 -> dist 3.05)
-        let station_center_dist = 3.05f32;
+        let station_center_dist = self.blueprint.viaduct_station_dist();
+        let train_snapshot: Vec<(u32, f32, f32, u8)> = self
+            .trains
+            .iter()
+            .map(|t| (t.id, t.track_dist, t.speed, t.car_count))
+            .collect();
+
         for train in &mut self.trains {
             if train.station_dwell_secs > 0.0 {
                 train.station_dwell_secs = (train.station_dwell_secs - dt).max(0.0);
                 train.speed = 0.0;
                 if train.station_dwell_secs == 0.0 {
+                    // Nudge just past the station trigger point without a visible teleport
+                    train.track_dist = (station_center_dist + 0.02).rem_euclid(track_len);
                     train.speed = train.base_speed * 0.35;
                 }
                 continue;
             }
 
             let dist_to_station = (station_center_dist - train.track_dist).rem_euclid(track_len);
-            if dist_to_station < 0.18 && train.speed < train.base_speed * 0.55 {
-                // Pause briefly at the ViaductStation platform
-                train.station_dwell_secs = 1.4;
-                train.track_dist = (station_center_dist + 0.19) % track_len;
-                continue;
-            } else if dist_to_station < 1.8 {
-                // Smooth deceleration approaching the station
-                let factor = (dist_to_station / 1.8).clamp(0.32, 1.0);
-                train.speed = train.base_speed * factor;
-            } else {
-                // Smooth acceleration back to cruise speed
-                train.speed += (train.base_speed - train.speed) * (dt * 3.0).min(1.0);
+            let mut desired_speed =
+                if dist_to_station < 0.16 && train.speed < train.base_speed * 0.55 {
+                    // Pause briefly at the ViaductStation platform
+                    train.station_dwell_secs = 1.4;
+                    train.track_dist = station_center_dist;
+                    train.speed = 0.0;
+                    continue;
+                } else if dist_to_station < 1.8 {
+                    // Smooth deceleration approaching the station
+                    let factor = (dist_to_station / 1.8).clamp(0.32, 1.0);
+                    train.base_speed * factor
+                } else {
+                    train.base_speed
+                };
+
+            // Maintain safe headway behind the next train ahead on the loop
+            for &(other_id, other_dist, other_speed, other_cars) in &train_snapshot {
+                if other_id == train.id {
+                    continue;
+                }
+                let center_gap = (other_dist - train.track_dist).rem_euclid(track_len);
+                let ahead_tail_len = (other_cars.saturating_sub(1) as f32) * 0.88 + 0.90;
+                let clear_gap = center_gap - ahead_tail_len;
+                if clear_gap < 2.0 {
+                    if clear_gap <= 0.35 {
+                        desired_speed = 0.0;
+                    } else {
+                        let t = ((clear_gap - 0.35) / 1.65).clamp(0.0, 1.0);
+                        desired_speed =
+                            desired_speed.min(other_speed * 0.85 + train.base_speed * 0.5 * t);
+                    }
+                }
             }
 
+            train.speed += (desired_speed - train.speed) * (dt * 3.5).min(1.0);
             train.track_dist = (train.track_dist + train.speed * dt).rem_euclid(track_len);
         }
 

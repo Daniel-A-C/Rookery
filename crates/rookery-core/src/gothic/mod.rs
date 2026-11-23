@@ -332,11 +332,25 @@ impl GothicMetropolisState {
         let track_len = self.blueprint.viaduct_total_length();
         if self.trains.len() < 4 {
             let new_id = self.trains.len() as u32 + 1;
-            let offset = self
-                .trains
-                .last()
-                .map(|t| (t.track_dist + track_len * 0.33) % track_len)
-                .unwrap_or(0.0);
+            // Place the new train at the midpoint of the largest gap around the loop
+            let offset = if self.trains.is_empty() {
+                0.0
+            } else {
+                let mut sorted: Vec<f32> = self.trains.iter().map(|t| t.track_dist).collect();
+                sorted.sort_by(|a, b| a.total_cmp(b));
+                let mut best_gap = -1.0f32;
+                let mut best_mid = 0.0f32;
+                for i in 0..sorted.len() {
+                    let a = sorted[i];
+                    let b = sorted[(i + 1) % sorted.len()];
+                    let gap = (b - a).rem_euclid(track_len);
+                    if gap > best_gap {
+                        best_gap = gap;
+                        best_mid = (a + gap * 0.5).rem_euclid(track_len);
+                    }
+                }
+                best_mid
+            };
             self.trains.push(ElevatedGothicTrain {
                 id: new_id,
                 track_dist: offset,

@@ -19,6 +19,17 @@ struct CachedRouteGeometry {
     reverse: CachedLaneSpline,
 }
 
+/// Precomputed smooth corner-rounded polyline and arc-length table for the elevated viaduct loop.
+#[derive(Clone, Debug, PartialEq, Default)]
+struct CachedViaductSpline {
+    pts: Vec<[f32; 2]>,
+    vertex_tangents: Vec<[f32; 2]>,
+    seg_lens: Vec<f32>,
+    cum_lens: Vec<f32>,
+    total_len: f32,
+    station_dist: f32,
+}
+
 /// Declarative, consistent blueprint of the Gothic Metropolis.
 ///
 /// Because this blueprint is authored deterministically, the city layout is always
@@ -50,6 +61,8 @@ pub struct CityBlueprint {
     pub steam_sources: Vec<SteamSource>,
     #[serde(skip)]
     route_cache: Vec<CachedRouteGeometry>,
+    #[serde(skip)]
+    viaduct_cache: CachedViaductSpline,
 }
 
 impl CityBlueprint {
@@ -1310,12 +1323,13 @@ impl CityBlueprint {
             vehicle_routes,
             steam_sources,
             route_cache: Vec::new(),
+            viaduct_cache: CachedViaductSpline::default(),
         };
         bp.rebuild_route_cache();
         bp
     }
 
-    /// Precompute forward and reverse lane-offset splines for all `vehicle_routes`.
+    /// Precompute forward and reverse lane-offset splines for all `vehicle_routes` and the smoothed viaduct loop.
     pub fn rebuild_route_cache(&mut self) {
         self.route_cache = self
             .vehicle_routes
@@ -1325,6 +1339,149 @@ impl CityBlueprint {
                 reverse: Self::build_lane_spline(route, -1.0),
             })
             .collect();
+        let station_pos = self
+            .buildings
+            .iter()
+            .find(|b| b.archetype == BuildingArchetype::ViaductStation)
+            .map(|b| [b.x, b.z]);
+        self.viaduct_cache = Self::build_viaduct_spline(&self.viaduct_waypoints, station_pos);
+    }
+
+    /// Build a smooth C1-continuous closed polyline from `viaduct_waypoints` using Quadratic Bezier corner fillets.
+    fn build_viaduct_spline(
+        waypoints: &[[f32; 2]],
+        station_pos: Option<[f32; 2]>,
+    ) -> CachedViaductSpline {
+        const CORNER_RADIUS: f32 = 1.05;
+        const ARC_SUBDIVS: usize = 10;
+
+        let n = waypoints.len();
+        if n < 2 {
+            return CachedViaductSpline::default();
+        }
+
+        let mut pts = Vec::with_capacity(n * (ARC_SUBDIVS + 2));
+        for i in 0..n {
+            let prev = waypoints[(i + n - 1) % n];
+            let curr = waypoints[i];
+            let next = waypoints[(i + 1) % n];
+
+            let din_x = curr[0] - prev[0];
+            let din_z = curr[1] - prev[1];
+            let len_in = (din_x * din_x + din_z * din_z).sqrt();
+
+            let dout_x = next[0] - curr[0];
+            let dout_z = next[1] - curr[1];
+            let len_out = (dout_x * dout_x + dout_z * dout_z).sqrt();
+
+            if len_in < 1e-4 || len_out < 1e-4 {
+                pts.push(curr);
+                continue;
+            }
+
+            let u_in = [din_x / len_in, din_z / len_in];
+            let u_out = [dout_x / len_out, dout_z / len_out];
+            let dot = u_in[0] * u_out[0] + u_in[1] * u_out[1];
+            if dot > 0.999 {
+                pts.push(curr);
+                continue;
+            }
+
+            let r = CORNER_RADIUS.min(len_in * 0.42).min(len_out * 0.42);
+            let p0 = [curr[0] - u_in[0] * r, curr[1] - u_in[1] * r];
+            let p1 = curr;
+            let p2 = [curr[0] + u_out[0] * r, curr[1] + u_out[1] * r];
+
+            for s in 0..=ARC_SUBDIVS {
+                let u = s as f32 / ARC_SUBDIVS as f32;
+                let om = 1.0 - u;
+                let x = om * om * p0[0] + 2.0 * om * u * p1[0] + u * u * p2[0];
+                let z = om * om * p0[1] + 2.0 * om * u * p1[1] + u * u * p2[1];
+                let candidate = [x, z];
+                let too_close = pts.last().is_some_and(|last| {
+                    let dx = candidate[0] - last[0];
+                    let dz = candidate[1] - last[1];
+                    dx * dx + dz * dz < 1e-6
+                });
+                if !too_close {
+                    pts.push(candidate);
+                }
+            }
+        }
+
+        // Remove wrap-around duplicate if last point matches first point
+        if pts.len() > 2 {
+            let first = pts[0];
+            let last = pts[pts.len() - 1];
+            let dx = first[0] - last[0];
+            let dz = first[1] - last[1];
+            if dx * dx + dz * dz < 1e-6 {
+                pts.pop();
+            }
+        }
+
+        let m = pts.len();
+        if m < 2 {
+            return CachedViaductSpline::default();
+        }
+
+        let mut seg_lens = Vec::with_capacity(m);
+        let mut cum_lens = Vec::with_capacity(m);
+        let mut total_len = 0.0f32;
+        for i in 0..m {
+            cum_lens.push(total_len);
+            let a = pts[i];
+            let b = pts[(i + 1) % m];
+            let dx = b[0] - a[0];
+            let dz = b[1] - a[1];
+            let slen = (dx * dx + dz * dz).sqrt().max(1e-4);
+            seg_lens.push(slen);
+            total_len += slen;
+        }
+
+        // Compute smooth vertex tangents by averaging incoming and outgoing unit segment tangents
+        let mut vertex_tangents = Vec::with_capacity(m);
+        for i in 0..m {
+            let prev = pts[(i + m - 1) % m];
+            let curr = pts[i];
+            let next = pts[(i + 1) % m];
+            let len_in = seg_lens[(i + m - 1) % m];
+            let len_out = seg_lens[i];
+            let tx = (curr[0] - prev[0]) / len_in + (next[0] - curr[0]) / len_out;
+            let tz = (curr[1] - prev[1]) / len_in + (next[1] - curr[1]) / len_out;
+            let tlen = (tx * tx + tz * tz).sqrt().max(1e-4);
+            vertex_tangents.push([tx / tlen, tz / tlen]);
+        }
+
+        // Find the arc-length distance closest to ViaductStation
+        let mut station_dist = 3.05f32.min(total_len * 0.5);
+        if let Some([sx, sz]) = station_pos {
+            let mut best_d2 = f32::INFINITY;
+            for i in 0..m {
+                let a = pts[i];
+                let b = pts[(i + 1) % m];
+                let abx = b[0] - a[0];
+                let abz = b[1] - a[1];
+                let ab2 = (abx * abx + abz * abz).max(1e-6);
+                let t = (((sx - a[0]) * abx + (sz - a[1]) * abz) / ab2).clamp(0.0, 1.0);
+                let px = a[0] + abx * t;
+                let pz = a[1] + abz * t;
+                let d2 = (px - sx) * (px - sx) + (pz - sz) * (pz - sz);
+                if d2 < best_d2 {
+                    best_d2 = d2;
+                    station_dist = cum_lens[i] + seg_lens[i] * t;
+                }
+            }
+        }
+
+        CachedViaductSpline {
+            pts,
+            vertex_tangents,
+            seg_lens,
+            cum_lens,
+            total_len: total_len.max(1.0),
+            station_dist,
+        }
     }
 
     fn build_lane_spline(route: &VehicleRoute, dir_sign: f32) -> CachedLaneSpline {
@@ -1609,8 +1766,29 @@ impl CityBlueprint {
         Some(([pos_xz[0], y, pos_xz[1]], tangent, slope, false))
     }
 
+    /// Smoothly rounded closed polyline points `(x, z)` for the elevated viaduct loop.
+    pub fn viaduct_points(&self) -> &[[f32; 2]] {
+        if !self.viaduct_cache.pts.is_empty() {
+            &self.viaduct_cache.pts
+        } else {
+            &self.viaduct_waypoints
+        }
+    }
+
+    /// Arc-length distance along the smoothed viaduct loop centered at `ViaductStation`.
+    pub fn viaduct_station_dist(&self) -> f32 {
+        if !self.viaduct_cache.pts.is_empty() {
+            self.viaduct_cache.station_dist
+        } else {
+            3.05
+        }
+    }
+
     /// Total length of the closed viaduct track loop.
     pub fn viaduct_total_length(&self) -> f32 {
+        if !self.viaduct_cache.pts.is_empty() {
+            return self.viaduct_cache.total_len;
+        }
         let n = self.viaduct_waypoints.len();
         if n < 2 {
             return 1.0;
@@ -1629,6 +1807,31 @@ impl CityBlueprint {
     /// Sample a 3D position `[x, y, z]` and forward unit tangent `[tx, tz]` at distance `dist`
     /// along the closed viaduct loop, with smooth corner rounding.
     pub fn sample_viaduct(&self, dist: f32) -> ([f32; 3], [f32; 2]) {
+        if !self.viaduct_cache.pts.is_empty() {
+            let m = self.viaduct_cache.pts.len();
+            let total = self.viaduct_cache.total_len;
+            let d = dist.rem_euclid(total);
+            let idx = self
+                .viaduct_cache
+                .cum_lens
+                .partition_point(|&c| c <= d)
+                .saturating_sub(1)
+                .min(m - 1);
+            let seg_len = self.viaduct_cache.seg_lens[idx];
+            let t = ((d - self.viaduct_cache.cum_lens[idx]) / seg_len).clamp(0.0, 1.0);
+            let a = self.viaduct_cache.pts[idx];
+            let b = self.viaduct_cache.pts[(idx + 1) % m];
+            let x = a[0] + (b[0] - a[0]) * t;
+            let z = a[1] + (b[1] - a[1]) * t;
+
+            let ta = self.viaduct_cache.vertex_tangents[idx];
+            let tb = self.viaduct_cache.vertex_tangents[(idx + 1) % m];
+            let tx = ta[0] + (tb[0] - ta[0]) * t;
+            let tz = ta[1] + (tb[1] - ta[1]) * t;
+            let tlen = (tx * tx + tz * tz).sqrt().max(1e-4);
+            return ([x, self.viaduct_elevation, z], [tx / tlen, tz / tlen]);
+        }
+
         let n = self.viaduct_waypoints.len();
         if n < 2 {
             return ([0.0, self.viaduct_elevation, 0.0], [1.0, 0.0]);

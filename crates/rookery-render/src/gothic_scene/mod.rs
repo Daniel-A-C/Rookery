@@ -553,13 +553,45 @@ impl GothicMetropolisScene {
                 let (pos, fwd) = guard.blueprint.sample_viaduct(dist);
                 let is_loco = car_idx == 0;
                 let is_caboose = car_idx + 1 == train.car_count;
-                let car_len = if is_loco { 0.82 } else { 0.76 };
-                let car_w = 0.44;
-                let car_h = 0.34;
+                let car_len = if is_loco { 0.80 } else { 0.72 };
+                let car_w = 0.42;
+                let car_h = 0.32;
 
-                // Lower steel bogie & body shell
+                // Articulated accordion gangway coupler linking to the preceding car
+                if car_idx > 0 {
+                    let (gang_pos, gang_fwd) =
+                        guard.blueprint.sample_viaduct(dist + car_spacing * 0.5);
+                    opaque_mb.push_oriented_box(
+                        [gang_pos[0], gang_pos[1] + 0.06, gang_pos[2]],
+                        gang_fwd,
+                        0.18,
+                        0.24,
+                        car_w * 0.62,
+                        theme.plinth_dark,
+                        0.0,
+                    );
+                }
+
+                // Twin undercarriage bogie wheel trucks resting on the rails
+                for truck_off in [-car_len * 0.28, car_len * 0.28] {
+                    opaque_mb.push_oriented_box(
+                        [
+                            pos[0] + fwd[0] * truck_off,
+                            pos[1] + 0.02,
+                            pos[2] + fwd[1] * truck_off,
+                        ],
+                        fwd,
+                        0.18,
+                        0.05,
+                        car_w * 0.78,
+                        theme.plinth_dark,
+                        0.0,
+                    );
+                }
+
+                // Main lower steel body shell
                 opaque_mb.push_oriented_box(
-                    [pos[0], pos[1] + 0.02, pos[2]],
+                    [pos[0], pos[1] + 0.06, pos[2]],
                     fwd,
                     car_len,
                     car_h,
@@ -567,49 +599,100 @@ impl GothicMetropolisScene {
                     theme.stone_dark,
                     0.0,
                 );
-                // Warm glowing passenger window band
+                // Brass/steel art-deco belt-rail trim along the lower flanks
                 opaque_mb.push_oriented_box(
-                    [pos[0], pos[1] + 0.12, pos[2]],
+                    [pos[0], pos[1] + 0.11, pos[2]],
                     fwd,
-                    car_len * 0.90,
-                    0.14,
-                    car_w + 0.03,
-                    theme.window_warm,
-                    1.0,
-                );
-                // Arched gothic car roof + illuminated roof clerestory strip
-                opaque_mb.push_oriented_box(
-                    [pos[0], pos[1] + 0.02 + car_h, pos[2]],
-                    fwd,
-                    car_len * 0.94,
-                    0.07,
-                    car_w * 0.84,
-                    theme.copper_roof,
+                    car_len * 0.96,
+                    0.035,
+                    car_w + 0.025,
+                    theme.accent_trim,
                     0.0,
-                );
-                opaque_mb.push_oriented_box(
-                    [pos[0], pos[1] + 0.09 + car_h, pos[2]],
-                    fwd,
-                    car_len * 0.76,
-                    0.04,
-                    car_w * 0.42,
-                    theme.window_warm,
-                    0.95,
                 );
 
                 if is_loco {
-                    // Lead locomotive cyclops headlamp + volumetric beam along the viaduct
-                    let nose = [
+                    // Art-deco streamlined prow & lower cowcatcher pilot
+                    let prow = [
                         pos[0] + fwd[0] * (car_len * 0.52),
-                        pos[1] + 0.20,
+                        pos[1] + 0.06,
                         pos[2] + fwd[1] * (car_len * 0.52),
+                    ];
+                    opaque_mb.push_oriented_box(
+                        prow,
+                        fwd,
+                        0.16,
+                        0.26,
+                        car_w * 0.84,
+                        theme.stone_secondary,
+                        0.0,
+                    );
+                    opaque_mb.push_oriented_box(
+                        [
+                            pos[0] + fwd[0] * (car_len * 0.60),
+                            pos[1] + 0.03,
+                            pos[2] + fwd[1] * (car_len * 0.60),
+                        ],
+                        fwd,
+                        0.10,
+                        0.10,
+                        car_w * 0.70,
+                        theme.accent_trim,
+                        0.0,
+                    );
+
+                    // Glowing front cab windshield & side cab windows
+                    opaque_mb.push_oriented_box(
+                        [
+                            pos[0] + fwd[0] * (car_len * 0.34),
+                            pos[1] + 0.21,
+                            pos[2] + fwd[1] * (car_len * 0.34),
+                        ],
+                        fwd,
+                        0.20,
+                        0.11,
+                        car_w + 0.03,
+                        theme.window_warm,
+                        0.95,
+                    );
+
+                    // Stepped locomotive roof + twin art-deco exhaust/steam stacks
+                    opaque_mb.push_oriented_box(
+                        [pos[0], pos[1] + 0.06 + car_h, pos[2]],
+                        fwd,
+                        car_len * 0.88,
+                        0.06,
+                        car_w * 0.82,
+                        theme.copper_roof,
+                        0.0,
+                    );
+                    for stack_off in [-0.14f32, 0.06f32] {
+                        opaque_mb.push_oriented_box(
+                            [
+                                pos[0] + fwd[0] * stack_off,
+                                pos[1] + 0.12 + car_h,
+                                pos[2] + fwd[1] * stack_off,
+                            ],
+                            fwd,
+                            0.09,
+                            0.07,
+                            0.10,
+                            theme.steel_viaduct,
+                            0.0,
+                        );
+                    }
+
+                    // Lead locomotive brass headlamp bezel + cyclops lens + volumetric beam
+                    let nose = [
+                        pos[0] + fwd[0] * (car_len * 0.61),
+                        pos[1] + 0.21,
+                        pos[2] + fwd[1] * (car_len * 0.61),
                     ];
                     opaque_mb.push_oriented_box(
                         nose,
                         fwd,
-                        0.08,
-                        0.12,
-                        0.16,
+                        0.07,
+                        0.11,
+                        0.14,
                         theme.window_warm,
                         1.0,
                     );
@@ -620,23 +703,75 @@ impl GothicMetropolisScene {
                         0.48,
                         theme.searchlight,
                     );
+                } else {
+                    // Segmented glowing gothic passenger windows (3 bays per coach)
+                    for win_idx in [-1.0f32, 0.0, 1.0] {
+                        let wx = pos[0] + fwd[0] * (win_idx * car_len * 0.28);
+                        let wz = pos[2] + fwd[1] * (win_idx * car_len * 0.28);
+                        opaque_mb.push_oriented_box(
+                            [wx, pos[1] + 0.17, wz],
+                            fwd,
+                            car_len * 0.20,
+                            0.13,
+                            car_w + 0.03,
+                            theme.window_warm,
+                            0.95,
+                        );
+                    }
+
+                    // Arched copper car roof + illuminated clerestory strip
+                    opaque_mb.push_oriented_box(
+                        [pos[0], pos[1] + 0.06 + car_h, pos[2]],
+                        fwd,
+                        car_len * 0.94,
+                        0.06,
+                        car_w * 0.84,
+                        theme.copper_roof,
+                        0.0,
+                    );
+                    opaque_mb.push_oriented_box(
+                        [pos[0], pos[1] + 0.12 + car_h, pos[2]],
+                        fwd,
+                        car_len * 0.72,
+                        0.035,
+                        car_w * 0.38,
+                        theme.window_warm,
+                        0.90,
+                    );
                 }
+
                 if is_caboose {
-                    // Rear ruby tail marker lamps
-                    let tail = [
+                    // Rear ruby tail marker lamps + brass observation trim
+                    let right = [-fwd[1], fwd[0]];
+                    let tail_base = [
                         pos[0] - fwd[0] * (car_len * 0.51),
                         pos[1] + 0.16,
                         pos[2] - fwd[1] * (car_len * 0.51),
                     ];
                     opaque_mb.push_oriented_box(
-                        tail,
+                        [tail_base[0], pos[1] + 0.10, tail_base[2]],
                         fwd,
+                        0.06,
                         0.05,
-                        0.08,
-                        car_w * 0.72,
-                        theme.beacon_red,
-                        1.0,
+                        car_w * 0.82,
+                        theme.accent_trim,
+                        0.0,
                     );
+                    for side in [-1.0f32, 1.0f32] {
+                        opaque_mb.push_oriented_box(
+                            [
+                                tail_base[0] + right[0] * (car_w * 0.30) * side,
+                                tail_base[1] + 0.02,
+                                tail_base[2] + right[1] * (car_w * 0.30) * side,
+                            ],
+                            fwd,
+                            0.05,
+                            0.07,
+                            0.07,
+                            theme.beacon_red,
+                            1.0,
+                        );
+                    }
                 }
             }
         }

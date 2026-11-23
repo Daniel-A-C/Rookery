@@ -1993,100 +1993,162 @@ fn build_walkway_mesh(mb: &mut MeshBuilder, span: &WalkwaySpan, theme: &GothicTh
 }
 
 fn build_viaduct_mesh(mb: &mut MeshBuilder, bp: &CityBlueprint, theme: &GothicThemeColors) {
-    let n = bp.viaduct_waypoints.len();
+    let pts = bp.viaduct_points();
+    let n = pts.len();
     if n < 2 {
         return;
     }
     let y = bp.viaduct_elevation;
-    let deck_w = 0.68;
+    let deck_w = 0.72;
+    let total_len = bp.viaduct_total_length();
 
+    // 1. Continuous curved girder deck, under-truss keel, running rails, and art-deco guard parapets
     for i in 0..n {
-        let a = bp.viaduct_waypoints[i];
-        let b = bp.viaduct_waypoints[(i + 1) % n];
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
         let dx = b[0] - a[0];
         let dz = b[1] - a[1];
-        let len = (dx * dx + dz * dz).sqrt().max(0.1);
+        let len = (dx * dx + dz * dz).sqrt();
+        if len < 1e-4 {
+            continue;
+        }
         let cx = (a[0] + b[0]) * 0.5;
         let cz = (a[1] + b[1]) * 0.5;
         let fwd = [dx / len, dz / len];
         let right = [-fwd[1], fwd[0]];
-
-        // Junction turret cap at each waypoint corner so angled/dogleg viaduct turns join seamlessly
-        mb.push_box(
-            a[0],
-            y - 0.18,
-            a[1],
-            deck_w * 1.06,
-            0.18,
-            deck_w * 1.06,
-            theme.steel_viaduct,
-            0.0,
-        );
+        // Slight overlap seals outer miter gaps on curved segments without protruding past corners
+        let overlap = 0.08;
 
         // Main steel viaduct girder deck
         mb.push_oriented_box(
-            [cx, y - 0.16, cz],
+            [cx, y - 0.14, cz],
             fwd,
-            len + 0.44,
-            0.16,
+            len + overlap,
+            0.14,
             deck_w,
             theme.steel_viaduct,
             0.0,
         );
 
-        // Twin raised steel rails + outer guard girders
+        // Stepped dark under-belly structural keel
+        mb.push_oriented_box(
+            [cx, y - 0.23, cz],
+            fwd,
+            len + overlap * 0.6,
+            0.09,
+            deck_w * 0.54,
+            theme.stone_dark,
+            0.0,
+        );
+
+        // Outer art-deco parapet guard girders + inner twin steel running rails
         for side in [-1.0f32, 1.0f32] {
-            let rx = cx + right[0] * (deck_w * 0.44) * side;
-            let rz = cz + right[1] * (deck_w * 0.44) * side;
+            let px = cx + right[0] * (deck_w * 0.47) * side;
+            let pz = cz + right[1] * (deck_w * 0.47) * side;
             mb.push_oriented_box(
-                [rx, y, rz],
+                [px, y - 0.01, pz],
                 fwd,
-                len + 0.36,
-                0.09,
-                0.07,
+                len + overlap * 0.9,
+                0.10,
+                0.06,
+                theme.stone_secondary,
+                0.0,
+            );
+
+            // Inner steel running rail
+            let rx = cx + right[0] * (deck_w * 0.25) * side;
+            let rz = cz + right[1] * (deck_w * 0.25) * side;
+            mb.push_oriented_box(
+                [rx, y + 0.01, rz],
+                fwd,
+                len + overlap * 0.5,
+                0.045,
+                0.04,
                 theme.accent_trim,
                 0.0,
             );
         }
+    }
 
-        // Support columns descending from viaduct to street level (skipping inside buildings/stations)
-        let pier_steps = (len / 2.2).ceil().max(1.0) as usize;
-        for p in 0..pier_steps {
-            let t = (p as f32 + 0.5) / pier_steps as f32;
-            let px = a[0] + dx * t;
-            let pz = a[1] + dz * t;
-            // Skip piers inside any building footprint (such as ViaductStation)
-            let inside_building = bp.buildings.iter().any(|bld| {
-                (px - bld.x).abs() < bld.width * 0.5 + 0.35
-                    && (pz - bld.z).abs() < bld.depth * 0.5 + 0.35
-            });
-            if inside_building {
-                continue;
-            }
-            for side in [-1.0f32, 1.0f32] {
-                let col_x = px + right[0] * (deck_w * 0.36) * side;
-                let col_z = pz + right[1] * (deck_w * 0.36) * side;
-                mb.push_box(
-                    col_x,
-                    0.0,
-                    col_z,
-                    0.14,
-                    y - 0.16,
-                    0.14,
-                    theme.stone_dark,
-                    0.0,
-                );
-            }
-            // Cross arch header under the viaduct deck
+    // 2. Uniformly spaced railway sleepers (cross-ties) along the smoothed loop
+    let sleeper_spacing = 0.36f32;
+    let sleeper_count = (total_len / sleeper_spacing).round().max(1.0) as usize;
+    let actual_sleeper_step = total_len / sleeper_count as f32;
+    for s in 0..sleeper_count {
+        let dist = (s as f32 + 0.5) * actual_sleeper_step;
+        let (pos, fwd) = bp.sample_viaduct(dist);
+        mb.push_oriented_box(
+            [pos[0], y, pos[2]],
+            fwd,
+            0.10,
+            0.025,
+            deck_w * 0.72,
+            theme.plinth_dark,
+            0.0,
+        );
+    }
+
+    // 3. Support piers with stepped plinth bases and gothic cross-arch headers (skipping inside buildings)
+    let pier_spacing = 2.65f32;
+    let pier_count = (total_len / pier_spacing).round().max(1.0) as usize;
+    let actual_pier_step = total_len / pier_count as f32;
+    for p in 0..pier_count {
+        let dist = (p as f32 + 0.5) * actual_pier_step;
+        let (pos, fwd) = bp.sample_viaduct(dist);
+        let px = pos[0];
+        let pz = pos[2];
+        let right = [-fwd[1], fwd[0]];
+
+        let inside_building = bp.buildings.iter().any(|bld| {
+            (px - bld.x).abs() < bld.width * 0.5 + 0.35
+                && (pz - bld.z).abs() < bld.depth * 0.5 + 0.35
+        });
+        if inside_building {
+            continue;
+        }
+
+        for side in [-1.0f32, 1.0f32] {
+            let col_x = px + right[0] * (deck_w * 0.34) * side;
+            let col_z = pz + right[1] * (deck_w * 0.34) * side;
+            // Stepped stone plinth base
             mb.push_oriented_box(
-                [px, y - 0.38, pz],
+                [col_x, 0.0, col_z],
                 fwd,
-                0.22,
-                0.22,
-                deck_w * 0.92,
+                0.24,
+                0.18,
+                0.24,
                 theme.stone_secondary,
                 0.0,
             );
+            // Main pier shaft
+            mb.push_oriented_box(
+                [col_x, 0.18, col_z],
+                fwd,
+                0.15,
+                y - 0.34,
+                0.15,
+                theme.stone_dark,
+                0.0,
+            );
         }
+        // Gothic cross-arch header & corbel cap under the viaduct deck
+        mb.push_oriented_box(
+            [px, y - 0.38, pz],
+            fwd,
+            0.22,
+            0.22,
+            deck_w * 0.92,
+            theme.stone_secondary,
+            0.0,
+        );
+        mb.push_oriented_box(
+            [px, y - 0.28, pz],
+            fwd,
+            0.28,
+            0.12,
+            deck_w * 1.04,
+            theme.steel_viaduct,
+            0.0,
+        );
     }
 }

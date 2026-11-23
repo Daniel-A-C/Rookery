@@ -334,3 +334,89 @@ fn smooth_palette_cycling_and_all_palettes() {
     assert_eq!(state.palette, GothicPalette::AshenNoir);
     assert_eq!(state.palette_blend, 0.0);
 }
+
+#[test]
+fn viaduct_spline_is_smooth_clear_of_buildings_and_aligned_with_station() {
+    let bp = CityBlueprint::default_gothic_metropolis();
+    let total = bp.viaduct_total_length();
+    assert!(bp.viaduct_points().len() > bp.viaduct_waypoints.len());
+
+    // 1. Station distance samples directly inside ViaductStation
+    let station = bp
+        .buildings
+        .iter()
+        .find(|b| b.archetype == BuildingArchetype::ViaductStation)
+        .expect("ViaductStation");
+    let (s_pos, s_fwd) = bp.sample_viaduct(bp.viaduct_station_dist());
+    assert!(
+        (s_pos[0] - station.x).abs() < 0.05 && (s_pos[2] - station.z).abs() < 0.05,
+        "viaduct_station_dist sampled {:?} instead of station ({}, {})",
+        s_pos,
+        station.x,
+        station.z
+    );
+    assert!(
+        s_fwd[1].abs() > 0.99,
+        "Track should be straight N-S inside station"
+    );
+
+    // 2. Smooth tangent continuity and building clearance around the entire loop
+    let samples = 400usize;
+    let step = total / samples as f32;
+    let (_, mut prev_fwd) = bp.sample_viaduct(0.0);
+    for i in 1..=samples {
+        let (pos, fwd) = bp.sample_viaduct(i as f32 * step);
+        let dot = prev_fwd[0] * fwd[0] + prev_fwd[1] * fwd[1];
+        assert!(
+            dot > 0.92,
+            "Sharp tangent discontinuity at sample {i}: dot={dot} ({prev_fwd:?} -> {fwd:?})"
+        );
+        prev_fwd = fwd;
+
+        for bld in &bp.buildings {
+            if bld.archetype == BuildingArchetype::ViaductStation {
+                continue;
+            }
+            let half_deck = 0.36;
+            let hit_x = (pos[0] - bld.x).abs() < bld.width * 0.5 + half_deck;
+            let hit_z = (pos[2] - bld.z).abs() < bld.depth * 0.5 + half_deck;
+            assert!(
+                !(hit_x && hit_z),
+                "Viaduct at {:?} clips into building {} ({:?})",
+                pos,
+                bld.id,
+                bld.archetype
+            );
+        }
+    }
+}
+
+#[test]
+fn elevated_trains_maintain_safe_headway_even_after_dispatch() {
+    let mut state = GothicMetropolisState::new(42);
+    state.dispatch_train();
+    assert_eq!(state.trains.len(), 4);
+    let track_len = state.blueprint.viaduct_total_length();
+    let car_spacing = 0.88f32;
+
+    for tick in 0..800 {
+        state.tick(0.1);
+        for i in 0..state.trains.len() {
+            for j in (i + 1)..state.trains.len() {
+                let a = &state.trains[i];
+                let b = &state.trains[j];
+                // Check gap from b's tail to a's nose and vice versa
+                let gap_ab = (a.track_dist - b.track_dist).rem_euclid(track_len)
+                    - ((a.car_count.saturating_sub(1) as f32) * car_spacing + 0.80);
+                let gap_ba = (b.track_dist - a.track_dist).rem_euclid(track_len)
+                    - ((b.car_count.saturating_sub(1) as f32) * car_spacing + 0.80);
+                assert!(
+                    gap_ab > 0.05 && gap_ba > 0.05,
+                    "Trains {} and {} overlapped at tick {tick}: gap_ab={gap_ab:.3}, gap_ba={gap_ba:.3}",
+                    a.id,
+                    b.id
+                );
+            }
+        }
+    }
+}
