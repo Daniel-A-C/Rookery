@@ -1,4 +1,4 @@
-//! Curated 4-palette color themes for *Gothic Metropolis*.
+//! Curated 8-palette color themes and smooth interpolation for *Gothic Metropolis*.
 
 use rookery_core::gothic::GothicPalette;
 
@@ -111,5 +111,148 @@ pub(super) fn palette_theme(palette: GothicPalette) -> GothicThemeColors {
             bounce_rgb: [0.28, 0.86, 0.48],
             key_light_dir: [-0.44, 0.77, 0.46],
         },
+        GothicPalette::PhantomViolet => GothicThemeColors {
+            plinth_dark: [0.07, 0.06, 0.10, 1.0],
+            plinth_trim: [0.15, 0.12, 0.21, 1.0],
+            asphalt: [0.05, 0.04, 0.08, 1.0],
+            sidewalk: [0.23, 0.20, 0.31, 1.0],
+            sidewalk_curb: [0.34, 0.29, 0.44, 1.0],
+            sidewalk_paver: [0.28, 0.24, 0.37, 1.0],
+            stone_primary: [0.18, 0.15, 0.25, 1.0],
+            stone_secondary: [0.24, 0.20, 0.33, 1.0],
+            stone_dark: [0.11, 0.09, 0.16, 1.0],
+            accent_trim: [0.40, 0.34, 0.48, 1.0],
+            copper_roof: [0.22, 0.19, 0.32, 1.0],
+            steel_viaduct: [0.20, 0.17, 0.27, 1.0],
+            window_warm: [0.96, 0.86, 0.62, 1.0],
+            window_dim: [0.68, 0.54, 0.92, 1.0],
+            beacon_red: [0.96, 0.28, 0.56, 1.0],
+            searchlight: [0.84, 0.74, 1.00, 0.17],
+            steam: [0.70, 0.64, 0.84, 0.27],
+            bounce_rgb: [0.62, 0.44, 0.90],
+            key_light_dir: [0.42, 0.78, 0.46],
+        },
+        GothicPalette::ClocktowerBronze => GothicThemeColors {
+            plinth_dark: [0.08, 0.07, 0.06, 1.0],
+            plinth_trim: [0.17, 0.14, 0.11, 1.0],
+            asphalt: [0.06, 0.05, 0.04, 1.0],
+            sidewalk: [0.27, 0.23, 0.19, 1.0],
+            sidewalk_curb: [0.39, 0.33, 0.26, 1.0],
+            sidewalk_paver: [0.33, 0.28, 0.22, 1.0],
+            stone_primary: [0.21, 0.18, 0.15, 1.0],
+            stone_secondary: [0.28, 0.24, 0.19, 1.0],
+            stone_dark: [0.13, 0.11, 0.09, 1.0],
+            accent_trim: [0.46, 0.35, 0.20, 1.0],
+            copper_roof: [0.18, 0.29, 0.25, 1.0],
+            steel_viaduct: [0.23, 0.19, 0.16, 1.0],
+            window_warm: [1.00, 0.78, 0.38, 1.0],
+            window_dim: [0.74, 0.50, 0.20, 1.0],
+            beacon_red: [0.94, 0.26, 0.16, 1.0],
+            searchlight: [1.00, 0.88, 0.60, 0.16],
+            steam: [0.74, 0.68, 0.60, 0.26],
+            bounce_rgb: [0.88, 0.62, 0.26],
+            key_light_dir: [-0.50, 0.75, 0.43],
+        },
+        GothicPalette::AbyssalCobalt => GothicThemeColors {
+            plinth_dark: [0.05, 0.07, 0.12, 1.0],
+            plinth_trim: [0.10, 0.15, 0.25, 1.0],
+            asphalt: [0.04, 0.05, 0.09, 1.0],
+            sidewalk: [0.19, 0.25, 0.37, 1.0],
+            sidewalk_curb: [0.28, 0.37, 0.52, 1.0],
+            sidewalk_paver: [0.23, 0.31, 0.44, 1.0],
+            stone_primary: [0.14, 0.19, 0.31, 1.0],
+            stone_secondary: [0.19, 0.26, 0.41, 1.0],
+            stone_dark: [0.08, 0.12, 0.21, 1.0],
+            accent_trim: [0.28, 0.42, 0.54, 1.0],
+            copper_roof: [0.12, 0.32, 0.38, 1.0],
+            steel_viaduct: [0.16, 0.22, 0.34, 1.0],
+            window_warm: [0.56, 0.94, 1.00, 1.0],
+            window_dim: [0.96, 0.66, 0.28, 1.0],
+            beacon_red: [0.98, 0.24, 0.34, 1.0],
+            searchlight: [0.46, 0.92, 1.00, 0.17],
+            steam: [0.56, 0.76, 0.90, 0.26],
+            bounce_rgb: [0.28, 0.76, 0.96],
+            key_light_dir: [0.46, 0.76, 0.45],
+        },
+        GothicPalette::AshenNoir => GothicThemeColors {
+            plinth_dark: [0.06, 0.06, 0.07, 1.0],
+            plinth_trim: [0.14, 0.14, 0.16, 1.0],
+            asphalt: [0.04, 0.04, 0.05, 1.0],
+            sidewalk: [0.24, 0.24, 0.26, 1.0],
+            sidewalk_curb: [0.36, 0.36, 0.39, 1.0],
+            sidewalk_paver: [0.30, 0.30, 0.32, 1.0],
+            stone_primary: [0.17, 0.17, 0.19, 1.0],
+            stone_secondary: [0.26, 0.26, 0.28, 1.0],
+            stone_dark: [0.10, 0.10, 0.12, 1.0],
+            accent_trim: [0.42, 0.42, 0.45, 1.0],
+            copper_roof: [0.21, 0.22, 0.24, 1.0],
+            steel_viaduct: [0.20, 0.20, 0.22, 1.0],
+            window_warm: [0.98, 0.97, 0.92, 1.0],
+            window_dim: [0.66, 0.67, 0.70, 1.0],
+            beacon_red: [0.98, 0.16, 0.18, 1.0],
+            searchlight: [0.96, 0.97, 1.00, 0.17],
+            steam: [0.74, 0.75, 0.78, 0.26],
+            bounce_rgb: [0.72, 0.74, 0.78],
+            key_light_dir: [-0.46, 0.78, 0.42],
+        },
+    }
+}
+
+#[inline]
+fn lerp4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ]
+}
+
+#[inline]
+fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
+}
+
+/// Smoothly interpolate between two [`GothicThemeColors`] themes (`t` in `0.0..=1.0`).
+pub(super) fn lerp_theme(
+    a: &GothicThemeColors,
+    b: &GothicThemeColors,
+    t: f32,
+) -> GothicThemeColors {
+    let u = t.clamp(0.0, 1.0);
+    if u <= 0.0 {
+        return *a;
+    }
+    if u >= 1.0 {
+        return *b;
+    }
+    let dir = lerp3(a.key_light_dir, b.key_light_dir, u);
+    let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2])
+        .sqrt()
+        .max(1e-4);
+    GothicThemeColors {
+        plinth_dark: lerp4(a.plinth_dark, b.plinth_dark, u),
+        plinth_trim: lerp4(a.plinth_trim, b.plinth_trim, u),
+        asphalt: lerp4(a.asphalt, b.asphalt, u),
+        sidewalk: lerp4(a.sidewalk, b.sidewalk, u),
+        sidewalk_curb: lerp4(a.sidewalk_curb, b.sidewalk_curb, u),
+        sidewalk_paver: lerp4(a.sidewalk_paver, b.sidewalk_paver, u),
+        stone_primary: lerp4(a.stone_primary, b.stone_primary, u),
+        stone_secondary: lerp4(a.stone_secondary, b.stone_secondary, u),
+        stone_dark: lerp4(a.stone_dark, b.stone_dark, u),
+        accent_trim: lerp4(a.accent_trim, b.accent_trim, u),
+        copper_roof: lerp4(a.copper_roof, b.copper_roof, u),
+        steel_viaduct: lerp4(a.steel_viaduct, b.steel_viaduct, u),
+        window_warm: lerp4(a.window_warm, b.window_warm, u),
+        window_dim: lerp4(a.window_dim, b.window_dim, u),
+        beacon_red: lerp4(a.beacon_red, b.beacon_red, u),
+        searchlight: lerp4(a.searchlight, b.searchlight, u),
+        steam: lerp4(a.steam, b.steam, u),
+        bounce_rgb: lerp3(a.bounce_rgb, b.bounce_rgb, u),
+        key_light_dir: [dir[0] / len, dir[1] / len, dir[2] / len],
     }
 }

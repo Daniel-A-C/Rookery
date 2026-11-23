@@ -7,6 +7,8 @@ struct Uniforms {
     light_and_time: vec4<f32>,
     // xyz = canyon warm bounce color, w = searchlight intensity
     bounce_and_beam: vec4<f32>,
+    // x = palette blend factor [0..1] between color and color_b
+    palette_params: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -17,6 +19,7 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) color: vec4<f32>,
     @location(3) emissive: f32,
+    @location(4) color_b: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -33,7 +36,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.clip_pos = u.view_proj * vec4<f32>(in.pos, 1.0);
     out.world_pos = in.pos;
     out.normal = normalize(in.normal);
-    out.color = in.color;
+    out.color = mix(in.color, in.color_b, u.palette_params.x);
     out.emissive = in.emissive;
     return out;
 }

@@ -9,6 +9,16 @@ impl GothicMetropolisState {
     pub(super) fn step_simulation(&mut self, dt: f32) {
         self.time += dt;
 
+        // Smooth automatic palette cycling (0.05/sec at 1.0x = 20s per palette transition)
+        if self.palette_cycle_enabled {
+            let rate = 0.05 * self.palette_cycle_speed.clamp(0.1, 5.0);
+            self.palette_blend += dt * rate;
+            while self.palette_blend >= 1.0 {
+                self.palette_blend -= 1.0;
+                self.palette = self.palette.next();
+            }
+        }
+
         // Smooth camera yaw interpolation toward target_camera_yaw
         let yaw_diff = self.target_camera_yaw - self.camera_yaw;
         if yaw_diff.abs() > 0.0005 {

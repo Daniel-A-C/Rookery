@@ -2,12 +2,19 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Display names for the 4 curated gothic palettes in Gothic Metropolis.
-pub const GOTHIC_PALETTE_NAMES: [&str; 4] = [
+/// Number of curated gothic palettes in Gothic Metropolis.
+pub const GOTHIC_PALETTE_COUNT: usize = 8;
+
+/// Display names for the 8 curated gothic palettes in Gothic Metropolis.
+pub const GOTHIC_PALETTE_NAMES: [&str; GOTHIC_PALETTE_COUNT] = [
     "1989 Furst Amber & Obsidian",
     "Returns Ice & Gargoyle Slate",
     "Crimson Noir & Brass",
     "Axis Chemical Verdigris",
+    "Phantasm Violet & Fog",
+    "Clocktower Sepia & Bronze",
+    "Abyssal Cobalt & Neon",
+    "Monochrome Noir & Ivory",
 ];
 
 /// Curated gothic color palettes for Gothic Metropolis.
@@ -19,15 +26,23 @@ pub enum GothicPalette {
     CathedralMoonlight = 1,
     CrimsonDeco = 2,
     EmeraldChem = 3,
+    PhantomViolet = 4,
+    ClocktowerBronze = 5,
+    AbyssalCobalt = 6,
+    AshenNoir = 7,
 }
 
 impl GothicPalette {
     pub fn from_u8(v: u8) -> Self {
-        match v % 4 {
+        match v % (GOTHIC_PALETTE_COUNT as u8) {
             0 => Self::GothamAmber,
             1 => Self::CathedralMoonlight,
             2 => Self::CrimsonDeco,
-            _ => Self::EmeraldChem,
+            3 => Self::EmeraldChem,
+            4 => Self::PhantomViolet,
+            5 => Self::ClocktowerBronze,
+            6 => Self::AbyssalCobalt,
+            _ => Self::AshenNoir,
         }
     }
 

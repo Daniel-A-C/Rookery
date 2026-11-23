@@ -189,7 +189,7 @@ fn gothic_metropolis_all_palettes_and_angles_render() {
         std::fs::create_dir_all(dir).unwrap();
     }
 
-    for palette_idx in 0..4u8 {
+    for palette_idx in 0..rookery_core::gothic::GOTHIC_PALETTE_COUNT as u8 {
         if let Ok(mut g) = state.lock() {
             g.set_palette(rookery_core::GothicPalette::from_u8(palette_idx));
             if palette_idx == 2 {

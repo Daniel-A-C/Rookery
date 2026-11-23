@@ -36,7 +36,8 @@ mod vehicles;
 
 use city_layout::build_static_city_mesh;
 use mesh_builder::{GothicVertex, MeshBuilder};
-use theme::palette_theme;
+use rookery_core::gothic::CityBlueprint;
+use theme::{lerp_theme, palette_theme};
 use vehicles::push_vehicle_mesh;
 
 #[repr(C)]
@@ -45,6 +46,24 @@ struct GothicUniforms {
     view_proj: [[f32; 4]; 4],
     light_and_time: [f32; 4],
     bounce_and_beam: [f32; 4],
+    palette_params: [f32; 4],
+}
+
+fn build_blended_static_mesh(
+    bp: &CityBlueprint,
+    palette: GothicPalette,
+    include_next: bool,
+) -> (Vec<GothicVertex>, Vec<u32>) {
+    let theme_a = palette_theme(palette);
+    let (mut verts, indices) = build_static_city_mesh(bp, &theme_a);
+    if include_next {
+        let theme_b = palette_theme(palette.next());
+        let (verts_b, _) = build_static_city_mesh(bp, &theme_b);
+        for (va, vb) in verts.iter_mut().zip(verts_b.iter()) {
+            va.color_b = vb.color;
+        }
+    }
+    (verts, indices)
 }
 
 /// Build the orthographic isometric 4x4 column-major view-projection matrix.
@@ -131,6 +150,7 @@ pub struct GothicMetropolisScene {
     static_ibuf: wgpu::Buffer,
     static_index_count: u32,
     cached_palette: GothicPalette,
+    cached_palette_blend_active: bool,
 
     opaque_dyn_vbuf: wgpu::Buffer,
     opaque_dyn_ibuf: wgpu::Buffer,
@@ -192,6 +212,7 @@ impl GothicMetropolisScene {
                 1 => Float32x3,
                 2 => Float32x4,
                 3 => Float32,
+                4 => Float32x4,
             ],
         };
 
@@ -256,12 +277,13 @@ impl GothicMetropolisScene {
             }],
         });
 
-        let (init_palette, (init_verts, init_indices)) = {
+        let (init_palette, init_blend_active, (init_verts, init_indices)) = {
             let guard = state.lock().expect("gothic state lock");
-            let theme = palette_theme(guard.palette);
+            let need_next = guard.palette_cycle_enabled || guard.palette_blend > 0.0;
             (
                 guard.palette,
-                build_static_city_mesh(&guard.blueprint, &theme),
+                need_next,
+                build_blended_static_mesh(&guard.blueprint, guard.palette, need_next),
             )
         };
 
@@ -321,6 +343,7 @@ impl GothicMetropolisScene {
             static_ibuf,
             static_index_count,
             cached_palette: init_palette,
+            cached_palette_blend_active: init_blend_active,
             opaque_dyn_vbuf,
             opaque_dyn_ibuf,
             opaque_dyn_vbuf_cap: INITIAL_DYNAMIC_VERTS,
@@ -352,12 +375,13 @@ impl GothicMetropolisScene {
         let Ok(guard) = self.state.lock() else {
             return;
         };
-        let theme = palette_theme(guard.palette);
+        let need_next = guard.palette_cycle_enabled || guard.palette_blend > 0.0;
 
-        // Rebuild static architecture mesh if palette changed
-        if guard.palette != self.cached_palette {
+        // Rebuild static architecture mesh if palette changed or blend target needs populating
+        if guard.palette != self.cached_palette || (need_next && !self.cached_palette_blend_active)
+        {
             let (new_static_verts, new_static_indices) =
-                build_static_city_mesh(&guard.blueprint, &theme);
+                build_blended_static_mesh(&guard.blueprint, guard.palette, need_next);
             self.static_vbuf = gpu
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -374,7 +398,16 @@ impl GothicMetropolisScene {
                 });
             self.static_index_count = new_static_indices.len() as u32;
             self.cached_palette = guard.palette;
+            self.cached_palette_blend_active = need_next;
         }
+
+        let theme_a = palette_theme(guard.palette);
+        let theme = if guard.palette_blend > 0.0 {
+            let theme_b = palette_theme(guard.palette.next());
+            lerp_theme(&theme_a, &theme_b, guard.palette_blend)
+        } else {
+            theme_a
+        };
 
         // Update uniform buffer
         let view_proj = build_isometric_view_proj(
@@ -400,6 +433,7 @@ impl GothicMetropolisScene {
                 theme.bounce_rgb[2],
                 if guard.searchlights_enabled { 1.0 } else { 0.0 },
             ],
+            palette_params: [guard.palette_blend.clamp(0.0, 1.0), 0.0, 0.0, 0.0],
         };
         gpu.queue
             .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));

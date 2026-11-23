@@ -458,6 +458,22 @@ pub(crate) fn dispatch_app_action(
                     g.cycle_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
+                "toggle_palette_cycle" => {
+                    g.toggle_palette_cycle();
+                    state.audio.play_sfx(SoundEffect::PaletteCycle);
+                }
+                "palette_cycle_speed" => {
+                    if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                        let parsed = match val {
+                            serde_json::Value::Number(n) => n.as_f64().map(|v| v as f32),
+                            serde_json::Value::String(s) => s.trim().parse::<f32>().ok(),
+                            _ => None,
+                        };
+                        if let Some(speed) = parsed {
+                            g.set_palette_cycle_speed(speed);
+                        }
+                    }
+                }
                 "color_palette" | "set_palette" => {
                     if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
                         let parsed_idx = match val {

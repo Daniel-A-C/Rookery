@@ -11,6 +11,7 @@ pub(super) struct GothicVertex {
     pub(super) normal: [f32; 3],
     pub(super) color: [f32; 4],
     pub(super) emissive: f32,
+    pub(super) color_b: [f32; 4],
 }
 
 /// Low-poly indexed 3D mesh builder for simplified gothic isometric geometry.
@@ -59,18 +60,21 @@ impl MeshBuilder {
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.verts.push(GothicVertex {
             pos: b,
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.verts.push(GothicVertex {
             pos: c,
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
@@ -92,24 +96,28 @@ impl MeshBuilder {
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.verts.push(GothicVertex {
             pos: b,
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.verts.push(GothicVertex {
             pos: c,
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.verts.push(GothicVertex {
             pos: d,
             normal,
             color,
             emissive,
+            color_b: color,
         });
         self.indices
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
@@ -450,6 +458,7 @@ impl MeshBuilder {
             normal: [0.0, 1.0, 0.0],
             color: tip_color,
             emissive: 2.0,
+            color_b: tip_color,
         });
 
         let mid_base = self.verts.len() as u32;
@@ -466,6 +475,7 @@ impl MeshBuilder {
                 normal: [0.0, 1.0, 0.0],
                 color: mid_color,
                 emissive: 2.0,
+                color_b: mid_color,
             });
         }
 
@@ -483,6 +493,7 @@ impl MeshBuilder {
                 normal: [0.0, 1.0, 0.0],
                 color: fade_color,
                 emissive: 2.0,
+                color_b: fade_color,
             });
         }
 

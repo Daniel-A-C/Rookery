@@ -289,3 +289,48 @@ fn vigilante_auto_patrol_signals_rush_hour_and_follow_car() {
         .expect("vigilante vehicle exists");
     assert!(vigilante.afterburner > 0.5);
 }
+
+#[test]
+fn smooth_palette_cycling_and_all_palettes() {
+    let mut state = GothicMetropolisState::new(42);
+    assert!(!state.palette_cycle_enabled);
+    assert_eq!(state.palette_blend, 0.0);
+
+    // Cycle through all 8 palettes back to the start
+    let start = state.palette;
+    let mut cur = start;
+    for _ in 0..GOTHIC_PALETTE_COUNT {
+        assert!(!cur.name().is_empty());
+        cur = cur.next();
+    }
+    assert_eq!(cur, start);
+
+    // Disabled by default: ticking does not advance palette_blend
+    state.tick(0.25);
+    assert_eq!(state.palette_blend, 0.0);
+
+    // Enable auto-cycling at 4.0x speed (rate = 0.20/sec -> 5s per palette)
+    state.toggle_palette_cycle();
+    state.set_palette_cycle_speed(4.0);
+    assert!(state.palette_cycle_enabled);
+    assert!((state.palette_cycle_speed - 4.0).abs() < 1e-6);
+
+    for _ in 0..10 {
+        state.tick(0.25);
+    }
+    // 2.5s * 0.20/s = 0.50 blend
+    assert!((state.palette_blend - 0.5).abs() < 1e-4);
+    assert_eq!(state.palette, GothicPalette::GothamAmber);
+
+    // Another 2.5s wraps to the next palette
+    for _ in 0..10 {
+        state.tick(0.25);
+    }
+    assert_eq!(state.palette, GothicPalette::CathedralMoonlight);
+    assert!(state.palette_blend < 0.05);
+
+    // Manual palette selection resets blend to 0.0
+    state.set_palette(GothicPalette::AshenNoir);
+    assert_eq!(state.palette, GothicPalette::AshenNoir);
+    assert_eq!(state.palette_blend, 0.0);
+}

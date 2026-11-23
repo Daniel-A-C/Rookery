@@ -1187,6 +1187,12 @@ function renderStatus(s: HostStatus): void {
         if (selectNode && document.activeElement !== selectNode) {
           selectNode.value = val;
         }
+        const btnNode = document.getElementById(
+          `btn-${appId}-${ctrlId}`,
+        ) as HTMLButtonElement | null;
+        if (btnNode && (val === "true" || val === "false")) {
+          btnNode.classList.toggle("active", val === "true");
+        }
       }
     }
   }

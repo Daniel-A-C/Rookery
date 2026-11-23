@@ -463,8 +463,26 @@ impl HostState {
                         "walkways".to_string(),
                         format!("{} Walkers", st.walkway_pedestrians),
                     );
-                    map.insert("palette".to_string(), st.palette_name);
+                    map.insert("palette".to_string(), st.palette_name.clone());
                     self.catalog_state.set_stats("gothic-metropolis", map);
+                    self.catalog_state.set_control_value(
+                        "gothic-metropolis",
+                        "toggle_palette_cycle",
+                        g.palette_cycle_enabled.to_string(),
+                        None,
+                    );
+                    self.catalog_state.set_control_value(
+                        "gothic-metropolis",
+                        "palette_cycle_speed",
+                        format!("{:.1}", g.palette_cycle_speed),
+                        None,
+                    );
+                    self.catalog_state.set_control_value(
+                        "gothic-metropolis",
+                        "color_palette",
+                        format!("{}: {}", g.palette as u8, st.palette_name),
+                        None,
+                    );
                 }
             }
             _ => {}

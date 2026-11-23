@@ -798,7 +798,22 @@ impl AppCatalog {
                         id: "cycle_palette".into(),
                         label: "Next Palette".into(),
                         icon: Some("palette".into()),
-                        tooltip: Some("Cycle through the 4 curated gothic metropolis palettes".into()),
+                        tooltip: Some("Cycle through the 8 curated gothic metropolis palettes".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_palette_cycle".into(),
+                        label: "Auto-Cycle Palettes".into(),
+                        icon: Some("palette".into()),
+                        tooltip: Some("Smoothly drift through all gothic color palettes over time".into()),
+                    },
+                    AppControl::Slider {
+                        id: "palette_cycle_speed".into(),
+                        label: "Palette Drift Speed".into(),
+                        min: 0.1,
+                        max: 5.0,
+                        step: 0.1,
+                        default_val: 1.0,
+                        unit: Some("x".into()),
                     },
                 ],
                 budgets: AppBudgets {

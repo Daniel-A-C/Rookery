@@ -37,6 +37,10 @@ pub use types::*;
 /// top camera cutout / menu bar.
 const OVERVIEW_CAMERA_TARGET: [f32; 3] = [0.0, 5.95, 0.0];
 
+fn default_palette_cycle_speed() -> f32 {
+    1.0
+}
+
 /// Complete deterministic simulation state for *Gothic Metropolis* (`gothic-metropolis`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GothicMetropolisState {
@@ -44,6 +48,15 @@ pub struct GothicMetropolisState {
     pub rng: GothicRng,
     pub time: f32,
     pub palette: GothicPalette,
+    /// When true, the city smoothly crossfades through all curated palettes over time.
+    #[serde(default)]
+    pub palette_cycle_enabled: bool,
+    /// Speed multiplier for smooth palette cycling (`0.1` .. `5.0`, default `1.0`).
+    #[serde(default = "default_palette_cycle_speed")]
+    pub palette_cycle_speed: f32,
+    /// Current interpolation progress `[0.0, 1.0)` from `palette` toward `palette.next()`.
+    #[serde(default)]
+    pub palette_blend: f32,
     pub blueprint: CityBlueprint,
     pub trains: Vec<ElevatedGothicTrain>,
     pub pedestrians: Vec<WalkwayPedestrian>,
@@ -261,6 +274,9 @@ impl GothicMetropolisState {
             rng,
             time: 0.0,
             palette: GothicPalette::GothamAmber,
+            palette_cycle_enabled: false,
+            palette_cycle_speed: 1.0,
+            palette_blend: 0.0,
             blueprint,
             trains,
             pedestrians,
@@ -486,11 +502,23 @@ impl GothicMetropolisState {
     /// Cycle to the next gothic color palette.
     pub fn cycle_palette(&mut self) {
         self.palette = self.palette.next();
+        self.palette_blend = 0.0;
     }
 
     /// Set a specific gothic color palette.
     pub fn set_palette(&mut self, palette: GothicPalette) {
         self.palette = palette;
+        self.palette_blend = 0.0;
+    }
+
+    /// Toggle smooth automatic palette cycling on or off.
+    pub fn toggle_palette_cycle(&mut self) {
+        self.palette_cycle_enabled = !self.palette_cycle_enabled;
+    }
+
+    /// Set the smooth palette cycling speed multiplier (`0.1` .. `5.0`).
+    pub fn set_palette_cycle_speed(&mut self, speed: f32) {
+        self.palette_cycle_speed = speed.clamp(0.1, 5.0);
     }
 
     /// Trigger a dramatic burst of rooftop and street steam plumes.
