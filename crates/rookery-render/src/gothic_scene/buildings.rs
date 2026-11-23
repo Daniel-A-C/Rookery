@@ -349,24 +349,62 @@ fn push_street_lobby_colonnade(
     let portal_w = (w * 0.36).clamp(0.32, 0.72);
     let portal_d = (d * 0.36).clamp(0.32, 0.72);
 
-    // Street-level projecting stone plinth belt
+    // Street-level projecting stone plinth belt & heavy ground-floor cornice
     mb.push_box(cx, 0.0, cz, w + 0.10, 0.14, d + 0.10, mat.stone_base, 0.0);
     mb.push_box(cx, lobby_h, cz, w + 0.14, 0.08, d + 0.14, mat.trim, 0.0);
 
-    // Warm recessed entrance lobby portals on all 4 street facades
+    // Warm recessed entrance lobby portals + flanking pilasters + projecting Art-Deco marquee canopies
     for sign in [-1.0f32, 1.0f32] {
+        // Z-facing portals
+        let pz = cz + sign * (d * 0.504);
         mb.push_box(
             cx,
             0.08,
-            cz + sign * (d * 0.504),
+            pz,
             portal_w,
             lobby_h - 0.12,
             0.04,
             theme.window_warm,
             0.95,
         );
+        for px_off in [-portal_w * 0.54, portal_w * 0.54] {
+            mb.push_box(
+                cx + px_off,
+                0.08,
+                pz + sign * 0.02,
+                0.07,
+                lobby_h - 0.08,
+                0.07,
+                mat.stone_alt,
+                0.0,
+            );
+        }
+        // Projecting Art-Deco canopy awning with glowing underside rim
         mb.push_box(
-            cx + sign * (w * 0.504),
+            cx,
+            lobby_h - 0.09,
+            cz + sign * (d * 0.5 + 0.09),
+            portal_w + 0.14,
+            0.06,
+            0.18,
+            mat.trim,
+            0.0,
+        );
+        mb.push_box(
+            cx,
+            lobby_h - 0.11,
+            cz + sign * (d * 0.5 + 0.09),
+            portal_w + 0.08,
+            0.02,
+            0.14,
+            theme.window_warm,
+            0.85,
+        );
+
+        // X-facing portals
+        let px = cx + sign * (w * 0.504);
+        mb.push_box(
+            px,
             0.08,
             cz,
             0.04,
@@ -375,7 +413,136 @@ fn push_street_lobby_colonnade(
             theme.window_warm,
             0.95,
         );
+        for pz_off in [-portal_d * 0.54, portal_d * 0.54] {
+            mb.push_box(
+                px + sign * 0.02,
+                0.08,
+                cz + pz_off,
+                0.07,
+                lobby_h - 0.08,
+                0.07,
+                mat.stone_alt,
+                0.0,
+            );
+        }
+        mb.push_box(
+            cx + sign * (w * 0.5 + 0.09),
+            lobby_h - 0.09,
+            cz,
+            0.18,
+            0.06,
+            portal_d + 0.14,
+            mat.trim,
+            0.0,
+        );
+        mb.push_box(
+            cx + sign * (w * 0.5 + 0.09),
+            lobby_h - 0.11,
+            cz,
+            0.14,
+            0.02,
+            portal_d + 0.08,
+            theme.window_warm,
+            0.85,
+        );
     }
+
+    // Flanking ground-floor shopfront vitrines on wider facades
+    if w >= 2.2 {
+        for sx in [-1.0f32, 1.0f32] {
+            let vx = cx + sx * (w * 0.34);
+            for sz in [-1.0f32, 1.0f32] {
+                mb.push_box(
+                    vx,
+                    0.16,
+                    cz + sz * (d * 0.502),
+                    0.22,
+                    0.34,
+                    0.03,
+                    theme.window_dim,
+                    0.78,
+                );
+            }
+        }
+    }
+}
+
+/// Emit a classic 1990s Gotham wooden-stave rooftop water tower on iron stilts.
+fn push_rooftop_water_tower(
+    mb: &mut MeshBuilder,
+    cx: f32,
+    y0: f32,
+    cz: f32,
+    scale: f32,
+    mat: &BuildingMaterial,
+) {
+    let leg_h = 0.28 * scale;
+    let leg_off = 0.11 * scale;
+    for sx in [-1.0f32, 1.0f32] {
+        for sz in [-1.0f32, 1.0f32] {
+            mb.push_box(
+                cx + sx * leg_off,
+                y0,
+                cz + sz * leg_off,
+                0.04 * scale,
+                leg_h,
+                0.04 * scale,
+                mat.stone_base,
+                0.0,
+            );
+        }
+    }
+    // Cross-bracing platform + cylindrical-ish octagonal tank + iron hoops + conical roof
+    mb.push_box(
+        cx,
+        y0 + leg_h,
+        cz,
+        0.32 * scale,
+        0.04 * scale,
+        0.32 * scale,
+        mat.trim,
+        0.0,
+    );
+    mb.push_box(
+        cx,
+        y0 + leg_h + 0.04 * scale,
+        cz,
+        0.26 * scale,
+        0.32 * scale,
+        0.26 * scale,
+        mat.stone_alt,
+        0.0,
+    );
+    mb.push_box(
+        cx,
+        y0 + leg_h + 0.14 * scale,
+        cz,
+        0.28 * scale,
+        0.03 * scale,
+        0.28 * scale,
+        mat.stone_base,
+        0.0,
+    );
+    mb.push_box(
+        cx,
+        y0 + leg_h + 0.26 * scale,
+        cz,
+        0.28 * scale,
+        0.03 * scale,
+        0.28 * scale,
+        mat.stone_base,
+        0.0,
+    );
+    mb.push_pyramid(
+        cx,
+        y0 + leg_h + 0.36 * scale,
+        cz,
+        0.32 * scale,
+        0.16 * scale,
+        0.32 * scale,
+        mat.roof,
+        0.0,
+    );
 }
 
 /// Emit architectural corner pilasters and overhang cornice ledges on a building tier.
@@ -1115,6 +1282,18 @@ pub(super) fn build_archetype_mesh(
             );
 
             mb.push_box(cx, h1 + h2, cz, w * 0.56, h3, d * 0.56, mat.stone_base, 0.0);
+            // Rooftop water tower perched on the h1 setback terrace + mechanical condenser
+            push_rooftop_water_tower(mb, cx + w * 0.38, h1, cz - d * 0.36, 0.95, &mat);
+            mb.push_box(
+                cx - w * 0.36,
+                h1,
+                cz + d * 0.36,
+                0.24,
+                0.18,
+                0.24,
+                mat.stone_base,
+                0.0,
+            );
 
             if b.style_variant.is_multiple_of(2) {
                 // Variant A: Brutalist twin-turret corporate crown + tall radio spire

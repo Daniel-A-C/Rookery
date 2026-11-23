@@ -405,5 +405,64 @@ impl GothicMetropolisState {
                 });
             }
         }
+
+        // 6. Advance circling gothic spire fliers (bats/ravens)
+        for flier in &mut self.spire_fliers {
+            flier.angle = (flier.angle + flier.angular_speed * dt).rem_euclid(TAU);
+            flier.flap_phase = (flier.flap_phase + dt * 11.5).rem_euclid(TAU);
+            flier.bob_phase = (flier.bob_phase + dt * 1.4).rem_euclid(TAU);
+        }
+
+        // 7. Advance ground-level sidewalk pedestrians around city block loops
+        for walker in &mut self.sidewalk_walkers {
+            walker.perimeter_t =
+                (walker.perimeter_t + walker.dir * walker.speed * dt).rem_euclid(1.0);
+        }
+
+        // 8. Update and spawn warm glowing ember sparks from rooftop industrial stacks
+        for spark in &mut self.ember_sparks {
+            spark.age += dt;
+            spark.pos[0] += spark.vx * dt;
+            spark.pos[1] += spark.vy * dt;
+            spark.pos[2] += spark.vz * dt;
+        }
+        self.ember_sparks.retain(|s| s.age < s.max_age);
+
+        self.ember_accum += dt;
+        while self.ember_accum >= 0.12 {
+            self.ember_accum -= 0.12;
+            if self.ember_sparks.len() < 40 {
+                // Spawn from rooftop steam sources (industrial smokestacks)
+                let rooftop_count = self
+                    .blueprint
+                    .steam_sources
+                    .iter()
+                    .filter(|s| s.is_rooftop)
+                    .count();
+                if rooftop_count > 0 {
+                    let pick = (self.rng.next_u64() as usize) % rooftop_count;
+                    if let Some(src) = self
+                        .blueprint
+                        .steam_sources
+                        .iter()
+                        .filter(|s| s.is_rooftop)
+                        .nth(pick)
+                    {
+                        self.ember_sparks.push(EmberSpark {
+                            pos: [
+                                src.pos[0] + self.rng.range(-0.12, 0.12),
+                                src.pos[1] + 0.05,
+                                src.pos[2] + self.rng.range(-0.12, 0.12),
+                            ],
+                            vx: self.rng.range(-0.22, 0.22),
+                            vy: self.rng.range(0.65, 1.15),
+                            vz: self.rng.range(-0.22, 0.22),
+                            age: 0.0,
+                            max_age: self.rng.range(1.3, 2.2),
+                        });
+                    }
+                }
+            }
+        }
     }
 }

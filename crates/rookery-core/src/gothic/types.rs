@@ -593,6 +593,43 @@ pub struct SteamPlume {
     pub base_radius: f32,
 }
 
+/// A dark-winged gothic spire flier (bat or raven) wheeling in thermals around the tallest towers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SpireFlier {
+    pub id: u32,
+    pub center: [f32; 2],
+    pub radius: f32,
+    pub altitude: f32,
+    pub angle: f32,
+    pub angular_speed: f32,
+    pub flap_phase: f32,
+    pub bob_phase: f32,
+}
+
+/// A ground-level trenchcoated pedestrian strolling around the raised sidewalk perimeter of a city block.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SidewalkWalker {
+    pub id: u32,
+    pub block_idx: usize,
+    /// Normalized perimeter progress `0.0 .. 1.0` around the block's sidewalk loop.
+    pub perimeter_t: f32,
+    /// Travel direction (`1.0` or `-1.0`).
+    pub dir: f32,
+    pub speed: f32,
+    pub coat_variant: u8,
+}
+
+/// A glowing warm ember spark drifting upward from an industrial foundry smokestack.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EmberSpark {
+    pub pos: [f32; 3],
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
+    pub age: f32,
+    pub max_age: f32,
+}
+
 /// A rooftop searchlight battery sweeping a volumetric beam into the dark void.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SearchlightBeam {

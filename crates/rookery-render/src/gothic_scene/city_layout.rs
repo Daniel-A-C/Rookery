@@ -6,6 +6,7 @@ use rookery_core::gothic::{
 };
 
 use super::buildings::build_archetype_mesh;
+use super::landmarks::build_bespoke_landmarks_mesh;
 use super::mesh_builder::{GothicVertex, MeshBuilder};
 use super::theme::GothicThemeColors;
 
@@ -182,6 +183,9 @@ pub(super) fn build_static_city_mesh(
 
     // 7. Elevated Train Viaduct Loop & Support Arches
     build_viaduct_mesh(&mut mb, bp, theme);
+
+    // 8. Eight Bespoke One-of-a-Kind City Landmarks
+    build_bespoke_landmarks_mesh(&mut mb, theme);
 
     mb.into_parts()
 }
@@ -490,6 +494,61 @@ fn build_sidewalks_and_curbs_mesh(
                 );
             }
         }
+
+        // Cast-iron fire hydrants at alternating diagonal block corners + wrought-iron benches on mid-edges
+        if block.id % 2 == 1 {
+            let hx = x0 + 0.30;
+            let hz = z1 - 0.18;
+            let r = [hx - 0.06, hz - 0.06, hx + 0.06, hz + 0.06];
+            if !sw_cutouts.iter().any(|&c| rect_overlaps(r, c)) {
+                mb.push_box(hx, sw_h, hz, 0.07, 0.12, 0.07, theme.beacon_red, 0.0);
+                mb.push_box(
+                    hx,
+                    sw_h + 0.12,
+                    hz,
+                    0.09,
+                    0.03,
+                    0.09,
+                    theme.accent_trim,
+                    0.0,
+                );
+            }
+        }
+        // Wrought-iron sidewalk bench centered on the south/north sidewalk edge
+        let bench_x = (x0 + x1) * 0.5;
+        let bench_z = if block.id % 2 == 0 {
+            z1 - 0.18
+        } else {
+            z0 + 0.18
+        };
+        let br = [
+            bench_x - 0.20,
+            bench_z - 0.08,
+            bench_x + 0.20,
+            bench_z + 0.08,
+        ];
+        if !sw_cutouts.iter().any(|&c| rect_overlaps(br, c)) {
+            mb.push_box(
+                bench_x,
+                sw_h,
+                bench_z,
+                0.32,
+                0.05,
+                0.10,
+                theme.plinth_dark,
+                0.0,
+            );
+            mb.push_box(
+                bench_x,
+                sw_h + 0.05,
+                bench_z,
+                0.30,
+                0.025,
+                0.09,
+                theme.accent_trim,
+                0.0,
+            );
+        }
     }
 
     // Outer Highway Perimeter Sidewalk Promenade (derived from outer highway position & plinth extent)
@@ -793,6 +852,52 @@ fn build_roads_and_highway_mesh(
                     }
                     mb.push_box(px, 0.075, pz, 0.06, 0.34, 0.06, theme.stone_dark, 0.0);
                     mb.push_box(px, 0.415, pz, 0.11, 0.10, 0.11, theme.window_warm, 1.0);
+                    // Wrought-iron lantern cap + subtle warm sidewalk glow pool
+                    mb.push_pyramid(px, 0.515, pz, 0.15, 0.06, 0.15, theme.plinth_dark, 0.0);
+                    mb.push_box(px, 0.077, pz, 0.34, 0.008, 0.34, theme.window_dim, 0.55);
+                }
+            }
+        }
+
+        // Cast-iron utility manhole covers & gutter storm grates along inner-city avenues
+        if !ave.is_highway && len > 2.0 {
+            let right = [-fwd[1], fwd[0]];
+            let grate_steps = (len / 2.6).floor().max(1.0) as usize;
+            for i in 0..grate_steps {
+                let t = (i as f32 + 0.5) / grate_steps as f32;
+                let gx = ave.start[0] + dx * t;
+                let gz = ave.start[1] + dz * t;
+                let near_junction = bp.avenues.iter().enumerate().any(|(other_idx, other)| {
+                    other_idx != ave_idx
+                        && point_to_avenue_dist(gx, gz, other) < other.width * 0.5 + 0.45
+                });
+                if near_junction {
+                    continue;
+                }
+                // Alternating manhole cover near center lane & storm drain along curb gutter
+                if i % 2 == 0 {
+                    mb.push_box(
+                        gx + right[0] * 0.18,
+                        0.026,
+                        gz + right[1] * 0.18,
+                        0.15,
+                        0.008,
+                        0.15,
+                        theme.plinth_trim,
+                        0.0,
+                    );
+                } else {
+                    let side = if i % 4 == 1 { 1.0 } else { -1.0 };
+                    let edge = ave.width * 0.44 * side;
+                    mb.push_oriented_box(
+                        [gx + right[0] * edge, 0.026, gz + right[1] * edge],
+                        fwd,
+                        0.22,
+                        0.008,
+                        0.12,
+                        theme.stone_dark,
+                        0.0,
+                    );
                 }
             }
         }

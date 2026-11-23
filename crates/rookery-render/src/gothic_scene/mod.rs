@@ -30,6 +30,7 @@ const INITIAL_DYNAMIC_INDICES: usize = 24_576;
 
 mod buildings;
 mod city_layout;
+mod landmarks;
 mod mesh_builder;
 mod theme;
 mod vehicles;
@@ -914,6 +915,173 @@ impl GothicMetropolisScene {
                     5.4,
                     1.10,
                     theme.searchlight,
+                );
+            }
+        }
+
+        // --- LAYER 6: Animated Bespoke Landmarks, Sidewalk Walkers, Spire Flock & Embers ---
+        // 6a. Grand Clockwork Orrery (Block 15 front courtyard: rotating brass rings & sun core)
+        let orrery_c = [3.45f32, 0.62, 5.70];
+        opaque_mb.push_box(
+            orrery_c[0],
+            orrery_c[1] - 0.04,
+            orrery_c[2],
+            0.11,
+            0.11,
+            0.11,
+            theme.window_warm,
+            1.0,
+        );
+        let a1 = guard.time * 0.85;
+        let a2 = -guard.time * 1.25;
+        opaque_mb.push_oriented_box(
+            orrery_c,
+            [a1.cos(), a1.sin()],
+            0.44,
+            0.035,
+            0.04,
+            theme.accent_trim,
+            0.0,
+        );
+        opaque_mb.push_oriented_box(
+            [orrery_c[0], orrery_c[1] + 0.04, orrery_c[2]],
+            [a2.cos(), a2.sin()],
+            0.30,
+            0.035,
+            0.04,
+            theme.copper_roof,
+            0.0,
+        );
+
+        // 6b. Gargoyle Carillon Pavilion swinging bronze bell (Block 14 NW courtyard)
+        let bell_sway = (guard.time * 1.8).sin() * 0.06;
+        opaque_mb.push_box(
+            -3.22 + bell_sway,
+            0.40,
+            6.52,
+            0.14,
+            0.18,
+            0.14,
+            theme.accent_trim,
+            0.0,
+        );
+
+        // 6c. Zeppelin Mooring Mast pulsing crimson aviation beacon (Building 3 crown)
+        let mast_pulse = if (guard.time * 2.4).sin() > 0.0 {
+            1.0
+        } else {
+            0.35
+        };
+        opaque_mb.push_box(
+            2.05,
+            15.86,
+            -6.85,
+            0.11,
+            0.11,
+            0.11,
+            theme.beacon_red,
+            mast_pulse,
+        );
+
+        // 6d. Precinct Rooftop Signal Projector beam (Block 16 setback)
+        if guard.searchlights_enabled {
+            let sw = (guard.time * 0.45).sin() * 0.22;
+            trans_mb.push_light_cone(
+                [8.95, 4.22, 6.85],
+                [-0.28 + sw, 0.92, -0.24],
+                7.2,
+                1.15,
+                theme.searchlight,
+            );
+        }
+
+        // 6e. Ground-level sidewalk pedestrians strolling around city block perimeters
+        for walker in &guard.sidewalk_walkers {
+            if let Some(block) = guard.blueprint.blocks.get(walker.block_idx) {
+                let inset = 0.22f32;
+                let x0 = block.x0 + inset;
+                let x1 = block.x1 - inset;
+                let z0 = block.z0 + inset;
+                let z1 = block.z1 - inset;
+                let w = (x1 - x0).max(0.2);
+                let d = (z1 - z0).max(0.2);
+                let perim = (w + d) * 2.0;
+                let mut dist = walker.perimeter_t.rem_euclid(1.0) * perim;
+                let (wx, wz) = if dist < w {
+                    (x0 + dist, z0)
+                } else {
+                    dist -= w;
+                    if dist < d {
+                        (x1, z0 + dist)
+                    } else {
+                        dist -= d;
+                        if dist < w {
+                            (x1 - dist, z1)
+                        } else {
+                            dist -= w;
+                            (x0, z1 - dist)
+                        }
+                    }
+                };
+                let coat = match walker.coat_variant {
+                    0 => theme.accent_trim,
+                    1 => theme.stone_secondary,
+                    _ => theme.window_dim,
+                };
+                opaque_mb.push_box(wx, 0.085, wz, 0.075, 0.15, 0.075, coat, 0.0);
+                opaque_mb.push_box(wx, 0.235, wz, 0.055, 0.055, 0.055, theme.window_warm, 0.65);
+            }
+        }
+
+        // 6f. Dark-winged gothic spire fliers (bats/ravens) circling the tallest towers
+        for flier in &guard.spire_fliers {
+            let fx = flier.center[0] + flier.angle.cos() * flier.radius;
+            let fz = flier.center[1] + flier.angle.sin() * flier.radius;
+            let fy = flier.altitude + flier.bob_phase.sin() * 0.22;
+            let dir_sign = flier.angular_speed.signum();
+            let fwd = [-flier.angle.sin() * dir_sign, flier.angle.cos() * dir_sign];
+            let right = [-fwd[1], fwd[0]];
+            let flap_y = flier.flap_phase.sin() * 0.045;
+            opaque_mb.push_oriented_box(
+                [fx, fy, fz],
+                fwd,
+                0.12,
+                0.035,
+                0.05,
+                theme.plinth_dark,
+                0.0,
+            );
+            for side in [-1.0f32, 1.0f32] {
+                opaque_mb.push_oriented_box(
+                    [
+                        fx + right[0] * 0.08 * side,
+                        fy + flap_y,
+                        fz + right[1] * 0.08 * side,
+                    ],
+                    fwd,
+                    0.07,
+                    0.025,
+                    0.12,
+                    theme.stone_dark,
+                    0.0,
+                );
+            }
+        }
+
+        // 6g. Glowing foundry ember sparks rising from rooftop smokestacks
+        for spark in &guard.ember_sparks {
+            let life = (spark.age / spark.max_age).clamp(0.0, 1.0);
+            let boost = (1.0 - life) * 1.1;
+            if boost > 0.15 {
+                opaque_mb.push_box(
+                    spark.pos[0],
+                    spark.pos[1],
+                    spark.pos[2],
+                    0.045,
+                    0.045,
+                    0.045,
+                    theme.window_warm,
+                    0.6 + boost * 0.5,
                 );
             }
         }

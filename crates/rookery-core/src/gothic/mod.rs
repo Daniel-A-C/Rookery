@@ -98,7 +98,18 @@ pub struct GothicMetropolisState {
     /// Current smoothed camera zoom multiplier (`1.0` = overview, `2.35` = street follow).
     #[serde(default)]
     pub camera_zoom: f32,
+    /// Dark-winged spire fliers circling the tallest cathedral and belfry spires.
+    #[serde(default)]
+    pub spire_fliers: Vec<SpireFlier>,
+    /// Ground-level pedestrians strolling along the raised block sidewalk loops.
+    #[serde(default)]
+    pub sidewalk_walkers: Vec<SidewalkWalker>,
+    /// Glowing ember sparks rising from industrial foundry smokestacks.
+    #[serde(default)]
+    pub ember_sparks: Vec<EmberSpark>,
     steam_accum: f32,
+    #[serde(default)]
+    ember_accum: f32,
 }
 
 impl GothicMetropolisState {
@@ -270,6 +281,46 @@ impl GothicMetropolisState {
         // No rooftop searchlights on buildings (only patrol airships project searchlights)
         let searchlights = Vec::new();
 
+        // Spawn 15 gothic spire fliers (bats/ravens) circling the tallest spires
+        let spire_anchors: [([f32; 2], f32); 3] = [
+            ([-2.80, -2.35], 13.8), // Central CathedralKeep
+            ([2.10, -2.05], 13.2),  // ArtDecoZiggurat
+            ([7.10, -7.10], 11.4),  // NE CathedralKeep
+        ];
+        let mut spire_fliers = Vec::with_capacity(15);
+        for i in 0..15u32 {
+            let (center, base_alt) = spire_anchors[(i as usize) % spire_anchors.len()];
+            let dir = if i.is_multiple_of(2) { 1.0 } else { -1.0 };
+            spire_fliers.push(SpireFlier {
+                id: i + 1,
+                center,
+                radius: rng.range(1.35, 2.55),
+                altitude: base_alt + rng.range(-0.9, 1.8),
+                angle: rng.range(0.0, TAU),
+                angular_speed: dir * rng.range(0.32, 0.58),
+                flap_phase: rng.range(0.0, TAU),
+                bob_phase: rng.range(0.0, TAU),
+            });
+        }
+
+        // Spawn 32 ground-level sidewalk pedestrians across the 16 city blocks (2 per block)
+        let mut sidewalk_walkers = Vec::with_capacity(blueprint.blocks.len() * 2);
+        let mut sw_id = 1u32;
+        for (b_idx, block) in blueprint.blocks.iter().enumerate() {
+            let perim = ((block.x1 - block.x0) + (block.z1 - block.z0)) * 2.0;
+            for k in 0..2 {
+                sidewalk_walkers.push(SidewalkWalker {
+                    id: sw_id,
+                    block_idx: b_idx,
+                    perimeter_t: (k as f32 * 0.5 + rng.f32() * 0.3).fract(),
+                    dir: if (b_idx + k) % 2 == 0 { 1.0 } else { -1.0 },
+                    speed: rng.range(0.24, 0.38) / perim.max(4.0),
+                    coat_variant: (sw_id % 3) as u8,
+                });
+                sw_id += 1;
+            }
+        }
+
         let mut state = Self {
             seed,
             rng,
@@ -299,7 +350,11 @@ impl GothicMetropolisState {
             follow_car: false,
             camera_target: OVERVIEW_CAMERA_TARGET,
             camera_zoom: 1.0,
+            spire_fliers,
+            sidewalk_walkers,
+            ember_sparks: Vec::with_capacity(48),
             steam_accum: 0.0,
+            ember_accum: 0.0,
         };
 
         // Pre-warm steam plumes so frame 0 already has atmospheric rising steam
