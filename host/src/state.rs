@@ -115,6 +115,11 @@ pub struct KoiStatus {
     pub pellets_active: u32,
     pub pellets_eaten: u32,
     pub ripples_created: u32,
+    pub theme: u8,
+    pub theme_name: String,
+    pub rain_enabled: bool,
+    pub lanterns_enabled: bool,
+    pub dragonflies: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -397,6 +402,11 @@ impl HostState {
                     pellets_active: k.pellets.len() as u32,
                     pellets_eaten: k.stats.pellets_eaten,
                     ripples_created: k.stats.ripples_created,
+                    theme: k.theme.index(),
+                    theme_name: k.theme.name().to_string(),
+                    rain_enabled: k.rain_enabled,
+                    lanterns_enabled: k.lanterns_enabled,
+                    dragonflies: k.dragonflies.len() as u32,
                 });
             }
             "cosmic-nebula" => {

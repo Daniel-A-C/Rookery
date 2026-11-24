@@ -76,6 +76,11 @@ export interface KoiStatus {
   pellets_active: number;
   pellets_eaten: number;
   ripples_created: number;
+  theme?: number;
+  theme_name?: string;
+  rain_enabled?: boolean;
+  lanterns_enabled?: boolean;
+  dragonflies?: number;
 }
 
 export interface NebulaStatus {

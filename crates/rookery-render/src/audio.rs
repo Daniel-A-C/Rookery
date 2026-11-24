@@ -33,6 +33,10 @@ pub enum SoundEffect {
     WaterRipple,
     /// Scattering food pellets for koi
     FeedKoi,
+    /// Hollow wooden bamboo shishi-odoshi clack in Koi Pond
+    BambooClack,
+    /// Soft pentatonic garden chime for lotus bloom & theme transitions
+    LotusChime,
     /// Gravitational pulse in Cosmic Nebula
     NebulaPulse,
     /// Shifting celestial color palette
@@ -736,6 +740,33 @@ fn generate_sfx_uncached(sfx: SoundEffect) -> Vec<f32> {
             }
             out
         }
+        SoundEffect::BambooClack => {
+            // Hollow resonant wooden shishi-odoshi knock
+            let len = (0.24 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let f1 = (2.0 * PI * 310.0 * t).sin() * (-24.0 * t).exp();
+                let f2 = (2.0 * PI * 760.0 * t).sin() * (-38.0 * t).exp();
+                let knock = (2.0 * PI * 1450.0 * t).sin() * (-95.0 * t).exp();
+                *sample = ((f1 * 0.55 + f2 * 0.35 + knock * 0.22) * 0.55).clamp(-0.95, 0.95);
+            }
+            out
+        }
+        SoundEffect::LotusChime => {
+            // Gentle Japanese pentatonic water-garden chime
+            let len = (0.48 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let env = (1.0 - (-80.0 * t).exp()) * (-5.2 * t).exp();
+                let n1 = (2.0 * PI * 528.0 * t).sin();
+                let n2 = 0.45 * (2.0 * PI * 792.0 * t).sin() * (-3.5 * t).exp();
+                let n3 = 0.20 * (2.0 * PI * 1056.0 * t).sin() * (-7.0 * t).exp();
+                *sample = ((n1 + n2 + n3) * env * 0.28).clamp(-0.95, 0.95);
+            }
+            out
+        }
     }
 }
 
@@ -751,6 +782,8 @@ mod tests {
             SoundEffect::PlantSeed,
             SoundEffect::WaterRipple,
             SoundEffect::FeedKoi,
+            SoundEffect::BambooClack,
+            SoundEffect::LotusChime,
             SoundEffect::NebulaPulse,
             SoundEffect::PaletteCycle,
             SoundEffect::ShuttleLaunch,

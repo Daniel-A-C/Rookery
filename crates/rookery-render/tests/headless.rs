@@ -209,3 +209,62 @@ fn gothic_metropolis_all_palettes_and_angles_render() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn koi_pond_all_themes_render() {
+    let gpu = Gpu::new_blocking().expect("GPU");
+    let state = Arc::new(Mutex::new(rookery_core::KoiPondState::new(42)));
+
+    let width = 1280u32;
+    let height = 720u32;
+    let mut scene = rookery_render::KoiPondScene::new(&gpu, OFFSCREEN_FORMAT, state.clone());
+    scene.resize(&gpu, width, height, 1.0);
+    let off = Offscreen::new(&gpu, width, height);
+    let dt = Duration::from_millis(33);
+
+    let snapshot_dir = std::env::var("ROOKERY_SNAPSHOT_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(ref dir) = snapshot_dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    let mut frames = Vec::new();
+    for theme_idx in 0..rookery_core::koi::KOI_THEME_COUNT as u8 {
+        if let Ok(mut k) = state.lock() {
+            k.set_theme(rookery_core::PondTheme::from_u8(theme_idx));
+            k.theme_blend = 1.0;
+            k.lantern_glow = if k.lanterns_enabled { 1.0 } else { 0.0 };
+            if theme_idx == 1 {
+                k.feed_koi([520.0, 360.0]);
+            }
+            if theme_idx == 2 {
+                k.toggle_rain();
+                k.rain_intensity = 0.85;
+            }
+        }
+        let frame = off.run(&gpu, &mut scene, 12, dt).unwrap();
+        let luma = mean_luma(&frame);
+        assert!(
+            luma > 8.0 && luma < 220.0,
+            "Koi theme {theme_idx} mean luma {luma} out of expected range"
+        );
+
+        if let Some(ref dir) = snapshot_dir {
+            let png_path = dir.join(format!("koi_theme_{theme_idx}.png"));
+            rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
+        }
+        frames.push(frame);
+    }
+
+    for i in 1..frames.len() {
+        let d = diff(&frames[i - 1], &frames[i]);
+        assert!(
+            d > 3.0,
+            "Koi theme {} and theme {} look too similar (diff = {d})",
+            i - 1,
+            i
+        );
+    }
+}

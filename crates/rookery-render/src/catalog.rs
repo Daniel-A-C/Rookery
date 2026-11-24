@@ -371,11 +371,11 @@ impl AppCatalog {
                 metadata: AppMetadata {
                     id: "koi-pond".into(),
                     name: "Tranquil Koi Pond".into(),
-                    description: "Serene water caustics with undulating articulated koi fish, blooming lotus pads, and feeding ripples.".into(),
+                    description: "A painterly Japanese water garden with refracted riverbed pebbles, undulating Nishikigoi koi, veined lily pads, blooming lotuses, drifting seasonal petals, floating lanterns, and a bamboo shishi-odoshi fountain.".into(),
                     author: "Rookery Team".into(),
-                    version: "1.0.0".into(),
+                    version: "2.0.0".into(),
                     archetype: AppArchetype::CozyEcosystem,
-                    tags: vec!["aquatic".into(), "koi".into(), "zen".into(), "lotus".into(), "water".into()],
+                    tags: vec!["aquatic".into(), "koi".into(), "zen".into(), "lotus".into(), "water".into(), "garden".into()],
                 },
                 theme: AppTheme {
                     tagline: Some("Imperial Lotus Sanctuary".into()),
@@ -393,38 +393,84 @@ impl AppCatalog {
                     AppControl::Stat {
                         id: "koi_count".into(),
                         label: "Koi School".into(),
-                        default_val: "12".into(),
+                        default_val: "10".into(),
                         icon: Some("koi".into()),
-                    },
-                    AppControl::Stat {
-                        id: "lilies".into(),
-                        label: "Lily Pads".into(),
-                        default_val: "9".into(),
-                        icon: Some("lily-pad".into()),
                     },
                     AppControl::Stat {
                         id: "lotuses".into(),
                         label: "Lotus Blooms".into(),
-                        default_val: "3".into(),
+                        default_val: "5".into(),
                         icon: Some("flower-lotus".into()),
                     },
                     AppControl::Stat {
-                        id: "ripples".into(),
-                        label: "Water Ripples".into(),
-                        default_val: "0".into(),
-                        icon: Some("ripple".into()),
+                        id: "theme".into(),
+                        label: "Atmosphere".into(),
+                        default_val: "Sunlit Jade".into(),
+                        icon: Some("palette".into()),
+                    },
+                    AppControl::Stat {
+                        id: "weather".into(),
+                        label: "Pond Mood".into(),
+                        default_val: "Clear".into(),
+                        icon: Some("drop".into()),
                     },
                     AppControl::Button {
                         id: "feed_koi".into(),
-                        label: "Feed Koi".into(),
+                        label: "Scatter Pellets".into(),
                         icon: Some("pellets".into()),
                         tooltip: Some("Scatter floating food pellets for the koi fish".into()),
                     },
                     AppControl::Button {
                         id: "tap_water".into(),
-                        label: "Tap Surface".into(),
+                        label: "Skip Pebble".into(),
                         icon: Some("ripple".into()),
-                        tooltip: Some("Create gentle water ripples across the pond".into()),
+                        tooltip: Some("Cast a smooth pebble to stir concentric ripples".into()),
+                    },
+                    AppControl::Button {
+                        id: "spawn_koi".into(),
+                        label: "Add Koi".into(),
+                        icon: Some("plus".into()),
+                        tooltip: Some("Welcome a new Nishikigoi into the pond".into()),
+                    },
+                    AppControl::Button {
+                        id: "bloom_lotuses".into(),
+                        label: "Bloom Lotuses".into(),
+                        icon: Some("flower-lotus".into()),
+                        tooltip: Some("Open lotus blossoms in a serene blooming wave".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_rain".into(),
+                        label: "Gentle Rain".into(),
+                        icon: Some("drop".into()),
+                        tooltip: Some("Toggle a soft rain shower with splash rings".into()),
+                    },
+                    AppControl::Button {
+                        id: "toggle_lanterns".into(),
+                        label: "Lanterns".into(),
+                        icon: Some("sparkle".into()),
+                        tooltip: Some("Toggle glowing floating tōrō paper lanterns".into()),
+                    },
+                    AppControl::Button {
+                        id: "trigger_spout".into(),
+                        label: "Bamboo Spout".into(),
+                        icon: Some("leaf".into()),
+                        tooltip: Some("Tip the bamboo shishi-odoshi fountain".into()),
+                    },
+                    AppControl::Select {
+                        id: "theme".into(),
+                        label: "Garden Theme".into(),
+                        options: rookery_core::koi::KOI_THEME_NAMES
+                            .iter()
+                            .enumerate()
+                            .map(|(i, n)| format!("{i}: {n}"))
+                            .collect(),
+                        default_val: "1: Sunlit Jade".into(),
+                    },
+                    AppControl::Button {
+                        id: "cycle_theme".into(),
+                        label: "Next Theme".into(),
+                        icon: Some("palette".into()),
+                        tooltip: Some("Cycle through Sakura Morning, Sunlit Jade, Autumn Maple Dusk, and Moonlit Lantern Night".into()),
                     },
                 ],
                 budgets: AppBudgets {

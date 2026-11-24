@@ -32,7 +32,11 @@ pub use gothic::{
     SteamPlume, StreetAvenue, TrafficDensity, TrafficSignal, UndergroundPortal, VehicleRoute,
     WalkwayPedestrian, WalkwaySpan, WalkwayStyle,
 };
-pub use koi::{KoiFish, KoiPondState, KoiPondStats, KoiVariety, LilyPad, WaterRipple};
+pub use koi::{
+    BambooFountain, Dragonfly, DriftPetal, FloatingLantern, FoodPellet, KOI_THEME_COUNT,
+    KOI_THEME_NAMES, KoiFish, KoiPondState, KoiPondStats, KoiSoundCue, KoiVariety, LilyPad,
+    PondFrog, PondRock, PondTheme, PondTurtle, SpoutPhase, WaterRipple, WaterSwirl,
+};
 pub use manifest::{
     AppArchetype, AppBudgets, AppControl, AppManifest, AppMetadata, AppTheme, DayNightMapping,
     ScheduleMode,

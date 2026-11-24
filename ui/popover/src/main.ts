@@ -730,11 +730,17 @@ const seedNotification = el<HTMLDivElement>("seed-notification");
 
 // Koi Pond Stats & Controls
 const statKoiCount = el<HTMLSpanElement>("stat-koi-count");
-const statKoiLilies = el<HTMLSpanElement>("stat-koi-lilies");
 const statKoiLotuses = el<HTMLSpanElement>("stat-koi-lotuses");
-const statKoiRipples = el<HTMLSpanElement>("stat-koi-ripples");
+const statKoiTheme = el<HTMLSpanElement>("stat-koi-theme");
+const statKoiWeather = el<HTMLSpanElement>("stat-koi-weather");
 const btnKoiFeed = el<HTMLButtonElement>("btn-koi-feed");
 const btnKoiPebble = el<HTMLButtonElement>("btn-koi-pebble");
+const btnKoiSpawn = el<HTMLButtonElement>("btn-koi-spawn");
+const btnKoiBloom = el<HTMLButtonElement>("btn-koi-bloom");
+const btnKoiRain = el<HTMLButtonElement>("btn-koi-rain");
+const btnKoiLanterns = el<HTMLButtonElement>("btn-koi-lanterns");
+const btnKoiSpout = el<HTMLButtonElement>("btn-koi-spout");
+const btnKoiTheme = el<HTMLButtonElement>("btn-koi-theme");
 
 // Cosmic Nebula Stats & Controls
 const statNebulaParticles = el<HTMLSpanElement>("stat-nebula-particles");
@@ -1519,9 +1525,19 @@ function renderStatus(s: HostStatus): void {
   // Koi Pond Stats
   if (s.koi) {
     statKoiCount.textContent = String(s.koi.total_koi);
-    statKoiLilies.textContent = String(s.koi.total_lilies);
     statKoiLotuses.textContent = String(s.koi.blooming_lotuses);
-    statKoiRipples.textContent = String(s.koi.ripples_active);
+    statKoiTheme.textContent = s.koi.theme_name ?? "Sunlit Jade";
+    const weatherParts: string[] = [];
+    weatherParts.push(s.koi.rain_enabled ? "Rain" : "Clear");
+    if (s.koi.lanterns_enabled) {
+      weatherParts.push("Lanterns");
+    }
+    statKoiWeather.textContent = weatherParts.join(" · ");
+    btnKoiRain.setAttribute("aria-pressed", String(Boolean(s.koi.rain_enabled)));
+    btnKoiLanterns.setAttribute(
+      "aria-pressed",
+      String(Boolean(s.koi.lanterns_enabled)),
+    );
   }
 
   // Cosmic Nebula Stats
@@ -1868,6 +1884,60 @@ btnKoiPebble.addEventListener("click", () => {
         pos: [500.0, 375.0],
         radius: 80.0,
       }),
+  );
+});
+
+btnKoiSpawn.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiSpawn,
+    "koi",
+    "A new Nishikigoi glided into the pond!",
+    () => api.executeAppAction("koi-pond", "spawn_koi", {}),
+  );
+});
+
+btnKoiBloom.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiBloom,
+    "flower-lotus",
+    "Lotus blossoms unfurling across the water!",
+    () => api.executeAppAction("koi-pond", "bloom_lotuses", {}),
+  );
+});
+
+btnKoiRain.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiRain,
+    "drop",
+    "Toggled gentle garden rain shower!",
+    () => api.executeAppAction("koi-pond", "toggle_rain", {}),
+  );
+});
+
+btnKoiLanterns.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiLanterns,
+    "sparkle",
+    "Toggled floating tōrō paper lanterns!",
+    () => api.executeAppAction("koi-pond", "toggle_lanterns", {}),
+  );
+});
+
+btnKoiSpout.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiSpout,
+    "leaf",
+    "Shishi-odoshi bamboo spout tipped!",
+    () => api.executeAppAction("koi-pond", "trigger_spout", {}),
+  );
+});
+
+btnKoiTheme.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnKoiTheme,
+    "palette",
+    "Shifted koi pond garden atmosphere!",
+    () => api.executeAppAction("koi-pond", "cycle_theme", {}),
   );
 });
 

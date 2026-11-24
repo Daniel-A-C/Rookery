@@ -277,11 +277,56 @@ pub(crate) fn dispatch_app_action(
                     state.audio.play_sfx(SoundEffect::FeedKoi);
                 }
                 "tap_water" | "pebble" => {
-                    k.add_ripple([500.0, 375.0], 0.7);
+                    k.add_ripple([500.0, 375.0], 1.15);
                     state.audio.play_sfx(SoundEffect::WaterRipple);
+                }
+                "spawn_koi" => {
+                    k.spawn_koi();
+                    state.audio.play_sfx(SoundEffect::WaterRipple);
+                }
+                "bloom_lotuses" => {
+                    k.bloom_all_lotuses();
+                    state.audio.play_sfx(SoundEffect::LotusChime);
+                }
+                "toggle_rain" => {
+                    k.toggle_rain();
+                    state.audio.play_sfx(SoundEffect::WaterRipple);
+                }
+                "toggle_lanterns" => {
+                    k.toggle_lanterns();
+                    state.audio.play_sfx(SoundEffect::LotusChime);
+                }
+                "trigger_spout" => {
+                    k.trigger_bamboo_spout();
+                    state.audio.play_sfx(SoundEffect::BambooClack);
+                }
+                "cycle_theme" | "cycle_palette" => {
+                    k.cycle_theme();
+                    state.audio.play_sfx(SoundEffect::LotusChime);
+                }
+                "set_theme" | "theme" => {
+                    if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                        let parsed_idx = match val {
+                            serde_json::Value::Number(n) => n.as_u64().map(|v| v as u8),
+                            serde_json::Value::String(s) => s
+                                .split(':')
+                                .next()
+                                .and_then(|prefix| prefix.trim().parse::<u8>().ok()),
+                            _ => None,
+                        };
+                        if let Some(idx) = parsed_idx {
+                            k.set_theme(rookery_core::koi::PondTheme::from_u8(idx));
+                            state.audio.play_sfx(SoundEffect::LotusChime);
+                        }
+                    } else {
+                        k.cycle_theme();
+                        state.audio.play_sfx(SoundEffect::LotusChime);
+                    }
                 }
                 other => return Err(format!("Unknown koi action '{other}'")),
             }
+            drop(k);
+            state.with_renderer(|r| r.trigger_action());
         }
         "cosmic-nebula" => {
             let mut n = state
