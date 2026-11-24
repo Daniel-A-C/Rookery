@@ -656,8 +656,18 @@ impl OrbitalHavenState {
 
             // 1. Dwelling at a waypoint: perform room-specific work animation (forks, scanner, coolant, probe)
             if self.agents[idx].dwell_timer > 0.0 {
+                // If BOT-01 rolls close to a dwelling rover, politely cut the dwell short so it moves aside!
+                let walker_close = kind != AgentKind::CargoForklift
+                    && (self.walker.pos[1] - cur_pos[1]).abs() < 1.5
+                    && ((self.walker.pos[0] - cur_pos[0]).powi(2)
+                        + (self.walker.pos[2] - cur_pos[2]).powi(2))
+                        < 2.6 * 2.6;
                 let a = &mut self.agents[idx];
-                a.dwell_timer = (a.dwell_timer - dt).max(0.0);
+                if walker_close {
+                    a.dwell_timer = 0.0;
+                } else {
+                    a.dwell_timer = (a.dwell_timer - dt).max(0.0);
+                }
                 a.yielding = false;
                 match kind {
                     AgentKind::CargoForklift => {
@@ -1017,39 +1027,39 @@ impl OrbitalHavenState {
                 target_deck: ElevatorDeck::Deck3Ops,
                 room: "ELEVATOR -> DECK-3 OPS",
             },
-            // 4. Patrol Ops Command Deck (clean perimeter loop well clear of Central Holotable at (0, 1.0) R=2.3!)
+            // 4. Patrol Ops Command Deck (wide perimeter loop well clear of Central Holotable at (0, 1.0) R=2.3!)
             WalkerLeg::Walk {
-                target: [0.0, D3, -2.0],
+                target: [0.0, D3, -2.2],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
-                target: [-4.8, D3, -1.8],
+                target: [-5.2, D3, -2.0],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
-                target: [-4.6, D3, 4.2],
+                target: [-5.2, D3, 4.8],
                 dwell: 2.4,
                 look_yaw: Some(0.22), // look out +Z armored viewports at ships & space!
                 room: "OPS DECK VIEWPORT",
             },
             WalkerLeg::Walk {
-                target: [4.6, D3, 4.2],
+                target: [5.2, D3, 4.8],
                 dwell: 1.8,
                 look_yaw: Some(-0.25),
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
-                target: [4.8, D3, -1.8],
+                target: [5.2, D3, -2.0],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
-                target: [0.0, D3, -2.0],
+                target: [0.0, D3, -2.2],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "OPS ELEVATOR LOBBY",
@@ -1256,11 +1266,33 @@ impl OrbitalHavenState {
                     && self.walker.pos[0].abs() < 2.4
                     || ((self.walker.pos[1] - D2).abs() < 1.0
                         && (-25.6..=-14.2).contains(&self.walker.pos[2]));
-                let arrive_r = if dwell > 0.0 || in_confined_shaft {
+                let target_occupied = !in_confined_shaft
+                    && self.agents.iter().any(|a| {
+                        a.kind != AgentKind::HullWelder
+                            && (a.pos[1] - target[1]).abs() < 1.5
+                            && ((a.pos[0] - target[0]).powi(2) + (a.pos[2] - target[2]).powi(2))
+                                < 2.1 * 2.1
+                    });
+                let arrive_r = if in_confined_shaft {
                     0.22
+                } else if target_occupied {
+                    2.1
+                } else if dwell > 0.0 {
+                    0.45
                 } else {
-                    0.85
+                    0.95
                 };
+
+                if !waiting_for_pipe && dist > arrive_r {
+                    self.walker.leg_timer += dt;
+                    // Safety net: if BOT-01 is ever wedged on a non-shaft leg > 7.5s, advance cleanly
+                    if !in_confined_shaft && self.walker.leg_timer > 7.5 {
+                        self.walker.leg_timer = 0.0;
+                        self.walker.dwell_timer = 0.0;
+                        self.walker.route_index = (idx + 1) % ROUTE.len();
+                        return;
+                    }
+                }
 
                 if dist > arrive_r {
                     let dir_x = dx / dist;
@@ -1357,6 +1389,7 @@ impl OrbitalHavenState {
                     if self.walker.dwell_timer > 0.0 {
                         self.walker.dwell_timer = (self.walker.dwell_timer - dt).max(0.0);
                     } else {
+                        self.walker.leg_timer = 0.0;
                         self.walker.route_index = (idx + 1) % ROUTE.len();
                     }
                 }

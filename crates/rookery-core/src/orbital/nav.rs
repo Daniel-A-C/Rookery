@@ -173,31 +173,31 @@ pub const NAV_NODES: &[NavNode] = &[
     // --- Ops & Command Spire (Deck 3, 24..=30) ---
     NavNode {
         id: 24,
-        pos: [-4.4, D3, 3.8],
+        pos: [-5.8, D3, 5.2],
         zone: AgentZone::OpsDeck,
         is_pipe_tunnel: false,
     },
     NavNode {
         id: 25,
-        pos: [4.4, D3, 3.8],
+        pos: [5.8, D3, 5.2],
         zone: AgentZone::OpsDeck,
         is_pipe_tunnel: false,
     },
     NavNode {
         id: 26,
-        pos: [-4.8, D3, -0.8],
+        pos: [-6.0, D3, -0.8],
         zone: AgentZone::OpsDeck,
         is_pipe_tunnel: false,
     },
     NavNode {
         id: 27,
-        pos: [4.8, D3, -0.8],
+        pos: [6.0, D3, -0.8],
         zone: AgentZone::OpsDeck,
         is_pipe_tunnel: false,
     },
     NavNode {
         id: 28,
-        pos: [0.0, D3, -2.0],
+        pos: [0.0, D3, -2.6],
         zone: AgentZone::OpsDeck,
         is_pipe_tunnel: false,
     },

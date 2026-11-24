@@ -563,3 +563,52 @@ fn follow_bot_room_tracks_walker_across_all_decks_and_rooms() {
         CameraFeedId::IntSolarBay
     );
 }
+
+#[test]
+fn walker_never_wedges_between_ops_holotable_and_droid() {
+    let mut st = OrbitalHavenState::new(404);
+
+    // Place BOT-01 on Deck 3 (Ops Command Spire) heading toward [-5.2, 12.05, 4.8]
+    st.walker.pos = [-3.6, 12.05, 2.2];
+    st.walker.route_index = 9; // Ops viewport dwell leg at [-5.2, D3, 4.8]
+    st.walker.dwell_timer = 0.0;
+    st.walker.riding_elevator = false;
+    st.elevator.current_y = 12.05;
+    st.elevator.target_deck = ElevatorDeck::Deck3Ops;
+
+    // Place an OpsHoloDroid directly on top of BOT-01's target, dwelling!
+    if let Some(droid) = st
+        .agents
+        .iter_mut()
+        .find(|a| a.kind == AgentKind::OpsHoloDroid)
+    {
+        droid.pos = [-5.2, 12.05, 4.8];
+        droid.nav_node = 24;
+        droid.nav_path.clear();
+        droid.dwell_timer = 4.0;
+    }
+
+    let mut boarded_elevator = false;
+    for step in 0..250 {
+        st.step(0.1);
+        let wp = st.walker.pos;
+        if (wp[1] - 12.05).abs() < 0.5 && !st.walker.riding_elevator {
+            let d_holo = (wp[0] * wp[0] + (wp[2] - 1.0) * (wp[2] - 1.0)).sqrt();
+            assert!(
+                d_holo >= 2.4,
+                "step {step}: BOT-01 clipped Ops Holotable at {:?} (dist={d_holo:.2})",
+                wp
+            );
+        }
+        if st.walker.riding_elevator {
+            boarded_elevator = true;
+            break;
+        }
+    }
+
+    assert!(
+        boarded_elevator,
+        "BOT-01 wedged on Ops Command Deck (final pos {:?}, route_index={})",
+        st.walker.pos, st.walker.route_index
+    );
+}

@@ -740,6 +740,9 @@ pub struct WalkerBotState {
     pub dwell_timer: f32,
     pub riding_elevator: bool,
     pub current_room: String,
+    /// Elapsed seconds on the current walk leg; prevents BOT-01 from ever wedging indefinitely.
+    #[serde(default)]
+    pub leg_timer: f32,
 }
 
 impl Default for WalkerBotState {
@@ -753,6 +756,7 @@ impl Default for WalkerBotState {
             dwell_timer: 1.5,
             riding_elevator: false,
             current_room: "MAIN HANGAR BAY".into(),
+            leg_timer: 0.0,
         }
     }
 }
