@@ -1,33 +1,42 @@
-//! State persistence, migrations, and shareable URI encoding for *Orbital Haven*.
+//! State persistence, v2->v3 migration, and shareable URI encoding for *Orbital Haven v3*.
 
 use std::fs;
 use std::path::Path;
 
 use base64::Engine as _;
+use serde::Deserialize;
 
 use super::OrbitalHavenState;
 use super::types::ORBITAL_HAVEN_STATE_VERSION;
 
+#[derive(Deserialize)]
+struct LegacySeedProbe {
+    seed: u64,
+}
+
 impl OrbitalHavenState {
-    /// Ensure deserialized v1 or partial states have a populated megastructure graph and robotics crew.
+    /// Ensure deserialized v3 state has valid drones, ships, and agents.
     pub fn ensure_migrated(&mut self) {
-        if self.modules.is_empty() {
-            let fresh = Self::new(self.seed);
-            self.modules = fresh.modules;
-            self.robots = fresh.robots;
-            self.asteroids = fresh.asteroids;
-            self.version = ORBITAL_HAVEN_STATE_VERSION;
+        if self.version < ORBITAL_HAVEN_STATE_VERSION
+            || self.drones.is_empty()
+            || self.ships.is_empty()
+        {
+            *self = Self::new(self.seed);
         }
         self.recompute_telemetry();
     }
 
-    /// Load state from disk or initialize a fresh station with `default_seed`.
+    /// Load state from disk or initialize a fresh v3 station with `default_seed`.
+    /// Legacy v1/v2 `orbital_haven.json` files gracefully migrate while preserving `seed`.
     pub fn load_or_init(path: &Path, default_seed: u64) -> Self {
-        if let Ok(bytes) = fs::read(path)
-            && let Ok(mut state) = serde_json::from_slice::<Self>(&bytes)
-        {
-            state.ensure_migrated();
-            return state;
+        if let Ok(bytes) = fs::read(path) {
+            if let Ok(mut state) = serde_json::from_slice::<Self>(&bytes) {
+                state.ensure_migrated();
+                return state;
+            }
+            if let Ok(legacy) = serde_json::from_slice::<LegacySeedProbe>(&bytes) {
+                return Self::new(legacy.seed);
+            }
         }
         Self::new(default_seed)
     }
@@ -64,10 +73,14 @@ impl OrbitalHavenState {
             let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(rest.trim())
                 .map_err(|e| format!("Invalid base64 orbital state: {e}"))?;
-            let mut state: Self =
-                serde_json::from_slice(&bytes).map_err(|e| format!("Invalid orbital JSON: {e}"))?;
-            state.ensure_migrated();
-            return Ok(state);
+            if let Ok(mut state) = serde_json::from_slice::<Self>(&bytes) {
+                state.ensure_migrated();
+                return Ok(state);
+            }
+            if let Ok(legacy) = serde_json::from_slice::<LegacySeedProbe>(&bytes) {
+                return Ok(Self::new(legacy.seed));
+            }
+            return Err("Invalid orbital JSON payload".into());
         }
 
         let seed_hex = if let Some(rest) = trimmed.strip_prefix("rookery://orbital/seed-") {

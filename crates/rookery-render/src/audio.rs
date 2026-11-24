@@ -53,6 +53,8 @@ pub enum SoundEffect {
     ModuleConstruct,
     /// Subspace sensor scan & telemetry ping in Orbital Haven
     OrbitalScan,
+    /// Retro CCTV camera relay click & brief static snap in Orbital Haven
+    CameraSwitch,
     /// Puddle splash in Shinjuku Rain
     RainSplash,
     /// Elevated commuter train pass-by in Shinjuku Rain
@@ -739,6 +741,27 @@ fn generate_sfx_uncached(sfx: SoundEffect) -> Vec<f32> {
             }
             out
         }
+        SoundEffect::CameraSwitch => {
+            // Crisp Y2K CCTV relay click + brief static burst (0.14s)
+            let len = (0.14 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut lcg: u32 = 98765;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let noise = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                let click = (2.0 * PI * 1950.0 * t).sin() * (-95.0 * t).exp();
+                let static_env = (-24.0 * t).exp() * 0.22;
+                let beep = if t > 0.03 {
+                    let dt = t - 0.03;
+                    (2.0 * PI * 1046.5 * dt).sin() * (-40.0 * dt).exp() * 0.18
+                } else {
+                    0.0
+                };
+                *sample = ((click * 0.45 + noise * static_env + beep) * 0.55).clamp(-0.95, 0.95);
+            }
+            out
+        }
         SoundEffect::RainSplash => {
             let len = (0.18 * SAMPLE_RATE as f64) as usize;
             let mut out = vec![0.0f32; len];
@@ -852,6 +875,7 @@ mod tests {
             SoundEffect::ShuttleLaunch,
             SoundEffect::ModuleConstruct,
             SoundEffect::OrbitalScan,
+            SoundEffect::CameraSwitch,
             SoundEffect::RainSplash,
             SoundEffect::TrainPass,
             SoundEffect::ThunderRumble,

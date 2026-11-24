@@ -1,6 +1,6 @@
 //! Per-app action and control dispatch for built-in and external Rookery apps.
 
-use rookery_core::orbital::{ConstructionFocus, STATION_CENTER};
+use rookery_core::orbital::CameraFeedId;
 use rookery_render::SoundEffect;
 use tauri::AppHandle;
 
@@ -461,54 +461,48 @@ pub(crate) fn dispatch_app_action(
                 .lock()
                 .map_err(|_| "lock poisoned")?;
             match action {
-                "overdrive_drones" | "add_module" => {
-                    o.overdrive_drones();
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
+                "cycle_camera" | "overdrive_drones" | "add_module" => {
+                    o.cycle_camera();
+                    state.audio.play_sfx(SoundEffect::CameraSwitch);
                 }
-                "launch_shuttle" => {
-                    o.launch_shuttle();
+                "cycle_layout" | "cycle_focus" => {
+                    o.cycle_layout();
+                    state.audio.play_sfx(SoundEffect::CameraSwitch);
+                }
+                "toggle_director" => {
+                    o.toggle_auto_director();
+                    state.audio.play_sfx(SoundEffect::OrbitalScan);
+                }
+                "dispatch_ship" | "launch_shuttle" => {
+                    o.dispatch_ship();
                     state.audio.play_sfx(SoundEffect::ShuttleLaunch);
                 }
-                "cycle_focus" => {
-                    o.cycle_focus();
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "focus_auto" => {
-                    o.set_focus(ConstructionFocus::AutoBalance);
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "focus_solar" => {
-                    o.set_focus(ConstructionFocus::SolarPower);
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "focus_habitat" => {
-                    o.set_focus(ConstructionFocus::HabitatRing);
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "focus_shipyard" => {
-                    o.set_focus(ConstructionFocus::ShipyardBiodome);
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "focus_comms" => {
-                    o.set_focus(ConstructionFocus::CommsGrid);
-                    state.audio.play_sfx(SoundEffect::ModuleConstruct);
-                }
-                "cycle_planet" => {
-                    o.cycle_planet_biome();
+                "cycle_palette" | "cycle_planet" => {
+                    o.cycle_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
-                "scan_pulse" => {
-                    o.trigger_scan_pulse(STATION_CENTER);
+                "trigger_event" | "scan_pulse" => {
+                    o.trigger_station_event();
                     state.audio.play_sfx(SoundEffect::OrbitalScan);
                 }
                 "toggle_hud" => {
                     o.toggle_hud();
-                    state.audio.play_sfx(SoundEffect::OrbitalScan);
+                    state.audio.play_sfx(SoundEffect::CameraSwitch);
                 }
-                other => return Err(format!("Unknown orbital action '{other}'")),
+                other => {
+                    if let Some(slug) = other.strip_prefix("select_camera:")
+                        && let Some(feed) = CameraFeedId::from_slug(slug)
+                    {
+                        o.select_feed(feed);
+                        state.audio.play_sfx(SoundEffect::CameraSwitch);
+                    } else {
+                        return Err(format!("Unknown orbital action '{other}'"));
+                    }
+                }
             }
             drop(o);
             state.mark_orbital_dirty();
+            state.with_renderer(|r| r.trigger_action());
         }
         "shinjuku-rain" => {
             let mut s = state

@@ -1,0 +1,85 @@
+//! Curated Y2K immersive-sim color & lighting palettes for *Orbital Haven v3*.
+
+use rookery_core::orbital::OrbitalPalette;
+
+#[derive(Clone, Copy, Debug)]
+pub struct OrbitalTheme {
+    pub space_clear: [f64; 4],
+    pub ambient: [f32; 3],
+    pub fog_color: [f32; 3],
+    pub hull_tint: [f32; 4],
+    pub rib_tint: [f32; 4],
+    pub corridor_tint: [f32; 4],
+    pub accent_primary: [f32; 3],
+    pub accent_secondary: [f32; 3],
+    pub hud_primary: [f32; 4],
+    pub hud_secondary: [f32; 4],
+    pub planet_north: [f32; 4],
+    pub planet_equator: [f32; 4],
+    pub forcefield_tint: [f32; 4],
+}
+
+pub fn palette_theme(palette: OrbitalPalette) -> OrbitalTheme {
+    match palette {
+        OrbitalPalette::UnatcoCobalt => OrbitalTheme {
+            space_clear: [0.014, 0.022, 0.042, 1.0],
+            ambient: [0.18, 0.24, 0.34],
+            fog_color: [0.04, 0.07, 0.12],
+            hull_tint: [0.80, 0.87, 0.96, 1.0],
+            rib_tint: [0.64, 0.72, 0.82, 1.0],
+            corridor_tint: [0.76, 0.86, 0.94, 1.0],
+            accent_primary: [0.22, 0.88, 1.0],
+            accent_secondary: [1.0, 0.66, 0.22],
+            hud_primary: [0.35, 0.94, 1.0, 0.92],
+            hud_secondary: [1.0, 0.74, 0.28, 0.88],
+            planet_north: [0.16, 0.34, 0.58, 1.0],
+            planet_equator: [0.10, 0.24, 0.44, 1.0],
+            forcefield_tint: [0.28, 0.88, 1.0, 0.42],
+        },
+        OrbitalPalette::VonBraunIndustrial => OrbitalTheme {
+            space_clear: [0.016, 0.024, 0.020, 1.0],
+            ambient: [0.20, 0.26, 0.21],
+            fog_color: [0.04, 0.08, 0.06],
+            hull_tint: [0.78, 0.84, 0.74, 1.0],
+            rib_tint: [0.66, 0.60, 0.54, 1.0],
+            corridor_tint: [0.74, 0.84, 0.72, 1.0],
+            accent_primary: [0.36, 0.95, 0.48],
+            accent_secondary: [0.96, 0.42, 0.20],
+            hud_primary: [0.46, 0.98, 0.56, 0.92],
+            hud_secondary: [0.98, 0.46, 0.26, 0.88],
+            planet_north: [0.24, 0.38, 0.30, 1.0],
+            planet_equator: [0.36, 0.28, 0.20, 1.0],
+            forcefield_tint: [0.34, 0.92, 0.58, 0.40],
+        },
+        OrbitalPalette::VersaLifeGold => OrbitalTheme {
+            space_clear: [0.020, 0.016, 0.012, 1.0],
+            ambient: [0.24, 0.20, 0.15],
+            fog_color: [0.07, 0.05, 0.03],
+            hull_tint: [0.84, 0.80, 0.74, 1.0],
+            rib_tint: [0.58, 0.54, 0.48, 1.0],
+            corridor_tint: [0.86, 0.80, 0.70, 1.0],
+            accent_primary: [1.0, 0.74, 0.22],
+            accent_secondary: [0.28, 0.82, 0.92],
+            hud_primary: [1.0, 0.78, 0.28, 0.94],
+            hud_secondary: [0.92, 0.94, 0.98, 0.82],
+            planet_north: [0.44, 0.32, 0.18, 1.0],
+            planet_equator: [0.26, 0.18, 0.12, 1.0],
+            forcefield_tint: [1.0, 0.74, 0.26, 0.38],
+        },
+        OrbitalPalette::ShodanCyber => OrbitalTheme {
+            space_clear: [0.008, 0.018, 0.014, 1.0],
+            ambient: [0.14, 0.26, 0.20],
+            fog_color: [0.02, 0.07, 0.05],
+            hull_tint: [0.68, 0.82, 0.76, 1.0],
+            rib_tint: [0.46, 0.56, 0.54, 1.0],
+            corridor_tint: [0.64, 0.86, 0.74, 1.0],
+            accent_primary: [0.18, 1.0, 0.64],
+            accent_secondary: [0.96, 0.24, 0.58],
+            hud_primary: [0.22, 1.0, 0.68, 0.95],
+            hud_secondary: [0.98, 0.32, 0.64, 0.90],
+            planet_north: [0.10, 0.38, 0.28, 1.0],
+            planet_equator: [0.18, 0.14, 0.34, 1.0],
+            forcefield_tint: [0.20, 1.0, 0.66, 0.42],
+        },
+    }
+}

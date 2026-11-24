@@ -1,11 +1,10 @@
-//! Orbital Haven v2.0 Simulation State (Slow-Burn Sci-Fi Megastructure & Ecosystem).
+//! Orbital Haven v3 Simulation State (Station HELIOS-09).
 //!
-//! A procedural deep-space orbital citadel assembling an axial spine, counter-rotating
-//! centrifugal habitat rings, tracking solar wings, thermal radiators, geodesic biodomes,
-//! and orbital drydocks over real time. Serviced by 4 classes of autonomous robotics
-//! and a 6-class spacecraft fleet against a 3D planetary horizon.
+//! An always-operational, living 3D orbital station styled after late-90s / Y2K
+//! immersive sims (Deus Ex / System Shock 2), observed through a multi-camera
+//! CCTV and live spacecraft uplink network.
 
-use std::f32::consts::TAU;
+use std::f32::consts::PI;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +19,25 @@ mod tests;
 
 pub use types::*;
 
-/// Deterministic state of Orbital Haven v2.0.
+/// Unified 3D world coordinate anchors for Station HELIOS-09 (right-handed Y-up).
+pub const STATION_ORIGIN: [f32; 3] = [0.0, 0.0, 0.0];
+
+/// Main Hangar Bay interior landing pad (Pad A), inside the forward hull (`Z = +12..+42`).
+pub const PAD_A_POS: [f32; 3] = [0.0, -3.2, 26.0];
+/// Approach gate just outside the Hangar Bay atmospheric containment forcefield (`Z = +42`).
+pub const PAD_A_GATE: [f32; 3] = [0.0, 1.4, 58.0];
+
+/// External cantilevered Port Freight Deck (Pad B).
+pub const PAD_B_POS: [f32; 3] = [-38.0, -1.2, 0.0];
+/// Hover alignment gate above Port Pad B.
+pub const PAD_B_GATE: [f32; 3] = [-38.0, 16.0, 18.0];
+
+/// External cantilevered Starboard Utility Deck (Pad C).
+pub const PAD_C_POS: [f32; 3] = [38.0, -1.2, 0.0];
+/// Hover alignment gate above Starboard Pad C.
+pub const PAD_C_GATE: [f32; 3] = [38.0, 16.0, 18.0];
+
+/// Deterministic 3D simulation state for *Orbital Haven v3*.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrbitalHavenState {
     pub version: u32,
@@ -29,310 +46,276 @@ pub struct OrbitalHavenState {
     pub total_age_secs: f64,
     #[serde(default)]
     pub total_offline_caught_up_secs: f64,
+    /// Continuous orbital phase driving planetary terminator & eclipse timing.
     pub orbit_angle: f32,
-    pub ring_rotation: f32,
-    #[serde(default)]
-    pub outer_ring_rotation: f32,
-    #[serde(default)]
-    pub planet_biome: PlanetBiome,
-    #[serde(default)]
-    pub epoch: StationEpoch,
-    pub focus: ConstructionFocus,
-    /// Progress `[0.0, 1.0]` of the currently assembling module.
-    pub construction_progress: f32,
-    pub solar_wings: u32,
-    pub habitat_sectors: u32,
-    #[serde(default)]
-    pub outer_ring_sectors: u32,
-    pub comm_arrays: u32,
-    #[serde(default)]
-    pub biodomes: u32,
-    #[serde(default)]
-    pub drydocks: u32,
-    #[serde(default)]
-    pub radiators: u32,
-    #[serde(default)]
-    pub spine_segments: u32,
-    #[serde(default)]
-    pub modules: Vec<StationModule>,
-    #[serde(default)]
-    pub robots: Vec<RobotAgent>,
-    pub shuttles: Vec<Shuttle>,
-    #[serde(default)]
-    pub asteroids: Vec<OrbitalAsteroid>,
-    #[serde(default)]
-    pub sparks: Vec<SparkParticle>,
-    #[serde(default)]
-    pub scan_pulse: ScanPulse,
-    #[serde(default = "default_true")]
+    /// Rotating central counterweight habitation ring angle (radians).
+    pub hab_ring_angle: f32,
+    /// Dorsal radar dish rotation angle (radians).
+    pub radar_angle: f32,
+    /// Active Y2K visual color & lighting palette.
+    pub palette: OrbitalPalette,
+    /// Active station lighting/operational event.
+    pub event: StationEventKind,
+    /// Countdown timer for the current station event before cycling naturally.
+    pub event_timer: f32,
+    /// Whether the diegetic CCTV HUD text overlay is enabled.
     pub hud_enabled: bool,
-    #[serde(default)]
-    pub camera_offset: [f32; 2],
+    /// Multi-camera surveillance rig, layout mode, and auto-director.
+    pub camera_rig: CameraRigState,
+    /// Physical 3D camera drones orbiting the station.
+    pub drones: Vec<CameraDrone>,
+    /// Active 3D spacecraft fleet in the sector.
+    pub ships: Vec<Spacecraft>,
+    /// Autonomous bots and crew operating inside interiors and on landing pads.
+    pub agents: Vec<StationAgent>,
+    /// Monotonic entity ID counter.
     pub next_id: u32,
+    /// Cached operational telemetry.
     pub stats: OrbitalHavenStats,
 }
-
-fn default_true() -> bool {
-    true
-}
-
-/// Station center in normalized `[0..1000, 0..750]` world coordinates.
-pub const STATION_CENTER: [f32; 2] = [500.0, 355.0];
 
 impl OrbitalHavenState {
     pub fn new(seed: u64) -> Self {
         let mut rng = WorldRng::new(seed);
         let mut next_id = 1u32;
 
-        // Build the full blueprint node graph (66 total modular slots across the megastructure).
-        let mut modules = Vec::with_capacity(68);
-        let mut push_mod = |kind: ModuleKind, slot: u32, pos: [f32; 2], built: bool| {
+        // 1. Two physical orbiting 3D camera drones (visible from other feeds & windows!)
+        let drones = vec![
+            CameraDrone {
+                id: next_id,
+                feed: CameraFeedId::DroneAlphaWide,
+                label: "DRONE-ALPHA".into(),
+                pos: [58.0, 26.0, 58.0],
+                look_target: [0.0, 3.0, 8.0],
+                orbit_angle: 0.72,
+                orbit_radius: 82.0,
+                orbit_speed: 0.055,
+                height_base: 26.0,
+                height_amp: 9.0,
+            },
+            CameraDrone {
+                id: next_id + 1,
+                feed: CameraFeedId::DroneBetaPatrol,
+                label: "DRONE-BETA".into(),
+                pos: [-34.0, 8.0, 36.0],
+                look_target: [0.0, 1.0, 16.0],
+                orbit_angle: 2.35,
+                orbit_radius: 50.0,
+                orbit_speed: -0.095,
+                height_base: 6.0,
+                height_amp: 11.0,
+            },
+        ];
+        next_id += 2;
+
+        // 2. Initial bustling spacecraft fleet across different flight phases
+        let ships = vec![
+            // Corporate Shuttle on final approach right into Hangar Pad A (immediate Ship Nose-Cam action!)
+            Spacecraft {
+                id: next_id,
+                class: ShipClass::CorporateShuttle,
+                callsign: "USV-ICARUS".into(),
+                assigned_pad: LandingPadId::PadAHangar,
+                phase: ShipFlightPhase::FinalDescent,
+                pos: [0.0, 0.8, 52.0],
+                vel: [0.0, -0.3, -2.5],
+                forward: [0.0, -0.1, -1.0],
+                up: [0.0, 1.0, 0.0],
+                leg_start: PAD_A_GATE,
+                leg_end: PAD_A_POS,
+                leg_progress: 0.18,
+                leg_duration: 15.0,
+                gear_deploy: 0.3,
+                thruster_power: 0.75,
+                patrol_angle: 0.0,
+                patrol_radius: 0.0,
+            },
+            // Heavy Bulk Freighter docked on Port Pad B being serviced by cargo loaders
+            Spacecraft {
+                id: next_id + 1,
+                class: ShipClass::BulkFreighter,
+                callsign: "TRN-VONBRAUN".into(),
+                assigned_pad: LandingPadId::PadBPort,
+                phase: ShipFlightPhase::Docked,
+                pos: PAD_B_POS,
+                vel: [0.0, 0.0, 0.0],
+                forward: [0.0, 0.0, 1.0],
+                up: [0.0, 1.0, 0.0],
+                leg_start: PAD_B_POS,
+                leg_end: PAD_B_POS,
+                leg_progress: 0.35,
+                leg_duration: 24.0,
+                gear_deploy: 1.0,
+                thruster_power: 0.08,
+                patrol_angle: 0.0,
+                patrol_radius: 0.0,
+            },
+            // Maintenance Tug inbound toward Starboard Pad C
+            Spacecraft {
+                id: next_id + 2,
+                class: ShipClass::MaintenanceTug,
+                callsign: "TUG-VERSA-4".into(),
+                assigned_pad: LandingPadId::PadCStarboard,
+                phase: ShipFlightPhase::InboundApproach,
+                pos: [82.0, 28.0, 68.0],
+                vel: [-2.0, -0.6, -2.2],
+                forward: [-0.65, -0.2, -0.73],
+                up: [0.0, 1.0, 0.0],
+                leg_start: [96.0, 32.0, 84.0],
+                leg_end: PAD_C_GATE,
+                leg_progress: 0.25,
+                leg_duration: 18.0,
+                gear_deploy: 0.0,
+                thruster_power: 0.9,
+                patrol_angle: 0.0,
+                patrol_radius: 0.0,
+            },
+            // Swept-wing Patrol Cutter sweeping around the station perimeter
+            Spacecraft {
+                id: next_id + 3,
+                class: ShipClass::PatrolCutter,
+                callsign: "SEC-DAEDALUS".into(),
+                assigned_pad: LandingPadId::PadCStarboard,
+                phase: ShipFlightPhase::PerimeterPatrol,
+                pos: [64.0, -6.0, 0.0],
+                vel: [0.0, 0.0, 6.0],
+                forward: [0.0, 0.0, 1.0],
+                up: [0.0, 1.0, 0.0],
+                leg_start: [0.0, 0.0, 0.0],
+                leg_end: [0.0, 0.0, 0.0],
+                leg_progress: 0.0,
+                leg_duration: 1.0,
+                gear_deploy: 0.0,
+                thruster_power: 0.65,
+                patrol_angle: 0.4,
+                patrol_radius: 64.0,
+            },
+        ];
+        let initial_uplink_id = ships[0].id;
+        next_id += 4;
+
+        // 3. Autonomous bots & interior crew bringing docks and rooms to life
+        let mut agents = Vec::new();
+        let mut push_agent = |kind: AgentKind,
+                              zone: AgentZone,
+                              pos: [f32; 3],
+                              patrol_t: f32,
+                              speed: f32,
+                              direction: f32| {
             let id = next_id;
             next_id += 1;
-            modules.push(StationModule {
+            agents.push(StationAgent {
                 id,
                 kind,
-                slot_index: slot,
-                anchor_pos: pos,
-                build_progress: if built { 1.0 } else { 0.0 },
-                tier: 1,
+                zone,
+                pos,
+                yaw: 0.0,
+                patrol_t,
+                speed,
+                direction,
+                phase: rng.range(0.0, PI * 2.0),
             });
         };
 
-        // 1. Axial Spine Segments (8 segments: 4 upper, 4 lower around central core)
-        for i in 0..8u32 {
-            let side = if i % 2 == 0 { -1.0 } else { 1.0 };
-            let step = (i / 2 + 1) as f32;
-            let y = STATION_CENTER[1] + side * step * 34.0;
-            // Start with 2 inner spine segments built
-            push_mod(ModuleKind::SpineTruss, i, [STATION_CENTER[0], y], i < 2);
-        }
+        // Hangar Bay cargo loader bots (2)
+        push_agent(
+            AgentKind::CargoLoader,
+            AgentZone::HangarBay,
+            [-7.5, -3.5, 22.0],
+            0.25,
+            0.14,
+            1.0,
+        );
+        push_agent(
+            AgentKind::CargoLoader,
+            AgentZone::HangarBay,
+            [7.5, -3.5, 31.0],
+            0.70,
+            0.12,
+            -1.0,
+        );
+        // External Pad B & Pad C cargo loaders
+        push_agent(
+            AgentKind::CargoLoader,
+            AgentZone::PadBPort,
+            [-33.0, -1.5, 5.5],
+            0.4,
+            0.16,
+            1.0,
+        );
+        push_agent(
+            AgentKind::CargoLoader,
+            AgentZone::PadCStarboard,
+            [33.0, -1.5, -5.0],
+            0.6,
+            0.15,
+            -1.0,
+        );
+        // Ops Command Deck crew & floating monitor droid
+        push_agent(
+            AgentKind::OpsCrew,
+            AgentZone::OpsDeck,
+            [4.8, 12.0, 3.2],
+            0.15,
+            0.09,
+            1.0,
+        );
+        push_agent(
+            AgentKind::OpsCrew,
+            AgentZone::OpsDeck,
+            [-4.8, 12.0, -2.5],
+            0.62,
+            0.08,
+            -1.0,
+        );
+        // Concourse Corridor security droids & crew
+        push_agent(
+            AgentKind::SecurityDroid,
+            AgentZone::Concourse,
+            [-8.0, -14.8, 5.4],
+            0.22,
+            0.11,
+            1.0,
+        );
+        push_agent(
+            AgentKind::OpsCrew,
+            AgentZone::Concourse,
+            [6.0, -14.8, -5.2],
+            0.78,
+            0.09,
+            -1.0,
+        );
+        // Reactor Catwalk security droid
+        push_agent(
+            AgentKind::SecurityDroid,
+            AgentZone::ReactorCatwalk,
+            [5.8, -14.8, 0.0],
+            0.3,
+            0.14,
+            1.0,
+        );
+        // Exterior truss welder drones (2)
+        push_agent(
+            AgentKind::HullWelder,
+            AgentZone::ExteriorTruss,
+            [-22.0, 5.0, 12.0],
+            0.1,
+            0.12,
+            1.0,
+        );
+        push_agent(
+            AgentKind::HullWelder,
+            AgentZone::ExteriorTruss,
+            [22.0, -4.0, -12.0],
+            0.55,
+            0.11,
+            -1.0,
+        );
 
-        // 2. Inner Centrifugal Habitat Ring (12 sectors)
-        for i in 0..12u32 {
-            let angle = (i as f32 / 12.0) * TAU;
-            let x = STATION_CENTER[0] + angle.cos() * 94.0;
-            let y = STATION_CENTER[1] + angle.sin() * 94.0 * 0.43;
-            // Start with 4 initial sectors spaced evenly around the wheel
-            push_mod(ModuleKind::HabitatRingSector, i, [x, y], i % 3 == 0);
-        }
-
-        // 3. Solar Collector Array Wings (12 wings: 6 port, 6 starboard along main truss)
-        for i in 0..12u32 {
-            let side = if i % 2 == 0 { 1.0 } else { -1.0 };
-            let col = (i / 2) as f32;
-            let x = STATION_CENTER[0] + side * (118.0 + col * 38.0);
-            let y = STATION_CENTER[1];
-            // Start with 4 solar wings built
-            push_mod(ModuleKind::SolarArrayWing, i, [x, y], i < 4);
-        }
-
-        // 4. Thermal Dissipation Radiators (6 arrays mounted on upper/lower spine)
-        for i in 0..6u32 {
-            let side_x = if i % 2 == 0 { 1.0 } else { -1.0 };
-            let row = (i / 2) as f32;
-            let x = STATION_CENTER[0] + side_x * 46.0;
-            let y = STATION_CENTER[1]
-                + (if row == 0.0 {
-                    -52.0
-                } else if row == 1.0 {
-                    52.0
-                } else {
-                    -86.0
-                });
-            push_mod(ModuleKind::ThermalRadiator, i, [x, y], i < 1);
-        }
-
-        // 5. Subspace Comms & Gravimetric Sensor Arrays (6 spires at dorsal/ventral crown)
-        for i in 0..6u32 {
-            let spread = (i as f32 - 2.5) * 22.0;
-            let x = STATION_CENTER[0] + spread;
-            let y = STATION_CENTER[1] - 142.0 - (i % 2) as f32 * 16.0;
-            push_mod(ModuleKind::CommsSensorArray, i, [x, y], i < 1);
-        }
-
-        // 6. Geodesic Hydroponic Biodomes (4 domes on diagonal trusses)
-        let dome_offsets = [
-            [-115.0, -56.0],
-            [115.0, -56.0],
-            [-115.0, 56.0],
-            [115.0, 56.0],
-        ];
-        for (i, off) in dome_offsets.iter().enumerate() {
-            push_mod(
-                ModuleKind::HydroponicBiodome,
-                i as u32,
-                [STATION_CENTER[0] + off[0], STATION_CENTER[1] + off[1]],
-                i == 0,
-            );
-        }
-
-        // 7. Orbital Drydock Slipways (2 heavy gantries below/above outer truss)
-        let dock_offsets = [[-175.0, 48.0], [175.0, 48.0]];
-        for (i, off) in dock_offsets.iter().enumerate() {
-            push_mod(
-                ModuleKind::OrbitalDrydock,
-                i as u32,
-                [STATION_CENTER[0] + off[0], STATION_CENTER[1] + off[1]],
-                false,
-            );
-        }
-
-        // 8. Outer Counter-Rotating Habitat Ring (16 sectors)
-        for i in 0..16u32 {
-            let angle = (i as f32 / 16.0) * TAU;
-            let x = STATION_CENTER[0] + angle.cos() * 148.0;
-            let y = STATION_CENTER[1] + angle.sin() * 148.0 * 0.43;
-            push_mod(ModuleKind::OuterRingSector, i, [x, y], false);
-        }
-
-        // Seed initial construction progress on the first unbuilt SolarArrayWing
-        if let Some(m) = modules
-            .iter_mut()
-            .find(|m| !m.is_complete() && m.kind == ModuleKind::SolarArrayWing)
-        {
-            m.build_progress = 0.35;
-        }
-
-        // Spawn initial autonomous robot crew (Welders, Spine Crawlers, Cargo Tugs, Micro-Sats)
-        let mut robots = Vec::new();
-        for i in 0..3 {
-            robots.push(RobotAgent {
-                id: next_id,
-                kind: RobotKind::WelderDrone,
-                pos: [
-                    STATION_CENTER[0] + rng.range(-80.0, 80.0),
-                    STATION_CENTER[1] + rng.range(-40.0, 40.0),
-                ],
-                vel: [0.0, 0.0],
-                task: RobotTask::Welding {
-                    module_id: 5,
-                    orbit_phase: i as f32 * 2.1,
-                },
-                phase: i as f32 * 1.7,
-                boost_timer: 0.0,
-            });
-            next_id += 1;
-        }
-        for i in 0..2 {
-            robots.push(RobotAgent {
-                id: next_id,
-                kind: RobotKind::SpiderCrawler,
-                pos: [
-                    STATION_CENTER[0],
-                    STATION_CENTER[1] + (i as f32 - 0.5) * 60.0,
-                ],
-                vel: [0.0, 0.0],
-                task: RobotTask::CrawlingSpine {
-                    t: if i == 0 { -0.4 } else { 0.4 },
-                    dir: if i == 0 { 1.0 } else { -1.0 },
-                },
-                phase: i as f32 * std::f32::consts::PI,
-                boost_timer: 0.0,
-            });
-            next_id += 1;
-        }
-        robots.push(RobotAgent {
-            id: next_id,
-            kind: RobotKind::CargoTug,
-            pos: [STATION_CENTER[0] - 40.0, STATION_CENTER[1] + 20.0],
-            vel: [0.0, 0.0],
-            task: RobotTask::HaulingCargo {
-                from: STATION_CENTER,
-                to: [STATION_CENTER[0] + 140.0, STATION_CENTER[1]],
-                progress: 0.2,
-            },
-            phase: 0.0,
-            boost_timer: 0.0,
-        });
-        next_id += 1;
-
-        for i in 0..2 {
-            robots.push(RobotAgent {
-                id: next_id,
-                kind: RobotKind::DefenseMicroSat,
-                pos: [STATION_CENTER[0] + 220.0, STATION_CENTER[1]],
-                vel: [0.0, 0.0],
-                task: RobotTask::PerimeterOrbit {
-                    angle: i as f32 * std::f32::consts::PI,
-                    radius_x: 245.0 + i as f32 * 30.0,
-                    radius_y: 92.0 + i as f32 * 14.0,
-                    speed: if i % 2 == 0 { 0.22 } else { -0.18 },
-                },
-                phase: i as f32 * 1.5,
-                boost_timer: 0.0,
-            });
-            next_id += 1;
-        }
-
-        // Spawn initial orbital asteroids in the upper/lateral resource belt
-        let mut asteroids = Vec::new();
-        let ast_coords = [
-            ([165.0, 125.0], [6.5, 0.8], 18.0, 1u8),
-            ([825.0, 145.0], [-5.5, -0.6], 22.0, 2u8),
-            ([310.0, 88.0], [4.2, 0.3], 14.0, 0u8),
-            ([710.0, 95.0], [-4.8, 0.5], 16.0, 1u8),
-        ];
-        for (pos, vel, radius, richness) in ast_coords {
-            asteroids.push(OrbitalAsteroid {
-                id: next_id,
-                pos,
-                vel,
-                radius,
-                rotation: rng.range(0.0, TAU),
-                rot_speed: rng.range(-0.35, 0.35),
-                ore_remaining: 100.0,
-                max_ore: 100.0,
-                richness,
-            });
-            next_id += 1;
-        }
-        let first_asteroid_id = asteroids[0].id;
-
-        // Spawn initial spacecraft fleet (1 approaching BulkFreighter, 1 active MiningSkiff, 1 PatrolInterceptor)
-        let shuttles = vec![
-            Shuttle {
-                id: next_id,
-                class: ShipClass::BulkFreighter,
-                callsign: "CSV-TITAN".into(),
-                pos: [140.0, 510.0],
-                vel: [24.0, -11.0],
-                target_dock: [STATION_CENTER[0] - 24.0, STATION_CENTER[1] + 42.0],
-                state: ShuttleState::Approaching,
-                docking_timer: 0.0,
-                cargo_tons: 45.0,
-            },
-            Shuttle {
-                id: next_id + 1,
-                class: ShipClass::MiningSkiff,
-                callsign: "RIG-04".into(),
-                pos: [220.0, 185.0],
-                vel: [-12.0, -14.0],
-                target_dock: [STATION_CENTER[0] + 24.0, STATION_CENTER[1] - 42.0],
-                state: ShuttleState::MiningAsteroid {
-                    asteroid_id: first_asteroid_id,
-                    timer: 9.0,
-                },
-                docking_timer: 0.0,
-                cargo_tons: 15.0,
-            },
-            Shuttle {
-                id: next_id + 2,
-                class: ShipClass::PatrolInterceptor,
-                callsign: "VIPER-1".into(),
-                pos: [STATION_CENTER[0] + 190.0, STATION_CENTER[1] - 40.0],
-                vel: [0.0, 20.0],
-                target_dock: STATION_CENTER,
-                state: ShuttleState::Patrolling {
-                    angle: 0.4,
-                    radius: 210.0,
-                    timer: 25.0,
-                },
-                docking_timer: 0.0,
-                cargo_tons: 0.0,
-            },
-        ];
-        next_id += 10;
+        let camera_rig = CameraRigState {
+            uplink_ship_id: Some(initial_uplink_id),
+            ..Default::default()
+        };
 
         let mut state = Self {
             version: ORBITAL_HAVEN_STATE_VERSION,
@@ -340,35 +323,19 @@ impl OrbitalHavenState {
             rng,
             total_age_secs: 0.0,
             total_offline_caught_up_secs: 0.0,
-            orbit_angle: 0.35,
-            ring_rotation: 0.0,
-            outer_ring_rotation: 0.0,
-            planet_biome: PlanetBiome::TerranCradle,
-            epoch: StationEpoch::TetheredCore,
-            focus: ConstructionFocus::AutoBalance,
-            construction_progress: 0.35,
-            solar_wings: 4,
-            habitat_sectors: 4,
-            outer_ring_sectors: 0,
-            comm_arrays: 1,
-            biodomes: 1,
-            drydocks: 0,
-            radiators: 1,
-            spine_segments: 2,
-            modules,
-            robots,
-            shuttles,
-            asteroids,
-            sparks: Vec::new(),
-            scan_pulse: ScanPulse::default(),
+            orbit_angle: 0.42,
+            hab_ring_angle: 0.0,
+            radar_angle: 0.0,
+            palette: OrbitalPalette::UnatcoCobalt,
+            event: StationEventKind::DockingOps,
+            event_timer: 45.0,
             hud_enabled: true,
-            camera_offset: [0.0, 0.0],
+            camera_rig,
+            drones,
+            ships,
+            agents,
             next_id,
-            stats: OrbitalHavenStats {
-                alloy_stockpile: 120.0,
-                science_telemetry: 45.0,
-                ..Default::default()
-            },
+            stats: OrbitalHavenStats::default(),
         };
         state.recompute_telemetry();
         state

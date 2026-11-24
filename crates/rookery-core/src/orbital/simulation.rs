@@ -1,792 +1,690 @@
-//! Simulation stepping, construction, robotics, fleet dispatch, and telemetry for *Orbital Haven*.
+//! Real-time 3D simulation step, ATC flight trajectories, autonomous agents,
+//! and multi-camera director logic for *Orbital Haven v3*.
 
 use std::f32::consts::TAU;
 
-use crate::Activity;
-
 use super::types::*;
-use super::{OrbitalHavenState, STATION_CENTER};
+use super::{
+    OrbitalHavenState, PAD_A_GATE, PAD_A_POS, PAD_B_GATE, PAD_B_POS, PAD_C_GATE, PAD_C_POS,
+};
+
+const DIRECTOR_INTERVAL_SECS: f32 = 24.0;
+const STATIC_GLITCH_DURATION: f32 = 0.18;
+
+const CALLSIGN_PREFIXES: [&str; 6] = ["USV", "TRN", "SEC", "TUG", "CORP", "VBN"];
+const CALLSIGN_NAMES: [&str; 10] = [
+    "ICARUS",
+    "DAEDALUS",
+    "VONBRAUN",
+    "HELIOS",
+    "VERSA-4",
+    "UNATCO-7",
+    "CITADEL",
+    "SHODAN",
+    "MANDERLEY",
+    "PAGE-9",
+];
+
+fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
+}
+
+fn sub3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn len3(v: [f32; 3]) -> f32 {
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
+}
+
+fn norm3(v: [f32; 3], fallback: [f32; 3]) -> [f32; 3] {
+    let l = len3(v);
+    if l > 1e-4 {
+        [v[0] / l, v[1] / l, v[2] / l]
+    } else {
+        fallback
+    }
+}
+
+fn smoothstep(t: f32) -> f32 {
+    let c = t.clamp(0.0, 1.0);
+    c * c * (3.0 - 2.0 * c)
+}
+
+pub fn pad_touchdown_pos(pad: LandingPadId) -> [f32; 3] {
+    match pad {
+        LandingPadId::PadAHangar => PAD_A_POS,
+        LandingPadId::PadBPort => PAD_B_POS,
+        LandingPadId::PadCStarboard => PAD_C_POS,
+    }
+}
+
+pub fn pad_gate_pos(pad: LandingPadId) -> [f32; 3] {
+    match pad {
+        LandingPadId::PadAHangar => PAD_A_GATE,
+        LandingPadId::PadBPort => PAD_B_GATE,
+        LandingPadId::PadCStarboard => PAD_C_GATE,
+    }
+}
 
 impl OrbitalHavenState {
-    /// Recompute aggregate counts, power balance, crew population, and station epoch.
-    pub fn recompute_telemetry(&mut self) {
-        let mut spine = 0u32;
-        let mut inner_hab = 0u32;
-        let mut outer_hab = 0u32;
-        let mut solar = 0u32;
-        let mut rads = 0u32;
-        let mut comms = 0u32;
-        let mut domes = 0u32;
-        let mut docks = 0u32;
-
-        for m in &self.modules {
-            if m.is_complete() {
-                match m.kind {
-                    ModuleKind::SpineTruss => spine += 1,
-                    ModuleKind::HabitatRingSector => inner_hab += 1,
-                    ModuleKind::OuterRingSector => outer_hab += 1,
-                    ModuleKind::SolarArrayWing => solar += 1,
-                    ModuleKind::ThermalRadiator => rads += 1,
-                    ModuleKind::CommsSensorArray => comms += 1,
-                    ModuleKind::HydroponicBiodome => domes += 1,
-                    ModuleKind::OrbitalDrydock => docks += 1,
-                }
-            }
+    /// Advance the 3D station simulation by `dt` seconds.
+    pub fn step(&mut self, dt: f32) {
+        let dt = dt.clamp(0.0, 0.25);
+        if dt <= 0.0 {
+            return;
         }
 
-        self.spine_segments = spine;
-        self.habitat_sectors = inner_hab;
-        self.outer_ring_sectors = outer_hab;
-        self.solar_wings = solar;
-        self.radiators = rads;
-        self.comm_arrays = comms;
-        self.biodomes = domes;
-        self.drydocks = docks;
+        self.total_age_secs += dt as f64;
+        self.orbit_angle = (self.orbit_angle + dt * 0.0085) % TAU;
+        self.hab_ring_angle = (self.hab_ring_angle + dt * 0.14) % TAU;
+        self.radar_angle = (self.radar_angle + dt * 0.72) % TAU;
 
-        let total_completed = spine + inner_hab + outer_hab + solar + rads + comms + domes + docks;
-        self.epoch = StationEpoch::from_modules(total_completed);
+        // 1. Update physical orbiting camera drones
+        self.step_drones(dt);
 
-        // Power generation & demand
-        let power_gen = 25 + solar * 38 + rads * 18;
-        let power_demand =
-            15 + inner_hab * 8 + outer_hab * 10 + domes * 14 + docks * 22 + comms * 9;
-        let crew_cap = 12 + inner_hab * 18 + outer_hab * 24 + domes * 30;
-        let crew_pop =
-            ((crew_cap as f32) * (0.78 + 0.15 * (domes as f32 / 4.0).min(1.0))).round() as u32;
+        // 2. Update 3D spacecraft fleet & ATC docking cycles
+        self.step_ships(dt);
 
-        self.stats.station_age_hours = self.total_age_secs / 3600.0;
-        self.stats.total_modules = total_completed;
-        self.stats.solar_wings = solar;
-        self.stats.habitat_sectors = inner_hab + outer_hab;
-        self.stats.outer_ring_sectors = outer_hab;
-        self.stats.comm_arrays = comms;
-        self.stats.biodomes = domes;
-        self.stats.drydocks = docks;
-        self.stats.radiators = rads;
-        self.stats.spine_segments = spine;
-        self.stats.power_mw = power_gen;
-        self.stats.power_demand_mw = power_demand;
-        self.stats.crew_capacity = crew_cap;
-        self.stats.crew_population = crew_pop;
-    }
+        // 3. Update interior crew, security droids, cargo loaders & exterior welders
+        self.step_agents(dt);
 
-    /// Find the index of the currently assembling module (or pick the next blueprint based on `self.focus`).
-    fn active_construction_module_index(&mut self) -> Option<usize> {
-        // If there is already a partially constructed module matching or in progress, continue it
-        if let Some(idx) = self
-            .modules
-            .iter()
-            .position(|m| m.build_progress > 0.001 && !m.is_complete())
-        {
-            return Some(idx);
-        }
+        // 4. Update station event cycle
+        self.step_events(dt);
 
-        let desired_kinds: &[ModuleKind] = match self.focus {
-            ConstructionFocus::SolarPower => &[
-                ModuleKind::SolarArrayWing,
-                ModuleKind::ThermalRadiator,
-                ModuleKind::SpineTruss,
-            ],
-            ConstructionFocus::HabitatRing => &[
-                ModuleKind::HabitatRingSector,
-                ModuleKind::HydroponicBiodome,
-                ModuleKind::OuterRingSector,
-                ModuleKind::SpineTruss,
-            ],
-            ConstructionFocus::ShipyardBiodome => &[
-                ModuleKind::HydroponicBiodome,
-                ModuleKind::OrbitalDrydock,
-                ModuleKind::SpineTruss,
-                ModuleKind::OuterRingSector,
-            ],
-            ConstructionFocus::CommsGrid => &[
-                ModuleKind::CommsSensorArray,
-                ModuleKind::SpineTruss,
-                ModuleKind::SolarArrayWing,
-            ],
-            ConstructionFocus::AutoBalance => {
-                if self.stats.power_mw < self.stats.power_demand_mw + 30 {
-                    &[ModuleKind::SolarArrayWing, ModuleKind::ThermalRadiator]
-                } else {
-                    &[
-                        ModuleKind::HabitatRingSector,
-                        ModuleKind::SpineTruss,
-                        ModuleKind::HydroponicBiodome,
-                        ModuleKind::CommsSensorArray,
-                        ModuleKind::OrbitalDrydock,
-                        ModuleKind::OuterRingSector,
-                    ]
-                }
-            }
-        };
+        // 5. Update camera director, static glitch decay, and manual pan ease-back
+        self.step_camera_rig(dt);
 
-        for &k in desired_kinds {
-            if let Some(idx) = self
-                .modules
-                .iter()
-                .position(|m| !m.is_complete() && m.kind == k)
-            {
-                return Some(idx);
-            }
-        }
-
-        self.modules.iter().position(|m| !m.is_complete())
-    }
-
-    /// Advance construction by `delta_progress` (`1.0` = one full module).
-    pub fn advance_construction(&mut self, mut delta_progress: f32) {
-        while delta_progress > 0.0 {
-            let Some(idx) = self.active_construction_module_index() else {
-                // All 66 modules complete! Cycle upgrade tiers and construction progress bar
-                self.construction_progress = (self.construction_progress + delta_progress) % 1.0;
-                if let Some(m) = self.modules.iter_mut().find(|m| m.tier < 3) {
-                    m.tier += 1;
-                }
-                break;
-            };
-
-            let needed = (1.0 - self.modules[idx].build_progress).max(0.001);
-            if delta_progress >= needed {
-                self.modules[idx].build_progress = 1.0;
-                delta_progress -= needed;
-                self.construction_progress = 0.0;
-                let anchor = self.modules[idx].anchor_pos;
-                self.spawn_sparks(anchor, 14, 0);
-                self.recompute_telemetry();
-                // Unlock additional robots as station grows
-                self.maybe_unlock_robots();
-            } else {
-                self.modules[idx].build_progress += delta_progress;
-                self.construction_progress = self.modules[idx].build_progress;
-                delta_progress = 0.0;
-            }
-        }
+        // 6. Refresh live telemetry
         self.recompute_telemetry();
     }
 
-    fn maybe_unlock_robots(&mut self) {
-        let target_robots = (8 + (self.stats.total_modules / 6) as usize).min(18);
-        while self.robots.len() < target_robots {
-            self.next_id += 1;
-            let r_idx = self.robots.len();
-            let kind = match r_idx % 4 {
-                0 => RobotKind::WelderDrone,
-                1 => RobotKind::CargoTug,
-                2 => RobotKind::SpiderCrawler,
-                _ => RobotKind::DefenseMicroSat,
+    /// Fast-forward simulation clocks after system sleep/wake.
+    pub fn on_wake(&mut self, elapsed_secs: f64) {
+        let clamped = elapsed_secs.clamp(0.0, 3600.0 * 24.0);
+        if clamped < 1.0 {
+            return;
+        }
+        self.total_offline_caught_up_secs += clamped;
+        self.total_age_secs += clamped;
+        self.orbit_angle = (self.orbit_angle + (clamped as f32) * 0.0085) % TAU;
+        self.hab_ring_angle = (self.hab_ring_angle + (clamped as f32) * 0.14) % TAU;
+        // Run a handful of bounded steps so ships/drones settle cleanly
+        let ticks = ((clamped / 2.0).min(24.0)) as usize;
+        for _ in 0..ticks {
+            self.step(0.2);
+        }
+    }
+
+    fn step_drones(&mut self, dt: f32) {
+        for drone in &mut self.drones {
+            drone.orbit_angle = (drone.orbit_angle + drone.orbit_speed * dt).rem_euclid(TAU);
+            let x = drone.orbit_angle.cos() * drone.orbit_radius;
+            let z = drone.orbit_angle.sin() * drone.orbit_radius;
+            let y = drone.height_base + (drone.orbit_angle * 1.5).sin() * drone.height_amp;
+            drone.pos = [x, y, z];
+
+            // Subtle breathing look target near the station core / hangar mouth
+            let sway = (drone.orbit_angle * 2.0).sin() * 4.0;
+            drone.look_target = match drone.feed {
+                CameraFeedId::DroneAlphaWide => [0.0, 2.5, 6.0 + sway * 0.5],
+                _ => [sway * 0.8, 0.5, 16.0],
             };
-            let task = match kind {
-                RobotKind::WelderDrone => RobotTask::Welding {
-                    module_id: 1,
-                    orbit_phase: r_idx as f32 * 1.3,
-                },
-                RobotKind::SpiderCrawler => RobotTask::CrawlingSpine {
-                    t: 0.0,
-                    dir: if r_idx.is_multiple_of(2) { 1.0 } else { -1.0 },
-                },
-                RobotKind::CargoTug => RobotTask::HaulingCargo {
-                    from: STATION_CENTER,
-                    to: [STATION_CENTER[0] - 120.0, STATION_CENTER[1]],
-                    progress: 0.0,
-                },
-                RobotKind::DefenseMicroSat => RobotTask::PerimeterOrbit {
-                    angle: r_idx as f32 * 0.9,
-                    radius_x: 235.0 + (r_idx as f32 * 11.0) % 60.0,
-                    radius_y: 88.0 + (r_idx as f32 * 7.0) % 30.0,
-                    speed: if r_idx.is_multiple_of(2) { 0.20 } else { -0.22 },
-                },
-            };
-            self.robots.push(RobotAgent {
-                id: self.next_id,
-                kind,
-                pos: STATION_CENTER,
-                vel: [0.0, 0.0],
-                task,
-                phase: r_idx as f32 * 1.1,
-                boost_timer: 0.0,
-            });
         }
     }
 
-    pub fn spawn_sparks(&mut self, center: [f32; 2], count: usize, color_kind: u8) {
-        for _ in 0..count {
-            if self.sparks.len() >= 160 {
-                break;
-            }
-            let angle = self.rng.range(0.0, TAU);
-            let speed = self.rng.range(12.0, 58.0);
-            let max_life = self.rng.range(0.45, 1.25);
-            self.sparks.push(SparkParticle {
-                pos: center,
-                vel: [angle.cos() * speed, angle.sin() * speed],
-                life: 0.0,
-                max_life,
-                color_kind,
-            });
-        }
-    }
+    fn step_ships(&mut self, dt: f32) {
+        let mut serviced_delta = 0u32;
+        let mut need_replacement_pads: Vec<LandingPadId> = Vec::new();
+        let mut remove_ids: Vec<u32> = Vec::new();
 
-    /// User interaction: set construction focus directive.
-    pub fn set_focus(&mut self, focus: ConstructionFocus) {
-        self.focus = focus;
-    }
-
-    /// User interaction: cycle to the next construction focus directive.
-    pub fn cycle_focus(&mut self) -> ConstructionFocus {
-        self.focus = self.focus.next();
-        self.focus
-    }
-
-    /// User interaction: cycle planetary biome beneath the station.
-    pub fn cycle_planet_biome(&mut self) -> PlanetBiome {
-        self.planet_biome = self.planet_biome.next();
-        self.planet_biome
-    }
-
-    /// User interaction: toggle diegetic on-screen telemetry overlays.
-    pub fn toggle_hud(&mut self) -> bool {
-        self.hud_enabled = !self.hud_enabled;
-        self.hud_enabled
-    }
-
-    /// User interaction: pan orbital camera offset.
-    pub fn pan_camera(&mut self, dx: f32, dy: f32) {
-        self.camera_offset[0] = (self.camera_offset[0] + dx).clamp(-260.0, 260.0);
-        self.camera_offset[1] = (self.camera_offset[1] + dy).clamp(-140.0, 140.0);
-    }
-
-    /// User interaction: overdrive welder drones & boost active construction by 22%.
-    pub fn overdrive_drones(&mut self) {
-        for r in &mut self.robots {
-            r.boost_timer = 10.0;
-        }
-        if let Some(idx) = self.active_construction_module_index() {
-            let pos = self.modules[idx].anchor_pos;
-            self.spawn_sparks(pos, 18, 0);
-        } else {
-            self.spawn_sparks(STATION_CENTER, 18, 0);
-        }
-        self.advance_construction(0.22);
-    }
-
-    /// User interaction: trigger a radial subspace sensor scan wave & harvest nearby ore.
-    pub fn trigger_scan_pulse(&mut self, center: [f32; 2]) {
-        self.scan_pulse = ScanPulse {
-            center,
-            progress: 0.01,
-            active: true,
-        };
-        self.stats.science_telemetry += 25.0;
-        self.spawn_sparks(center, 12, 1);
-    }
-
-    /// User interaction: manually launch a spacecraft (cycles across all 6 ship classes).
-    pub fn launch_shuttle(&mut self) {
-        let classes = [
-            ShipClass::BulkFreighter,
-            ShipClass::MiningSkiff,
-            ShipClass::HabLiner,
-            ShipClass::ScienceCorvette,
-            ShipClass::SolarClipper,
-            ShipClass::PatrolInterceptor,
-        ];
-        let class = classes[(self.next_id as usize) % classes.len()];
-        self.launch_ship_of_class(class, None);
-    }
-
-    pub fn launch_ship_of_class(&mut self, class: ShipClass, target_pos: Option<[f32; 2]>) {
-        if self.shuttles.len() >= 14 {
-            self.shuttles.remove(0);
-        }
-        self.next_id += 1;
-        let callsign = match class {
-            ShipClass::BulkFreighter => format!("CSV-{:02}", self.next_id % 99),
-            ShipClass::HabLiner => format!("LUX-{:02}", self.next_id % 99),
-            ShipClass::MiningSkiff => format!("RIG-{:02}", self.next_id % 99),
-            ShipClass::ScienceCorvette => format!("SCI-{:02}", self.next_id % 99),
-            ShipClass::SolarClipper => format!("SOL-{:02}", self.next_id % 99),
-            ShipClass::PatrolInterceptor => format!("VPR-{:02}", self.next_id % 99),
-        };
-
-        let (pos, vel, state, dock) = match class {
-            ShipClass::MiningSkiff if !self.asteroids.is_empty() => {
-                let ast_idx = (self.next_id as usize) % self.asteroids.len();
-                let ast_id = self.asteroids[ast_idx].id;
-                (
-                    STATION_CENTER,
-                    [0.0, -30.0],
-                    ShuttleState::MiningAsteroid {
-                        asteroid_id: ast_id,
-                        timer: 10.0,
-                    },
-                    STATION_CENTER,
-                )
-            }
-            ShipClass::PatrolInterceptor => (
-                STATION_CENTER,
-                [35.0, -15.0],
-                ShuttleState::Patrolling {
-                    angle: self.rng.range(0.0, TAU),
-                    radius: self.rng.range(185.0, 240.0),
-                    timer: 22.0,
-                },
-                STATION_CENTER,
-            ),
-            _ => {
-                if let Some(dest) = target_pos {
-                    let dx = dest[0] - STATION_CENTER[0];
-                    let dy = dest[1] - STATION_CENTER[1];
-                    let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-                    (
-                        STATION_CENTER,
-                        [(dx / dist) * 38.0, (dy / dist) * 38.0],
-                        ShuttleState::Departing,
-                        STATION_CENTER,
-                    )
-                } else {
-                    let from_left = self.rng.bool_with_prob(0.5);
-                    let start_x = if from_left { 60.0 } else { 940.0 };
-                    let start_y = self.rng.range(180.0, 560.0);
-                    let dock_offset_x = self.rng.range(-48.0, 48.0);
-                    let dock_offset_y = self.rng.range(-38.0, 38.0);
-                    let dock_pt = [
-                        STATION_CENTER[0] + dock_offset_x,
-                        STATION_CENTER[1] + dock_offset_y,
+        for ship in &mut self.ships {
+            match ship.phase {
+                ShipFlightPhase::PerimeterPatrol => {
+                    ship.patrol_angle = (ship.patrol_angle + dt * 0.16) % TAU;
+                    let r = ship.patrol_radius;
+                    let x = ship.patrol_angle.cos() * r;
+                    let z = ship.patrol_angle.sin() * r;
+                    let y = -7.5 + (ship.patrol_angle * 2.0).sin() * 14.0;
+                    let next_pos = [x, y, z];
+                    let dir = norm3(sub3(next_pos, ship.pos), ship.forward);
+                    ship.vel = [dir[0] * 10.0, dir[1] * 10.0, dir[2] * 10.0];
+                    ship.pos = next_pos;
+                    ship.forward = dir;
+                    ship.up = [0.0, 1.0, 0.0];
+                    ship.thruster_power = 0.65;
+                    ship.gear_deploy = 0.0;
+                }
+                ShipFlightPhase::InboundApproach => {
+                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let t = smoothstep(ship.leg_progress);
+                    let prev = ship.pos;
+                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+                    let d = sub3(ship.pos, prev);
+                    ship.vel = [
+                        d[0] / dt.max(0.001),
+                        d[1] / dt.max(0.001),
+                        d[2] / dt.max(0.001),
                     ];
-                    (
-                        [start_x, start_y],
-                        [if from_left { 28.0 } else { -28.0 }, -10.0],
-                        ShuttleState::Approaching,
-                        dock_pt,
-                    )
+                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), ship.forward);
+                    ship.thruster_power = 0.85 - 0.35 * t;
+                    ship.gear_deploy = (t - 0.65).max(0.0) / 0.35 * 0.3;
+
+                    if ship.leg_progress >= 1.0 {
+                        ship.phase = ShipFlightPhase::FinalDescent;
+                        ship.leg_start = ship.pos;
+                        ship.leg_end = pad_touchdown_pos(ship.assigned_pad);
+                        ship.leg_progress = 0.0;
+                        ship.leg_duration = match ship.assigned_pad {
+                            LandingPadId::PadAHangar => 14.0,
+                            _ => 12.0,
+                        };
+                    }
+                }
+                ShipFlightPhase::FinalDescent => {
+                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let t = smoothstep(ship.leg_progress);
+                    let prev = ship.pos;
+                    // Smooth arc onto the pad
+                    let mut p = lerp3(ship.leg_start, ship.leg_end, t);
+                    if ship.assigned_pad == LandingPadId::PadAHangar {
+                        // Glide straight in through the forcefield, then settle down onto Pad A
+                        p[1] = ship.leg_start[1] * (1.0 - t * t) + ship.leg_end[1] * (t * t);
+                    }
+                    ship.pos = p;
+                    let d = sub3(ship.pos, prev);
+                    ship.vel = [
+                        d[0] / dt.max(0.001),
+                        d[1] / dt.max(0.001),
+                        d[2] / dt.max(0.001),
+                    ];
+                    let desired_fwd = match ship.assigned_pad {
+                        LandingPadId::PadAHangar => [0.0, 0.0, -1.0],
+                        _ => [0.0, 0.0, 1.0],
+                    };
+                    let flight_dir = norm3(sub3(ship.leg_end, ship.pos), desired_fwd);
+                    ship.forward = norm3(lerp3(flight_dir, desired_fwd, t), desired_fwd);
+                    ship.gear_deploy = (0.3 + t * 0.7).clamp(0.0, 1.0);
+                    ship.thruster_power = (0.75 * (1.0 - t) + 0.15).clamp(0.1, 0.9);
+
+                    if ship.leg_progress >= 1.0 {
+                        ship.phase = ShipFlightPhase::Docked;
+                        ship.pos = ship.leg_end;
+                        ship.vel = [0.0, 0.0, 0.0];
+                        ship.forward = desired_fwd;
+                        ship.gear_deploy = 1.0;
+                        ship.thruster_power = 0.06;
+                        ship.leg_progress = 0.0;
+                        ship.leg_duration = 20.0;
+                    }
+                }
+                ShipFlightPhase::Docked => {
+                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    ship.gear_deploy = 1.0;
+                    ship.thruster_power = if ship.leg_progress > 0.85 { 0.45 } else { 0.06 };
+                    if ship.leg_progress >= 1.0 {
+                        ship.phase = ShipFlightPhase::Liftoff;
+                        ship.leg_start = ship.pos;
+                        ship.leg_end = pad_gate_pos(ship.assigned_pad);
+                        ship.leg_progress = 0.0;
+                        ship.leg_duration = 11.0;
+                    }
+                }
+                ShipFlightPhase::Liftoff => {
+                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let t = smoothstep(ship.leg_progress);
+                    let prev = ship.pos;
+                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+                    let d = sub3(ship.pos, prev);
+                    ship.vel = [
+                        d[0] / dt.max(0.001),
+                        d[1] / dt.max(0.001),
+                        d[2] / dt.max(0.001),
+                    ];
+                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), [0.0, 0.0, 1.0]);
+                    ship.gear_deploy = (1.0 - t * 1.4).clamp(0.0, 1.0);
+                    ship.thruster_power = 0.6 + 0.35 * t;
+
+                    if ship.leg_progress >= 1.0 {
+                        ship.phase = ShipFlightPhase::OutboundBurn;
+                        ship.leg_start = ship.pos;
+                        let exit_x = match ship.assigned_pad {
+                            LandingPadId::PadBPort => -135.0,
+                            LandingPadId::PadCStarboard => 135.0,
+                            LandingPadId::PadAHangar => 28.0,
+                        };
+                        ship.leg_end = [exit_x, 34.0, 145.0];
+                        ship.leg_progress = 0.0;
+                        ship.leg_duration = 14.0;
+                    }
+                }
+                ShipFlightPhase::OutboundBurn => {
+                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let t = smoothstep(ship.leg_progress);
+                    let prev = ship.pos;
+                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+                    let d = sub3(ship.pos, prev);
+                    ship.vel = [
+                        d[0] / dt.max(0.001),
+                        d[1] / dt.max(0.001),
+                        d[2] / dt.max(0.001),
+                    ];
+                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), ship.forward);
+                    ship.gear_deploy = 0.0;
+                    ship.thruster_power = 1.0;
+
+                    if ship.leg_progress >= 1.0 {
+                        serviced_delta += 1;
+                        need_replacement_pads.push(ship.assigned_pad);
+                        remove_ids.push(ship.id);
+                    }
+                }
+            }
+        }
+
+        if !remove_ids.is_empty() {
+            self.ships.retain(|s| !remove_ids.contains(&s.id));
+            self.stats.ships_serviced += serviced_delta;
+        }
+
+        for pad in need_replacement_pads {
+            self.spawn_inbound_ship_for_pad(pad);
+        }
+    }
+
+    fn spawn_inbound_ship_for_pad(&mut self, pad: LandingPadId) {
+        let class = match pad {
+            LandingPadId::PadAHangar => ShipClass::CorporateShuttle,
+            LandingPadId::PadBPort => {
+                if self.rng.range(0.0, 1.0) < 0.7 {
+                    ShipClass::BulkFreighter
+                } else {
+                    ShipClass::MaintenanceTug
+                }
+            }
+            LandingPadId::PadCStarboard => {
+                if self.rng.range(0.0, 1.0) < 0.5 {
+                    ShipClass::MaintenanceTug
+                } else {
+                    ShipClass::BulkFreighter
                 }
             }
         };
 
-        self.spawn_sparks(pos, 8, 1);
-        self.shuttles.push(Shuttle {
-            id: self.next_id,
+        let prefix = CALLSIGN_PREFIXES[(self.rng.next_u64() as usize) % CALLSIGN_PREFIXES.len()];
+        let name = CALLSIGN_NAMES[(self.rng.next_u64() as usize) % CALLSIGN_NAMES.len()];
+        let callsign = format!("{prefix}-{name}");
+
+        let start = match pad {
+            LandingPadId::PadAHangar => [
+                self.rng.range(-48.0, 48.0),
+                self.rng.range(10.0, 28.0),
+                135.0,
+            ],
+            LandingPadId::PadBPort => [
+                -115.0,
+                self.rng.range(24.0, 42.0),
+                self.rng.range(55.0, 95.0),
+            ],
+            LandingPadId::PadCStarboard => [
+                115.0,
+                self.rng.range(24.0, 42.0),
+                self.rng.range(55.0, 95.0),
+            ],
+        };
+        let gate = pad_gate_pos(pad);
+        let fwd = norm3(sub3(gate, start), [0.0, 0.0, -1.0]);
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.ships.push(Spacecraft {
+            id,
             class,
             callsign,
-            pos,
-            vel,
-            target_dock: dock,
-            state,
-            docking_timer: 0.0,
-            cargo_tons: 30.0,
+            assigned_pad: pad,
+            phase: ShipFlightPhase::InboundApproach,
+            pos: start,
+            vel: [fwd[0] * 4.0, fwd[1] * 4.0, fwd[2] * 4.0],
+            forward: fwd,
+            up: [0.0, 1.0, 0.0],
+            leg_start: start,
+            leg_end: gate,
+            leg_progress: 0.0,
+            leg_duration: self.rng.range(14.0, 19.0),
+            gear_deploy: 0.0,
+            thruster_power: 0.85,
+            patrol_angle: 0.0,
+            patrol_radius: 0.0,
         });
     }
 
-    /// Direct desktop click interaction handler:
-    /// - Clicking an asteroid laser-harvests ore and spawns a mining skiff.
-    /// - Clicking near the station overdrives welder drones & constructs modules.
-    /// - Clicking in open space dispatches an interceptor/corvette toward the cursor.
-    pub fn interact_at(&mut self, world_pt: [f32; 2]) {
-        // 1. Check if clicking near an asteroid
-        for ast in &mut self.asteroids {
-            let dx = world_pt[0] - ast.pos[0];
-            let dy = world_pt[1] - ast.pos[1];
-            if (dx * dx + dy * dy).sqrt() <= ast.radius + 32.0 {
-                ast.ore_remaining = (ast.ore_remaining - 35.0).max(0.0);
-                let pos = ast.pos;
-                self.stats.alloy_stockpile += 35.0;
-                self.stats.asteroids_mined += 1;
-                self.spawn_sparks(pos, 16, 2);
-                self.advance_construction(0.12);
-                return;
+    fn step_agents(&mut self, dt: f32) {
+        let pad_a_docked = self.ships.iter().any(|s| {
+            s.assigned_pad == LandingPadId::PadAHangar && s.phase == ShipFlightPhase::Docked
+        });
+
+        for agent in &mut self.agents {
+            agent.phase = (agent.phase + dt * 3.5) % TAU;
+            agent.patrol_t += dt * agent.speed * agent.direction;
+            if agent.patrol_t > 1.0 {
+                agent.patrol_t = 1.0;
+                agent.direction = -1.0;
+            } else if agent.patrol_t < 0.0 {
+                agent.patrol_t = 0.0;
+                agent.direction = 1.0;
             }
-        }
 
-        // 2. Check if clicking near the station megastructure
-        let dx_st = world_pt[0] - STATION_CENTER[0];
-        let dy_st = world_pt[1] - STATION_CENTER[1];
-        if (dx_st * dx_st + dy_st * dy_st).sqrt() <= 210.0 {
-            self.overdrive_drones();
-            self.spawn_sparks(world_pt, 12, 0);
-            return;
-        }
-
-        // 3. Otherwise launch a vessel toward the clicked coordinate
-        self.launch_ship_of_class(ShipClass::ScienceCorvette, Some(world_pt));
-        self.spawn_sparks(world_pt, 10, 1);
-    }
-
-    /// Offline time-delta engine for orbital station progression.
-    /// Simulates module construction, asteroid mining, and fleet servicing during sleep.
-    pub fn on_wake(&mut self, elapsed_secs: f64) {
-        if elapsed_secs <= 0.0 {
-            return;
-        }
-        self.ensure_migrated();
-        let capped = elapsed_secs.min(86400.0 * 7.0); // up to 7 days
-        self.total_age_secs += capped;
-        self.total_offline_caught_up_secs += capped;
-        self.stats.station_age_hours = self.total_age_secs / 3600.0;
-
-        // Advance orbital angles deterministically
-        self.orbit_angle = (self.orbit_angle + (capped as f32) * 0.015) % TAU;
-        self.ring_rotation = (self.ring_rotation + (capped as f32) * 0.08) % TAU;
-        self.outer_ring_rotation = (self.outer_ring_rotation - (capped as f32) * 0.055) % TAU;
-
-        // Construction rate: ~1 module every 45 minutes of offline time (2700s)
-        let delta_modules = (capped / 2700.0) as f32;
-        let shuttles_visited = (capped / 420.0) as u32;
-        self.stats.shuttles_serviced = self
-            .stats
-            .shuttles_serviced
-            .saturating_add(shuttles_visited);
-        self.stats.asteroids_mined = self
-            .stats
-            .asteroids_mined
-            .saturating_add(shuttles_visited / 3);
-        self.stats.alloy_stockpile += shuttles_visited as f32 * 8.0;
-        self.stats.science_telemetry += shuttles_visited as f32 * 4.5;
-
-        self.advance_construction(delta_modules);
-    }
-
-    /// Compute the current world position of a module (accounting for rotating rings).
-    pub fn module_world_pos(&self, m: &StationModule) -> [f32; 2] {
-        match m.kind {
-            ModuleKind::HabitatRingSector => {
-                let angle = self.ring_rotation + (m.slot_index as f32 / 12.0) * TAU;
-                [
-                    STATION_CENTER[0] + angle.cos() * 78.0,
-                    STATION_CENTER[1] + angle.sin() * 78.0 * 0.42,
-                ]
+            let t = agent.patrol_t;
+            match agent.zone {
+                AgentZone::HangarBay => {
+                    let lane_x = if agent.id % 2 == 0 { -8.0 } else { 8.0 };
+                    let target_x = if pad_a_docked { lane_x * 0.62 } else { lane_x };
+                    let z = 17.5 + t * 17.5;
+                    agent.pos = [target_x, -3.5, z];
+                    agent.yaw = if agent.direction > 0.0 {
+                        0.0
+                    } else {
+                        std::f32::consts::PI
+                    };
+                }
+                AgentZone::PadBPort => {
+                    let z = -6.5 + t * 13.0;
+                    agent.pos = [-31.5, -1.45, z];
+                    agent.yaw = if agent.direction > 0.0 {
+                        0.0
+                    } else {
+                        std::f32::consts::PI
+                    };
+                }
+                AgentZone::PadCStarboard => {
+                    let z = -6.5 + t * 13.0;
+                    agent.pos = [31.5, -1.45, z];
+                    agent.yaw = if agent.direction > 0.0 {
+                        0.0
+                    } else {
+                        std::f32::consts::PI
+                    };
+                }
+                AgentZone::OpsDeck => {
+                    let angle = t * TAU;
+                    let r = 6.2;
+                    agent.pos = [angle.cos() * r, 12.1, angle.sin() * r];
+                    agent.yaw = -angle + std::f32::consts::FRAC_PI_2 * agent.direction;
+                }
+                AgentZone::Concourse => {
+                    let z = if agent.id % 2 == 0 { 5.4 } else { -5.4 };
+                    let x = -13.0 + t * 26.0;
+                    agent.pos = [x, -14.8, z];
+                    agent.yaw = if agent.direction > 0.0 {
+                        std::f32::consts::FRAC_PI_2
+                    } else {
+                        -std::f32::consts::FRAC_PI_2
+                    };
+                }
+                AgentZone::ReactorCatwalk => {
+                    let angle = t * TAU;
+                    let r = 6.0;
+                    agent.pos = [angle.cos() * r, -14.8, angle.sin() * r];
+                    agent.yaw = -angle;
+                }
+                AgentZone::ExteriorTruss => {
+                    let side = if agent.id % 2 == 0 { -1.0 } else { 1.0 };
+                    let x = side * (16.0 + t * 16.0);
+                    let y = 3.5 + (agent.phase * 0.5).sin() * 2.2;
+                    let z = side * 11.0;
+                    agent.pos = [x, y, z];
+                    agent.yaw = agent.phase * 0.3;
+                }
             }
-            ModuleKind::OuterRingSector => {
-                let angle = self.outer_ring_rotation + (m.slot_index as f32 / 16.0) * TAU;
-                [
-                    STATION_CENTER[0] + angle.cos() * 134.0,
-                    STATION_CENTER[1] + angle.sin() * 134.0 * 0.42,
-                ]
-            }
-            _ => m.anchor_pos,
         }
     }
 
-    pub fn update(
-        &mut self,
-        dt_secs: f32,
-        _interactive: bool,
-        _pointer: Option<[f32; 2]>,
-    ) -> Activity {
-        if dt_secs <= 0.0 {
-            return Activity::Idle;
-        }
-        self.ensure_migrated();
-
-        self.total_age_secs += dt_secs as f64;
-        self.stats.station_age_hours = self.total_age_secs / 3600.0;
-
-        // 1. Orbital & centrifugal ring mechanics
-        self.orbit_angle = (self.orbit_angle + dt_secs * 0.018) % TAU;
-        self.ring_rotation = (self.ring_rotation + dt_secs * 0.085) % TAU;
-        self.outer_ring_rotation = (self.outer_ring_rotation - dt_secs * 0.052).rem_euclid(TAU);
-
-        // 2. Subspace scan pulse animation
-        if self.scan_pulse.active {
-            self.scan_pulse.progress += dt_secs * 0.55;
-            if self.scan_pulse.progress >= 1.0 {
-                self.scan_pulse.active = false;
-                self.scan_pulse.progress = 0.0;
-            }
-        }
-
-        // 3. Slow-burn construction tick (accelerated by active WelderDrones and Overdrive)
-        let active_welders = self
-            .robots
-            .iter()
-            .filter(|r| matches!(r.kind, RobotKind::WelderDrone))
-            .count() as f32;
-        let boost_mult = if self.robots.iter().any(|r| r.boost_timer > 0.0) {
-            4.5
-        } else {
-            1.0
-        };
-        let base_rate = (1.0 / 900.0) * (1.0 + active_welders * 0.25) * boost_mult;
-        self.advance_construction(dt_secs * base_rate);
-
-        // 4. Update Orbital Asteroids
-        for ast in &mut self.asteroids {
-            ast.pos[0] += ast.vel[0] * dt_secs;
-            ast.pos[1] += ast.vel[1] * dt_secs;
-            ast.rotation = (ast.rotation + ast.rot_speed * dt_secs) % TAU;
-            if ast.pos[0] < -60.0 {
-                ast.pos[0] = 1060.0;
-            } else if ast.pos[0] > 1060.0 {
-                ast.pos[0] = -60.0;
-            }
-            if ast.pos[1] < 45.0 || ast.pos[1] > 230.0 {
-                ast.vel[1] = -ast.vel[1];
-            }
-        }
-        self.asteroids.retain(|a| a.ore_remaining > 1.0);
-        while self.asteroids.len() < 4 {
-            self.next_id += 1;
-            let from_left = self.rng.bool_with_prob(0.5);
-            let x = if from_left { -40.0 } else { 1040.0 };
-            let y = self.rng.range(68.0, 195.0);
-            let vx = if from_left {
-                self.rng.range(4.0, 9.0)
-            } else {
-                self.rng.range(-9.0, -4.0)
-            };
-            self.asteroids.push(OrbitalAsteroid {
-                id: self.next_id,
-                pos: [x, y],
-                vel: [vx, self.rng.range(-0.8, 0.8)],
-                radius: self.rng.range(13.0, 23.0),
-                rotation: 0.0,
-                rot_speed: self.rng.range(-0.4, 0.4),
-                ore_remaining: 100.0,
-                max_ore: 100.0,
-                richness: (self.next_id % 3) as u8,
+    fn step_events(&mut self, dt: f32) {
+        self.event_timer -= dt;
+        if self.event_timer <= 0.0 {
+            let any_approaching = self.ships.iter().any(|s| {
+                matches!(
+                    s.phase,
+                    ShipFlightPhase::InboundApproach | ShipFlightPhase::FinalDescent
+                )
             });
-        }
-
-        // 5. Update Autonomous Robotics (Welders, Spine Crawlers, Cargo Tugs, Micro-Sats)
-        let active_mod_pos = self
-            .active_construction_module_index()
-            .map(|idx| self.module_world_pos(&self.modules[idx]))
-            .unwrap_or(STATION_CENTER);
-
-        let mut new_sparks: Vec<([f32; 2], u8)> = Vec::new();
-        for robot in &mut self.robots {
-            robot.phase = (robot.phase + dt_secs * 3.2) % TAU;
-            if robot.boost_timer > 0.0 {
-                robot.boost_timer = (robot.boost_timer - dt_secs).max(0.0);
-            }
-            let speed_scale = if robot.boost_timer > 0.0 { 2.2 } else { 1.0 };
-
-            match &mut robot.task {
-                RobotTask::Welding { orbit_phase, .. } => {
-                    *orbit_phase = (*orbit_phase + dt_secs * 1.8 * speed_scale) % TAU;
-                    let target = [
-                        active_mod_pos[0] + orbit_phase.cos() * 18.0,
-                        active_mod_pos[1] + orbit_phase.sin() * 12.0,
-                    ];
-                    let dx = target[0] - robot.pos[0];
-                    let dy = target[1] - robot.pos[1];
-                    robot.vel = [dx * 3.5, dy * 3.5];
-                    robot.pos[0] += robot.vel[0] * dt_secs;
-                    robot.pos[1] += robot.vel[1] * dt_secs;
-
-                    if (dx * dx + dy * dy) < 400.0 && self.rng.bool_with_prob(dt_secs * 4.5) {
-                        new_sparks.push((active_mod_pos, 0));
-                    }
-                }
-                RobotTask::CrawlingSpine { t, dir } => {
-                    *t += *dir * dt_secs * 0.18 * speed_scale;
-                    if *t > 1.0 {
-                        *t = 1.0;
-                        *dir = -1.0;
-                    } else if *t < -1.0 {
-                        *t = -1.0;
-                        *dir = 1.0;
-                    }
-                    let spine_half_h = (self.spine_segments.max(2) as f32) * 18.0;
-                    robot.pos = [
-                        STATION_CENTER[0] + (robot.phase.sin() * 3.0),
-                        STATION_CENTER[1] + *t * spine_half_h,
-                    ];
-                }
-                RobotTask::HaulingCargo { from, to, progress } => {
-                    *progress += dt_secs * 0.28 * speed_scale;
-                    if *progress >= 1.0 {
-                        *progress = 0.0;
-                        std::mem::swap(from, to);
-                        *to = active_mod_pos;
-                    }
-                    let s = *progress;
-                    robot.pos = [
-                        from[0] + (to[0] - from[0]) * s,
-                        from[1] + (to[1] - from[1]) * s,
-                    ];
-                }
-                RobotTask::PerimeterOrbit {
-                    angle,
-                    radius_x,
-                    radius_y,
-                    speed,
-                } => {
-                    *angle = (*angle + *speed * dt_secs * speed_scale).rem_euclid(TAU);
-                    robot.pos = [
-                        STATION_CENTER[0] + angle.cos() * *radius_x,
-                        STATION_CENTER[1] + angle.sin() * *radius_y,
-                    ];
-                }
-            }
-        }
-
-        for (pt, kind) in new_sparks {
-            self.spawn_sparks(pt, 2, kind);
-        }
-
-        // 6. Update Spacecraft Fleet
-        let first_ast = self.asteroids.first().map(|a| (a.id, a.pos));
-        let mut mined_ast_id: Option<u32> = None;
-        let mut mining_spark_pts: Vec<[f32; 2]> = Vec::new();
-        let mut completed_trips = 0u32;
-
-        for shuttle in &mut self.shuttles {
-            match &mut shuttle.state {
-                ShuttleState::Approaching => {
-                    let dx = shuttle.target_dock[0] - shuttle.pos[0];
-                    let dy = shuttle.target_dock[1] - shuttle.pos[1];
-                    let dist = (dx * dx + dy * dy).sqrt();
-                    if dist < 9.0 {
-                        shuttle.pos = shuttle.target_dock;
-                        shuttle.vel = [0.0, 0.0];
-                        shuttle.state = ShuttleState::Docked;
-                        shuttle.docking_timer = 7.5;
-                        completed_trips += 1;
+            self.event = match self.event {
+                StationEventKind::Nominal => {
+                    if any_approaching {
+                        StationEventKind::DockingOps
                     } else {
-                        let speed = match shuttle.class {
-                            ShipClass::BulkFreighter => 22.0,
-                            ShipClass::HabLiner => 26.0,
-                            ShipClass::SolarClipper => 30.0,
-                            _ => 34.0,
-                        };
-                        // Gently decelerate on final approach
-                        let throttle = (dist / 60.0).clamp(0.35, 1.0);
-                        let vx = (dx / dist) * speed * throttle;
-                        let vy = (dy / dist) * speed * throttle;
-                        shuttle.pos[0] += vx * dt_secs;
-                        shuttle.pos[1] += vy * dt_secs;
-                        shuttle.vel = [vx, vy];
+                        StationEventKind::SolarEclipse
                     }
                 }
-                ShuttleState::Docked => {
-                    shuttle.docking_timer -= dt_secs;
-                    shuttle.vel = [0.0, 0.0];
-                    if shuttle.docking_timer <= 0.0 {
-                        if shuttle.class == ShipClass::MiningSkiff
-                            && let Some((aid, _)) = first_ast
-                        {
-                            shuttle.state = ShuttleState::MiningAsteroid {
-                                asteroid_id: aid,
-                                timer: 9.0,
-                            };
-                        } else {
-                            shuttle.state = ShuttleState::Departing;
-                            let out_x = if shuttle.pos[0] >= STATION_CENTER[0] {
-                                32.0
-                            } else {
-                                -32.0
-                            };
-                            shuttle.vel = [out_x, -14.0];
-                        }
-                    }
-                }
-                ShuttleState::MiningAsteroid { asteroid_id, timer } => {
-                    let target_ast = self
-                        .asteroids
-                        .iter()
-                        .find(|a| a.id == *asteroid_id)
-                        .or_else(|| self.asteroids.first());
-
-                    if let Some(ast) = target_ast {
-                        *asteroid_id = ast.id;
-                        let stand_off = [ast.pos[0], ast.pos[1] + ast.radius + 26.0];
-                        let dx = stand_off[0] - shuttle.pos[0];
-                        let dy = stand_off[1] - shuttle.pos[1];
-                        let dist = (dx * dx + dy * dy).sqrt();
-                        if dist > 12.0 {
-                            let speed = 34.0;
-                            shuttle.vel = [(dx / dist) * speed, (dy / dist) * speed];
-                            shuttle.pos[0] += shuttle.vel[0] * dt_secs;
-                            shuttle.pos[1] += shuttle.vel[1] * dt_secs;
-                        } else {
-                            // Actively laser-mining the asteroid!
-                            shuttle.vel = [ast.vel[0], ast.vel[1]];
-                            shuttle.pos[0] += shuttle.vel[0] * dt_secs;
-                            shuttle.pos[1] += shuttle.vel[1] * dt_secs;
-                            *timer -= dt_secs;
-                            mined_ast_id = Some(ast.id);
-                            if self.rng.bool_with_prob(dt_secs * 5.0) {
-                                mining_spark_pts.push(ast.pos);
-                            }
-                            if *timer <= 0.0 {
-                                shuttle.state = ShuttleState::Approaching;
-                                shuttle.target_dock =
-                                    [STATION_CENTER[0] + 28.0, STATION_CENTER[1] - 32.0];
-                            }
-                        }
+                StationEventKind::DockingOps => {
+                    if self.rng.range(0.0, 1.0) < 0.35 {
+                        StationEventKind::SolarEclipse
+                    } else if self.rng.range(0.0, 1.0) < 0.25 {
+                        StationEventKind::SecurityAlert
                     } else {
-                        shuttle.state = ShuttleState::Approaching;
+                        StationEventKind::Nominal
                     }
                 }
-                ShuttleState::Patrolling {
-                    angle,
-                    radius,
-                    timer,
-                } => {
-                    *angle = (*angle + dt_secs * 0.32) % TAU;
-                    *timer -= dt_secs;
-                    let target = [
-                        STATION_CENTER[0] + angle.cos() * *radius,
-                        STATION_CENTER[1] + angle.sin() * (*radius * 0.42),
-                    ];
-                    shuttle.vel = [
-                        -angle.sin() * *radius * 0.32,
-                        angle.cos() * (*radius * 0.42) * 0.32,
-                    ];
-                    shuttle.pos = target;
-                    if *timer <= 0.0 {
-                        shuttle.state = ShuttleState::Approaching;
-                        shuttle.target_dock = STATION_CENTER;
-                    }
-                }
-                ShuttleState::Departing => {
-                    // Gently accelerate into orbital lane
-                    shuttle.vel[0] *= 1.0 + dt_secs * 0.25;
-                    shuttle.pos[0] += shuttle.vel[0] * dt_secs;
-                    shuttle.pos[1] += shuttle.vel[1] * dt_secs;
-                }
+                StationEventKind::SolarEclipse => StationEventKind::Nominal,
+                StationEventKind::SecurityAlert => StationEventKind::Nominal,
+            };
+            self.event_timer = match self.event {
+                StationEventKind::SecurityAlert => 22.0,
+                StationEventKind::SolarEclipse => 32.0,
+                _ => 48.0,
+            };
+        }
+    }
+
+    fn step_camera_rig(&mut self, dt: f32) {
+        if self.camera_rig.static_glitch_timer > 0.0 {
+            self.camera_rig.static_glitch_timer =
+                (self.camera_rig.static_glitch_timer - dt).max(0.0);
+        }
+
+        // Gently relax manual pan offset back toward center
+        let decay = (-dt * 1.4).exp();
+        self.camera_rig.manual_pan[0] *= decay;
+        self.camera_rig.manual_pan[1] *= decay;
+
+        // Pick the best active spacecraft for live ship uplinks (prefer FinalDescent -> Inbound -> Liftoff -> Patrol)
+        let best_ship_id = self
+            .ships
+            .iter()
+            .max_by_key(|s| match s.phase {
+                ShipFlightPhase::FinalDescent => 5,
+                ShipFlightPhase::InboundApproach => 4,
+                ShipFlightPhase::Liftoff => 3,
+                ShipFlightPhase::OutboundBurn => 2,
+                ShipFlightPhase::PerimeterPatrol => 1,
+                ShipFlightPhase::Docked => 0,
+            })
+            .map(|s| s.id);
+        self.camera_rig.uplink_ship_id = best_ship_id;
+
+        if self.camera_rig.auto_director {
+            self.camera_rig.director_timer -= dt;
+            if self.camera_rig.director_timer <= 0.0 {
+                self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+
+                // Opportunistically cut to ShipNoseUplink if a ship is on FinalDescent!
+                let descent_active = self
+                    .ships
+                    .iter()
+                    .any(|s| s.phase == ShipFlightPhase::FinalDescent);
+                let next_feed = if descent_active
+                    && self.camera_rig.primary_feed != CameraFeedId::ShipNoseUplink
+                    && self.rng.range(0.0, 1.0) < 0.45
+                {
+                    CameraFeedId::ShipNoseUplink
+                } else {
+                    self.camera_rig.primary_feed.next()
+                };
+                self.camera_rig.primary_feed = next_feed;
+                self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
             }
         }
+    }
 
-        if completed_trips > 0 {
-            self.stats.shuttles_serviced += completed_trips;
-            self.stats.alloy_stockpile += completed_trips as f32 * 18.0;
-            self.advance_construction(completed_trips as f32 * 0.06);
-        }
+    pub fn recompute_telemetry(&mut self) {
+        self.stats.station_age_hours = self.total_age_secs / 3600.0;
+        self.stats.active_ships = self.ships.len() as u32;
+        self.stats.docked_ships = self
+            .ships
+            .iter()
+            .filter(|s| s.phase == ShipFlightPhase::Docked)
+            .count() as u32;
+        self.stats.active_drones = self.drones.len() as u32;
+        self.stats.active_agents = self.agents.len() as u32;
 
-        if let Some(aid) = mined_ast_id
-            && let Some(ast) = self.asteroids.iter_mut().find(|a| a.id == aid)
-        {
-            ast.ore_remaining = (ast.ore_remaining - dt_secs * 4.5).max(0.0);
-            self.stats.alloy_stockpile += dt_secs * 4.5;
-            if ast.ore_remaining <= 1.0 {
-                self.stats.asteroids_mined += 1;
-            }
-        }
-
-        for pt in mining_spark_pts {
-            self.spawn_sparks(pt, 2, 2);
-        }
-
-        // Retain in-bounds spacecraft & keep a lively 3..=5 ship traffic cadence
-        self.shuttles.retain(|s| {
-            s.pos[0] > -140.0 && s.pos[0] < 1140.0 && s.pos[1] > -140.0 && s.pos[1] < 890.0
+        let uplink_info = self.uplink_ship().map(|ship| {
+            let phase = match ship.phase {
+                ShipFlightPhase::InboundApproach => "APPROACH",
+                ShipFlightPhase::FinalDescent => "FINAL DESCENT",
+                ShipFlightPhase::Docked => "DOCKED",
+                ShipFlightPhase::Liftoff => "LIFTOFF",
+                ShipFlightPhase::OutboundBurn => "DEPARTING",
+                ShipFlightPhase::PerimeterPatrol => "PATROL",
+            };
+            (ship.callsign.clone(), phase.to_string())
         });
-        let target_fleet = (3 + (self.stats.total_modules / 16) as usize).min(6);
-        if self.shuttles.len() < target_fleet {
-            self.launch_shuttle();
+        if let Some((callsign, phase)) = uplink_info {
+            self.stats.uplink_callsign = callsign;
+            self.stats.uplink_phase = phase;
+        } else {
+            self.stats.uplink_callsign = "NO SIGNAL".into();
+            self.stats.uplink_phase = "STANDBY".into();
         }
+    }
 
-        // 7. Update Spark Particles
-        for sp in &mut self.sparks {
-            sp.life += dt_secs;
-            sp.pos[0] += sp.vel[0] * dt_secs;
-            sp.pos[1] += sp.vel[1] * dt_secs;
-            sp.vel[0] *= 1.0 - dt_secs * 1.5;
-            sp.vel[1] *= 1.0 - dt_secs * 1.5;
+    /// Return the spacecraft currently targeted by `ShipNoseUplink` / `ShipDorsalUplink`.
+    pub fn uplink_ship(&self) -> Option<&Spacecraft> {
+        self.camera_rig
+            .uplink_ship_id
+            .and_then(|id| self.ships.iter().find(|s| s.id == id))
+            .or_else(|| self.ships.first())
+    }
+
+    // =========================================================================
+    // Public User / UI Actions
+    // =========================================================================
+
+    pub fn cycle_camera(&mut self) {
+        self.camera_rig.primary_feed = self.camera_rig.primary_feed.next();
+        self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+        self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        self.camera_rig.manual_pan = [0.0, 0.0];
+    }
+
+    pub fn select_feed(&mut self, feed: CameraFeedId) {
+        if self.camera_rig.primary_feed != feed {
+            self.camera_rig.primary_feed = feed;
+            self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+            self.camera_rig.manual_pan = [0.0, 0.0];
         }
-        self.sparks.retain(|s| s.life < s.max_life);
+    }
 
-        Activity::Animating
+    /// Swap a PiP slot with the primary feed.
+    pub fn promote_pip_slot(&mut self, slot: usize) {
+        if slot < 2 {
+            std::mem::swap(
+                &mut self.camera_rig.pip_feeds[slot],
+                &mut self.camera_rig.primary_feed,
+            );
+            self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+    }
+
+    /// Cycle a specific quadrant in 2x2 Grid mode to the next camera feed.
+    pub fn cycle_grid_slot(&mut self, slot: usize) {
+        if slot < 4 {
+            self.camera_rig.grid_feeds[slot] = self.camera_rig.grid_feeds[slot].next();
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+    }
+
+    pub fn cycle_layout(&mut self) {
+        self.camera_rig.layout = self.camera_rig.layout.next();
+        self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+    }
+
+    pub fn set_layout(&mut self, layout: CameraLayout) {
+        if self.camera_rig.layout != layout {
+            self.camera_rig.layout = layout;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+    }
+
+    pub fn toggle_auto_director(&mut self) {
+        self.camera_rig.auto_director = !self.camera_rig.auto_director;
+        if self.camera_rig.auto_director {
+            self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+        }
+    }
+
+    /// Dispatch a new inbound spacecraft toward the least busy landing pad.
+    pub fn dispatch_ship(&mut self) {
+        if self.ships.len() >= 7 {
+            // Keep fleet tight and readable; nudge an existing docked ship to lift off
+            if let Some(docked) = self
+                .ships
+                .iter_mut()
+                .find(|s| s.phase == ShipFlightPhase::Docked)
+            {
+                docked.leg_progress = 0.99;
+            }
+            return;
+        }
+        let pads = [
+            LandingPadId::PadAHangar,
+            LandingPadId::PadBPort,
+            LandingPadId::PadCStarboard,
+        ];
+        let best_pad = pads
+            .into_iter()
+            .min_by_key(|&pad| {
+                self.ships
+                    .iter()
+                    .filter(|s| {
+                        s.assigned_pad == pad && s.phase != ShipFlightPhase::PerimeterPatrol
+                    })
+                    .count()
+            })
+            .unwrap_or(LandingPadId::PadAHangar);
+
+        self.spawn_inbound_ship_for_pad(best_pad);
+        self.event = StationEventKind::DockingOps;
+        self.event_timer = 35.0;
+        self.recompute_telemetry();
+    }
+
+    pub fn cycle_palette(&mut self) {
+        self.palette = self.palette.next();
+    }
+
+    pub fn set_palette(&mut self, palette: OrbitalPalette) {
+        self.palette = palette;
+    }
+
+    pub fn trigger_station_event(&mut self) {
+        self.event = self.event.next();
+        self.event_timer = 35.0;
+        self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION * 0.7;
+    }
+
+    pub fn toggle_hud(&mut self) {
+        self.hud_enabled = !self.hud_enabled;
+    }
+
+    pub fn nudge_pan(&mut self, dyaw: f32, dpitch: f32) {
+        self.camera_rig.manual_pan[0] = (self.camera_rig.manual_pan[0] + dyaw).clamp(-0.65, 0.65);
+        self.camera_rig.manual_pan[1] = (self.camera_rig.manual_pan[1] + dpitch).clamp(-0.38, 0.38);
     }
 }

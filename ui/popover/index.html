@@ -361,25 +361,25 @@
           <section id="card-orbital-haven" class="card hud-card orbital-card" hidden>
             <div class="hud-banner">
               <span class="hud-ornament left"><rk-icon name="hexagon"></rk-icon></span>
-              <span class="section-title">Aegis-VII Command &amp; Telemetry</span>
+              <span class="section-title">HELIOS-09 CCTV &amp; Flight Control</span>
               <span class="hud-ornament right"><rk-icon name="hexagon"></rk-icon></span>
             </div>
             <div class="stats-grid">
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="hexagon"></rk-icon>Megastructure</span>
-                <span id="stat-orbital-modules" class="stat-value">13/66 · Core Hub</span>
+                <span class="stat-label"><rk-icon name="satellite"></rk-icon>Active Feed</span>
+                <span id="stat-orbital-modules" class="stat-value">CAM-01 · DRONE-ALPHA</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="solar-panel"></rk-icon>Grid &amp; Crew</span>
-                <span id="stat-orbital-solar" class="stat-value">+195 MW · 92</span>
+                <span class="stat-label"><rk-icon name="hexagon"></rk-icon>Monitor Layout</span>
+                <span id="stat-orbital-solar" class="stat-value">MAIN+PiP · AUTO</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="hab-ring"></rk-icon>Directive</span>
-                <span id="stat-orbital-rings" class="stat-value">Auto-Balance (35%)</span>
+                <span class="stat-label"><rk-icon name="hab-ring"></rk-icon>Station Ops</span>
+                <span id="stat-orbital-rings" class="stat-value">DOCKING OPS · UNATCO</span>
               </div>
               <div class="stat-box">
-                <span class="stat-label"><rk-icon name="rocket"></rk-icon>Fleet &amp; Bots</span>
-                <span id="stat-orbital-shuttles" class="stat-value">3 Ships · 8 Bots</span>
+                <span class="stat-label"><rk-icon name="rocket"></rk-icon>Fleet &amp; Uplink</span>
+                <span id="stat-orbital-shuttles" class="stat-value">4 Ships · USV-ICARUS</span>
               </div>
             </div>
             <div class="rookery-actions">
@@ -387,41 +387,41 @@
                 id="btn-orbital-module"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Overdrive autonomous welder drones and accelerate active module construction"
+                title="Cycle primary CCTV feed (drones, pads, interiors, and live ship uplinks)"
               >
-                <rk-icon name="lightning"></rk-icon><span>Overdrive Drones</span>
-              </button>
-              <button
-                id="btn-orbital-launch"
-                class="btn game-cmd-btn small"
-                type="button"
-                title="Dispatch a freighter, miner, liner, corvette, or interceptor"
-              >
-                <rk-icon name="rocket-launch"></rk-icon><span>Launch Vessel</span>
+                <rk-icon name="satellite"></rk-icon><span>Next Camera</span>
               </button>
               <button
                 id="btn-orbital-focus"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Cycle construction priority (Auto, Solar, Rings, Biodomes, Comms)"
+                title="Switch viewport layout (Single Feed, Main + 2 PiP, 2x2 CCTV Wall)"
               >
-                <rk-icon name="hab-ring"></rk-icon><span>Cycle Directive</span>
+                <rk-icon name="hexagon"></rk-icon><span>Cycle Layout</span>
+              </button>
+              <button
+                id="btn-orbital-launch"
+                class="btn game-cmd-btn small"
+                type="button"
+                title="Dispatch an inbound spacecraft to the least busy landing pad"
+              >
+                <rk-icon name="rocket-launch"></rk-icon><span>Dispatch Ship</span>
               </button>
               <button
                 id="btn-orbital-planet"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Switch planetary horizon (Terran, Europa, Ares, Ecumenopolis)"
+                title="Switch Y2K visual palette (UNATCO Cobalt, Von Braun, VersaLife Gold, SHODAN)"
               >
-                <rk-icon name="compass"></rk-icon><span>Cycle Planet</span>
+                <rk-icon name="palette"></rk-icon><span>Visual Theme</span>
               </button>
               <button
                 id="btn-orbital-scan"
                 class="btn game-cmd-btn small span-2"
                 type="button"
-                title="Emit a radial subspace sensor scan wave across the orbital sector"
+                title="Cycle station lighting & operational state (Nominal, Docking Ops, Eclipse, Security Alert)"
               >
-                <rk-icon name="satellite"></rk-icon><span>Emit Subspace Sensor Scan</span>
+                <rk-icon name="lightning"></rk-icon><span>Cycle Station Event</span>
               </button>
             </div>
           </section>

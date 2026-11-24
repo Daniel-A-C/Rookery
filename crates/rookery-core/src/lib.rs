@@ -47,9 +47,10 @@ pub use nebula::{
     Shockwave, StarStage, StirWake,
 };
 pub use orbital::{
-    ConstructionFocus, ModuleKind, ORBITAL_STATE_FILE_NAME, OrbitalAsteroid, OrbitalHavenState,
-    OrbitalHavenStats, PlanetBiome, RobotAgent, RobotKind, RobotTask, ScanPulse, ShipClass,
-    Shuttle, ShuttleState, SparkParticle, StationEpoch, StationModule,
+    ALL_CAMERA_FEEDS, AgentKind, AgentZone, CameraDrone, CameraFeedId, CameraLayout,
+    CameraRigState, LandingPadId, ORBITAL_PALETTE_NAMES, ORBITAL_STATE_FILE_NAME,
+    OrbitalHavenState, OrbitalHavenStats, OrbitalPalette, ShipClass, ShipFlightPhase, Spacecraft,
+    StationAgent, StationEventKind,
 };
 pub use settings::{AudioSettings, Settings};
 pub use shinjuku::{

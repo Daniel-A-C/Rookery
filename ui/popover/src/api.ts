@@ -102,21 +102,19 @@ export interface NebulaStatus {
 export interface OrbitalStatus {
   seed: number;
   station_age_hours: number;
-  total_modules: number;
-  solar_wings: number;
-  habitat_rings: number;
-  habitat_sectors: number;
-  comm_arrays: number;
-  docked_shuttles: number;
-  active_robots?: number;
-  power_mw?: number;
-  crew_population?: number;
-  epoch_name?: string;
-  epoch_short?: string;
-  planet_biome?: string;
-  hud_enabled?: boolean;
-  construction_pct?: number;
-  focus: string;
+  active_feed_code: string;
+  active_feed_label: string;
+  layout: string;
+  auto_director: boolean;
+  palette: string;
+  station_event: string;
+  active_ships: number;
+  docked_ships: number;
+  active_drones: number;
+  active_agents: number;
+  uplink_callsign: string;
+  uplink_phase: string;
+  hud_enabled: boolean;
 }
 
 export interface GothicStatus {

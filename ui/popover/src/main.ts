@@ -1573,15 +1573,11 @@ function renderStatus(s: HostStatus): void {
 
   // Orbital Haven Stats
   if (s.orbital) {
-    const epochShort = s.orbital.epoch_short || "Citadel";
-    statOrbitalModules.textContent = `${s.orbital.total_modules}/66 · ${epochShort}`;
-    const pwr = s.orbital.power_mw ?? s.orbital.solar_wings * 38;
-    const crew = s.orbital.crew_population ?? s.orbital.habitat_sectors * 18;
-    statOrbitalSolar.textContent = `+${pwr} MW · ${crew} Crew`;
-    const pct = s.orbital.construction_pct ?? 0;
-    statOrbitalRings.textContent = `${s.orbital.focus} (${pct}%)`;
-    const bots = s.orbital.active_robots ?? 8;
-    statOrbitalShuttles.textContent = `${s.orbital.docked_shuttles} Ships · ${bots} Bots`;
+    statOrbitalModules.textContent = `${s.orbital.active_feed_code} · ${s.orbital.active_feed_label}`;
+    const dirLabel = s.orbital.auto_director ? "AUTO" : "LOCKED";
+    statOrbitalSolar.textContent = `${s.orbital.layout} · ${dirLabel}`;
+    statOrbitalRings.textContent = `${s.orbital.station_event} · ${s.orbital.palette}`;
+    statOrbitalShuttles.textContent = `${s.orbital.active_ships} Ships · ${s.orbital.uplink_callsign}`;
   }
 
   // Dynamic SDK App Stats & Controls
@@ -2067,9 +2063,11 @@ sliderNebulaColorSpeed.addEventListener("change", () => {
 btnOrbitalModule.addEventListener("click", () => {
   runActionWithFeedback(
     btnOrbitalModule,
-    "lightning",
-    "Welder drones overdriven — module assembly accelerated!",
-    () => api.executeAppAction("orbital-haven", "overdrive_drones"),
+    "satellite",
+    "Switching CCTV surveillance feed…",
+    () => api.executeAppAction("orbital-haven", "cycle_camera"),
+    (s) =>
+      `Feed: ${s.orbital?.active_feed_code || "CAM"} · ${s.orbital?.active_feed_label || "Switched"}`,
   );
 });
 
@@ -2077,37 +2075,38 @@ btnOrbitalLaunch.addEventListener("click", () => {
   runActionWithFeedback(
     btnOrbitalLaunch,
     "rocket-launch",
-    "Orbital vessel dispatched from Aegis docking bay!",
-    () => api.executeAppAction("orbital-haven", "launch_shuttle"),
+    "Inbound spacecraft cleared for HELIOS-09 approach!",
+    () => api.executeAppAction("orbital-haven", "dispatch_ship"),
   );
 });
 
 btnOrbitalFocus.addEventListener("click", () => {
   runActionWithFeedback(
     btnOrbitalFocus,
-    "hab-ring",
-    "Updating construction directive…",
-    () => api.executeAppAction("orbital-haven", "cycle_focus"),
-    (s) => `Construction directive: ${s.orbital?.focus || "Updated"}`,
+    "hexagon",
+    "Switching monitor layout…",
+    () => api.executeAppAction("orbital-haven", "cycle_layout"),
+    (s) => `Monitor layout: ${s.orbital?.layout || "Updated"}`,
   );
 });
 
 btnOrbitalPlanet.addEventListener("click", () => {
   runActionWithFeedback(
     btnOrbitalPlanet,
-    "compass",
-    "Shifting orbital horizon…",
-    () => api.executeAppAction("orbital-haven", "cycle_planet"),
-    (s) => `Orbital horizon shifted to ${s.orbital?.planet_biome || "Shifted"}!`,
+    "palette",
+    "Switching Y2K visual theme…",
+    () => api.executeAppAction("orbital-haven", "cycle_palette"),
+    (s) => `Theme: ${s.orbital?.palette || "Updated"}`,
   );
 });
 
 btnOrbitalScan.addEventListener("click", () => {
   runActionWithFeedback(
     btnOrbitalScan,
-    "satellite",
-    "Subspace sensor scan wave emitted!",
-    () => api.executeAppAction("orbital-haven", "scan_pulse"),
+    "lightning",
+    "Updating station operational state…",
+    () => api.executeAppAction("orbital-haven", "trigger_event"),
+    (s) => `Station status: ${s.orbital?.station_event || "Updated"}`,
   );
 });
 
