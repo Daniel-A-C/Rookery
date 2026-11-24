@@ -42,7 +42,9 @@ pub use manifest::{
     ScheduleMode,
 };
 pub use nebula::{
-    CosmicNebulaState, CosmicNebulaStats, GravityWell, NebulaPalette, StellarParticle,
+    Comet, ConstellationEdge, CosmicNebulaState, CosmicNebulaStats, DustMote, Meteor,
+    NEBULA_PALETTE_COUNT, NEBULA_PALETTE_NAMES, NebulaPalette, NebulaSoundCue, NurseryStar, Pulsar,
+    Shockwave, StarStage, StirWake,
 };
 pub use orbital::{
     ConstructionFocus, ModuleKind, ORBITAL_STATE_FILE_NAME, OrbitalAsteroid, OrbitalHavenState,

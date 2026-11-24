@@ -39,6 +39,12 @@ pub enum SoundEffect {
     LotusChime,
     /// Gravitational pulse in Cosmic Nebula
     NebulaPulse,
+    /// Protostar ignition crystalline harmonic swell in Cosmic Nebula
+    StarIgnite,
+    /// Supernova shockwave sub-bass wave & shimmer wash in Cosmic Nebula
+    SupernovaBoom,
+    /// Airy celestial comet / meteor sweep in Cosmic Nebula
+    CometSweep,
     /// Shifting celestial color palette
     PaletteCycle,
     /// Shuttle launch thruster burn in Orbital Haven
@@ -609,6 +615,60 @@ fn generate_sfx_uncached(sfx: SoundEffect) -> Vec<f32> {
             }
             out
         }
+        SoundEffect::StarIgnite => {
+            // Warm harmonic fifth + shimmering high crystalline bloom (0.48s)
+            let len = (0.48 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let env = (1.0 - (-28.0 * t).exp()) * (-5.2 * t).exp();
+                let f1 = (2.0 * PI * 329.63 * t).sin();
+                let f2 = 0.65 * (2.0 * PI * 493.88 * t).sin();
+                let f3 = 0.40 * (2.0 * PI * 987.77 * t + 0.5).sin();
+                let shimmer = 0.20 * (2.0 * PI * (1318.5 + 18.0 * t) * t).sin();
+                *sample = ((f1 + f2 + f3 + shimmer) * env * 0.32).clamp(-0.95, 0.95);
+            }
+            out
+        }
+        SoundEffect::SupernovaBoom => {
+            // Deep sub-bass wave + filtered cosmic stardust shimmer wash (0.75s)
+            let len = (0.75 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut phase = 0.0f32;
+            let mut lcg: u32 = 421987;
+            let mut lp = 0.0f32;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let freq = 92.0 - 58.0 * (t / 0.75).sqrt();
+                phase += 2.0 * PI * freq / SAMPLE_RATE as f32;
+                let sub = (phase.sin() + 0.35 * (phase * 1.5).sin())
+                    * (1.0 - (-45.0 * t).exp())
+                    * (-3.4 * t).exp();
+
+                lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = ((lcg >> 16) as f32 / 32768.0) - 1.0;
+                lp += 0.08 * (white - lp);
+                let wash_env = (1.0 - (-18.0 * t).exp()) * (-4.8 * t).exp();
+                let shimmer = (2.0 * PI * (660.0 + 240.0 * t) * t).sin() * 0.14 * wash_env;
+                *sample = ((sub * 0.55 + lp * 0.38 * wash_env + shimmer) * 0.85).tanh() * 0.55;
+            }
+            out
+        }
+        SoundEffect::CometSweep => {
+            // Airy, gentle celestial chime whoosh (0.40s)
+            let len = (0.40 * SAMPLE_RATE as f64) as usize;
+            let mut out = vec![0.0f32; len];
+            let mut phase = 0.0f32;
+            for (i, sample) in out.iter_mut().enumerate() {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                let freq = 580.0 + 420.0 * (t / 0.40);
+                phase += 2.0 * PI * freq / SAMPLE_RATE as f32;
+                let env = (t / 0.12).min(1.0) * (-7.0 * (t - 0.08).max(0.0)).exp();
+                let raw = phase.sin() * 0.6 + (phase * 2.0).sin() * 0.25;
+                *sample = (raw * env * 0.28).clamp(-0.95, 0.95);
+            }
+            out
+        }
         SoundEffect::PaletteCycle => {
             // Shimmering celestial 4-chord chime (0.35s)
             let len = (0.35 * SAMPLE_RATE as f64) as usize;
@@ -785,6 +845,9 @@ mod tests {
             SoundEffect::BambooClack,
             SoundEffect::LotusChime,
             SoundEffect::NebulaPulse,
+            SoundEffect::StarIgnite,
+            SoundEffect::SupernovaBoom,
+            SoundEffect::CometSweep,
             SoundEffect::PaletteCycle,
             SoundEffect::ShuttleLaunch,
             SoundEffect::ModuleConstruct,

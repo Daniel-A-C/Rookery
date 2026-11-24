@@ -334,21 +334,65 @@ pub(crate) fn dispatch_app_action(
                 .nebula
                 .lock()
                 .map_err(|_| "lock poisoned")?;
+            let pos = payload
+                .as_ref()
+                .and_then(|p| p.get("pos"))
+                .and_then(|v| v.as_array())
+                .and_then(|arr| {
+                    if arr.len() == 2 {
+                        Some([arr[0].as_f64()? as f32, arr[1].as_f64()? as f32])
+                    } else {
+                        None
+                    }
+                });
             match action {
-                "add_attractor" => {
-                    n.add_gravity_well([500.0, 375.0], false);
-                    state.audio.play_sfx(SoundEffect::NebulaPulse);
+                "ignite_star" | "add_attractor" => {
+                    n.ignite_star(pos);
+                    state.audio.play_sfx(SoundEffect::StarIgnite);
                 }
-                "add_repulsor" | "repulsor_pulse" => {
-                    n.add_gravity_well([500.0, 375.0], true);
-                    state.audio.play_sfx(SoundEffect::NebulaPulse);
+                "trigger_supernova" | "add_repulsor" | "repulsor_pulse" => {
+                    n.trigger_supernova(pos);
+                    state.audio.play_sfx(SoundEffect::SupernovaBoom);
+                }
+                "summon_comet" => {
+                    n.summon_comet();
+                    state.audio.play_sfx(SoundEffect::CometSweep);
+                }
+                "meteor_shower" => {
+                    n.trigger_meteor_shower();
+                    state.audio.play_sfx(SoundEffect::CometSweep);
+                }
+                "toggle_chart" => {
+                    n.toggle_star_chart();
+                    state.audio.play_sfx(SoundEffect::OrbitalScan);
                 }
                 "cycle_palette" => {
                     n.cycle_palette();
                     state.audio.play_sfx(SoundEffect::PaletteCycle);
                 }
+                "set_palette" | "color_palette" => {
+                    if let Some(val) = payload.as_ref().and_then(|p| p.get("value")) {
+                        let parsed_idx = match val {
+                            serde_json::Value::Number(num) => num.as_u64().map(|v| v as u8),
+                            serde_json::Value::String(s) => s
+                                .split(':')
+                                .next()
+                                .and_then(|prefix| prefix.trim().parse::<u8>().ok()),
+                            _ => None,
+                        };
+                        if let Some(idx) = parsed_idx {
+                            n.set_palette(rookery_core::nebula::NebulaPalette::from_u8(idx));
+                            state.audio.play_sfx(SoundEffect::PaletteCycle);
+                        }
+                    } else {
+                        n.cycle_palette();
+                        state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    }
+                }
                 other => return Err(format!("Unknown nebula action '{other}'")),
             }
+            drop(n);
+            state.with_renderer(|r| r.trigger_action());
         }
         "orbital-haven" => {
             let mut o = state

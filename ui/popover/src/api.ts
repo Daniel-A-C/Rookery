@@ -85,13 +85,16 @@ export interface KoiStatus {
 
 export interface NebulaStatus {
   seed: number;
-  particle_count: number;
-  total_particles: number;
-  gravity_wells: number;
-  active_vortices: number;
+  stars_active: number;
+  protostars: number;
+  supernovae_total: number;
+  active_shockwaves: number;
+  active_comets: number;
+  active_meteors: number;
+  star_chart_enabled: boolean;
+  palette_idx: number;
   palette_name: string;
   palette: string;
-  turbulence: number;
 }
 
 export interface OrbitalStatus {

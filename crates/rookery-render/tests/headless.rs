@@ -268,3 +268,68 @@ fn koi_pond_all_themes_render() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn cosmic_nebula_all_palettes_and_events_render() {
+    let gpu = Gpu::new_blocking().expect("GPU");
+    let state = Arc::new(Mutex::new(rookery_core::CosmicNebulaState::new(42)));
+
+    let width = 1280u32;
+    let height = 720u32;
+    let mut scene = rookery_render::CosmicNebulaScene::new(&gpu, OFFSCREEN_FORMAT, state.clone());
+    scene.resize(&gpu, width, height, 1.0);
+    let off = Offscreen::new(&gpu, width, height);
+    let dt = Duration::from_millis(33);
+
+    let snapshot_dir = std::env::var("ROOKERY_SNAPSHOT_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(ref dir) = snapshot_dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    let mut frames = Vec::new();
+    for palette_idx in 0..rookery_core::nebula::NEBULA_PALETTE_COUNT as u8 {
+        if let Ok(mut n) = state.lock() {
+            n.set_palette(rookery_core::NebulaPalette::from_u8(palette_idx));
+            n.palette_blend = 1.0;
+            if palette_idx == 0 {
+                n.ignite_star(Some([480.0, 310.0]));
+                n.summon_comet();
+            } else if palette_idx == 1 {
+                n.trigger_supernova(Some([520.0, 350.0]));
+            } else if palette_idx == 2 {
+                n.toggle_star_chart();
+                n.star_chart_alpha = 1.0;
+                n.trigger_meteor_shower();
+            } else if palette_idx == 3 {
+                n.star_chart_enabled = false;
+                n.star_chart_alpha = 0.0;
+                n.stir_at([460.0, 360.0], [24.0, -14.0]);
+            }
+        }
+        let frame = off.run(&gpu, &mut scene, 18, dt).unwrap();
+        let luma = mean_luma(&frame);
+        assert!(
+            luma > 5.0 && luma < 220.0,
+            "Cosmic Nebula palette {palette_idx} mean luma {luma} out of expected range"
+        );
+
+        if let Some(ref dir) = snapshot_dir {
+            let png_path = dir.join(format!("nebula_palette_{palette_idx}.png"));
+            rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
+        }
+        frames.push(frame);
+    }
+
+    for i in 1..frames.len() {
+        let d = diff(&frames[i - 1], &frames[i]);
+        assert!(
+            d > 3.0,
+            "Nebula palette {} and palette {} look too similar (diff = {d})",
+            i - 1,
+            i
+        );
+    }
+}

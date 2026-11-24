@@ -524,8 +524,8 @@ const appThemes: Record<string, AppThemeMeta> = {
   },
   "cosmic-nebula": {
     title: "Cosmic Nebula",
-    tagline: "Astral Singularity Forge",
-    bannerTitle: "Astral Star-Chart Deck",
+    tagline: "Stellar Nursery · Proto-Star Forge",
+    bannerTitle: "Astral Nursery Observatory",
     glyph: "nebula",
     ornament: "star-four",
   },
@@ -743,12 +743,15 @@ const btnKoiSpout = el<HTMLButtonElement>("btn-koi-spout");
 const btnKoiTheme = el<HTMLButtonElement>("btn-koi-theme");
 
 // Cosmic Nebula Stats & Controls
-const statNebulaParticles = el<HTMLSpanElement>("stat-nebula-particles");
-const statNebulaWells = el<HTMLSpanElement>("stat-nebula-wells");
+const statNebulaStars = el<HTMLSpanElement>("stat-nebula-stars");
+const statNebulaEvents = el<HTMLSpanElement>("stat-nebula-events");
 const statNebulaPalette = el<HTMLSpanElement>("stat-nebula-palette");
-const statNebulaTurb = el<HTMLSpanElement>("stat-nebula-turb");
-const btnNebulaAttractor = el<HTMLButtonElement>("btn-nebula-attractor");
-const btnNebulaRepulsor = el<HTMLButtonElement>("btn-nebula-repulsor");
+const statNebulaSupernovae = el<HTMLSpanElement>("stat-nebula-supernovae");
+const btnNebulaIgnite = el<HTMLButtonElement>("btn-nebula-ignite");
+const btnNebulaSupernova = el<HTMLButtonElement>("btn-nebula-supernova");
+const btnNebulaComet = el<HTMLButtonElement>("btn-nebula-comet");
+const btnNebulaMeteors = el<HTMLButtonElement>("btn-nebula-meteors");
+const btnNebulaChart = el<HTMLButtonElement>("btn-nebula-chart");
 const btnNebulaPalette = el<HTMLButtonElement>("btn-nebula-palette");
 
 // Orbital Haven Stats & Controls
@@ -1542,10 +1545,24 @@ function renderStatus(s: HostStatus): void {
 
   // Cosmic Nebula Stats
   if (s.nebula) {
-    statNebulaParticles.textContent = String(s.nebula.particle_count);
-    statNebulaWells.textContent = String(s.nebula.gravity_wells);
+    const protoSuffix =
+      s.nebula.protostars > 0 ? ` (${s.nebula.protostars} forming)` : "";
+    statNebulaStars.textContent = `${s.nebula.stars_active}${protoSuffix}`;
+    const eventParts: string[] = [];
+    if (s.nebula.active_shockwaves > 0) {
+      eventParts.push(`${s.nebula.active_shockwaves} Nova`);
+    }
+    if (s.nebula.active_comets > 0) {
+      eventParts.push(`${s.nebula.active_comets} Comet`);
+    }
+    if (s.nebula.active_meteors > 0) {
+      eventParts.push(`${s.nebula.active_meteors} Meteors`);
+    }
+    statNebulaEvents.textContent =
+      eventParts.length > 0 ? eventParts.join(" · ") : "Calm";
     statNebulaPalette.textContent = s.nebula.palette_name;
-    statNebulaTurb.textContent = `${s.nebula.turbulence.toFixed(1)}x`;
+    statNebulaSupernovae.textContent = String(s.nebula.supernovae_total);
+    btnNebulaChart.classList.toggle("active", Boolean(s.nebula.star_chart_enabled));
   }
 
   // Orbital Haven Stats
@@ -1942,27 +1959,48 @@ btnKoiTheme.addEventListener("click", () => {
 });
 
 // Cosmic Nebula Action Handlers
-btnNebulaAttractor.addEventListener("click", () => {
+btnNebulaIgnite.addEventListener("click", () => {
   runActionWithFeedback(
-    btnNebulaAttractor,
-    "spiral",
-    "Gravitational singularity vortex spawned!",
-    () =>
-      api.executeAppAction("cosmic-nebula", "add_attractor", {
-        pos: [500.0, 375.0],
-      }),
+    btnNebulaIgnite,
+    "sparkle",
+    "Collapsing interstellar gas into a new protostar!",
+    () => api.executeAppAction("cosmic-nebula", "ignite_star", {}),
   );
 });
 
-btnNebulaRepulsor.addEventListener("click", () => {
+btnNebulaSupernova.addEventListener("click", () => {
   runActionWithFeedback(
-    btnNebulaRepulsor,
+    btnNebulaSupernova,
     "nova",
-    "Supernova shockwave repelled stellar dust!",
-    () =>
-      api.executeAppAction("cosmic-nebula", "repulsor_pulse", {
-        strength: 400.0,
-      }),
+    "Supernova shockwave sweeping the nursery!",
+    () => api.executeAppAction("cosmic-nebula", "trigger_supernova", {}),
+  );
+});
+
+btnNebulaComet.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaComet,
+    "compass",
+    "Dual-tail comet summoned across the nebula!",
+    () => api.executeAppAction("cosmic-nebula", "summon_comet", {}),
+  );
+});
+
+btnNebulaMeteors.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaMeteors,
+    "lightning",
+    "Meteor shower streaking across the deep field!",
+    () => api.executeAppAction("cosmic-nebula", "meteor_shower", {}),
+  );
+});
+
+btnNebulaChart.addEventListener("click", () => {
+  runActionWithFeedback(
+    btnNebulaChart,
+    "star-four",
+    "Toggled Astral Cartography star chart!",
+    () => api.executeAppAction("cosmic-nebula", "toggle_chart", {}),
   );
 });
 
@@ -1970,8 +2008,8 @@ btnNebulaPalette.addEventListener("click", () => {
   runActionWithFeedback(
     btnNebulaPalette,
     "palette",
-    "Nebular spectrum shifted!",
-    () => api.executeAppAction("cosmic-nebula", "cycle_palette"),
+    "Shifted cosmic nebula region!",
+    () => api.executeAppAction("cosmic-nebula", "cycle_palette", {}),
   );
 });
 

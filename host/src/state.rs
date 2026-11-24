@@ -125,13 +125,16 @@ pub struct KoiStatus {
 #[derive(Clone, Debug, Serialize)]
 pub struct NebulaStatus {
     pub seed: u64,
-    pub particle_count: u32,
-    pub total_particles: u32,
-    pub gravity_wells: u32,
-    pub active_vortices: u32,
+    pub stars_active: u32,
+    pub protostars: u32,
+    pub supernovae_total: u32,
+    pub active_shockwaves: u32,
+    pub active_comets: u32,
+    pub active_meteors: u32,
+    pub star_chart_enabled: bool,
+    pub palette_idx: u8,
     pub palette_name: String,
     pub palette: String,
-    pub turbulence: f32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -414,13 +417,16 @@ impl HostState {
                     let palette_name = n.palette.name().to_string();
                     NebulaStatus {
                         seed: n.seed,
-                        particle_count: n.stats.total_particles,
-                        total_particles: n.stats.total_particles,
-                        gravity_wells: n.stats.active_vortices,
-                        active_vortices: n.stats.active_vortices,
+                        stars_active: n.stats.stars_active,
+                        protostars: n.stats.protostars,
+                        supernovae_total: n.stats.supernovae_total,
+                        active_shockwaves: n.stats.active_shockwaves,
+                        active_comets: n.stats.active_comets,
+                        active_meteors: n.stats.active_meteors,
+                        star_chart_enabled: n.star_chart_enabled,
+                        palette_idx: n.palette.index(),
                         palette_name: palette_name.clone(),
                         palette: palette_name,
-                        turbulence: n.turbulence,
                     }
                 });
             }
