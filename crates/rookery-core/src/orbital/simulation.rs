@@ -135,6 +135,9 @@ impl OrbitalHavenState {
         // 2. Update 3D spacecraft fleet & ATC docking cycles
         self.step_ships(dt);
 
+        // 2b. Advance docked-ship service choreographies (welding arm, fuel boom, bio-scan, drones, ramps)
+        self.step_pad_services(dt);
+
         // 3. Update interior crew, security droids, cargo loaders & exterior welders
         self.step_agents(dt);
 
@@ -189,13 +192,17 @@ impl OrbitalHavenState {
         let mut serviced_delta = 0u32;
         let mut need_replacement_pads: Vec<LandingPadId> = Vec::new();
         let mut remove_ids: Vec<u32> = Vec::new();
+        let mut newly_docked: Vec<(LandingPadId, u32, ShipClass)> = Vec::new();
+        let mut departed_pads: Vec<(LandingPadId, u32)> = Vec::new();
 
         for ship in &mut self.ships {
             let turn_rate = match ship.class {
                 ShipClass::PatrolCutter => 2.6,
+                ShipClass::MedicalCourier => 2.25,
                 ShipClass::CorporateShuttle => 2.0,
+                ShipClass::SurveyProbeCarrier => 1.85,
                 ShipClass::MaintenanceTug => 1.7,
-                ShipClass::BulkFreighter => 1.25,
+                ShipClass::BulkFreighter | ShipClass::FuelTanker => 1.25,
             };
 
             match ship.phase {
@@ -345,22 +352,35 @@ impl OrbitalHavenState {
                         ship.vel = [0.0, 0.0, 0.0];
                         ship.gear_deploy = 1.0;
                         ship.leg_progress = 0.0;
-                        ship.leg_duration = 20.0;
+                        ship.leg_duration = 2.0; // VTOL pre-ignition countdown once pad service finishes
+                        newly_docked.push((ship.assigned_pad, ship.id, ship.class));
                     }
                 }
                 ShipFlightPhase::Docked => {
-                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let pad_idx = ship.assigned_pad.index();
+                    let svc = &self.pad_services[pad_idx];
+                    let service_ready = svc.ship_id != Some(ship.id)
+                        || (svc.is_complete() && svc.hardware_retracted());
+
                     let pad_fwd = pad_docked_forward(ship.assigned_pad);
                     ship.forward = turn_toward(ship.forward, pad_fwd, 2.0, dt);
                     ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 3.0, dt);
                     ship.gear_deploy = 1.0;
                     ship.thruster_power = ease_scalar(ship.thruster_power, 0.0, 5.0, dt);
                     ship.retro_thrust = ease_scalar(ship.retro_thrust, 0.0, 5.0, dt);
-                    // Gentle VTOL pre-ignition warm-up in the last 14% of docked time before liftoff
-                    let pre_ignite = smoothstep((ship.leg_progress - 0.86) / 0.14) * 0.55;
-                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, pre_ignite, 4.0, dt);
 
-                    if ship.leg_progress >= 1.0 {
+                    if service_ready {
+                        // Gentle VTOL pre-ignition warm-up before liftoff
+                        ship.leg_progress += dt / ship.leg_duration.max(1.5);
+                        let pre_ignite = smoothstep(ship.leg_progress) * 0.62;
+                        ship.vtol_thrust = ease_scalar(ship.vtol_thrust, pre_ignite, 4.0, dt);
+                    } else {
+                        ship.leg_progress = 0.0;
+                        ship.vtol_thrust = ease_scalar(ship.vtol_thrust, 0.0, 4.0, dt);
+                    }
+
+                    if service_ready && ship.leg_progress >= 1.0 {
+                        departed_pads.push((ship.assigned_pad, ship.id));
                         ship.phase = ShipFlightPhase::Liftoff;
                         ship.leg_start = ship.pos;
                         ship.leg_end = pad_gate_pos(ship.assigned_pad);
@@ -518,24 +538,204 @@ impl OrbitalHavenState {
             self.stats.ships_serviced += serviced_delta;
         }
 
+        for (pad, ship_id) in departed_pads {
+            let svc = &mut self.pad_services[pad.index()];
+            if svc.ship_id == Some(ship_id) {
+                *svc = PadServiceState::default();
+            }
+        }
+        for (pad, ship_id, class) in newly_docked {
+            self.begin_pad_service(pad, ship_id, class);
+        }
+
         for pad in need_replacement_pads {
             self.spawn_inbound_ship_for_pad(pad);
         }
     }
 
-    fn spawn_inbound_ship_for_pad(&mut self, pad: LandingPadId) {
-        let class = match pad {
-            LandingPadId::PadAHangar => ShipClass::CorporateShuttle,
-            LandingPadId::PadBPort => {
-                if self.rng.range(0.0, 1.0) < 0.7 {
-                    ShipClass::BulkFreighter
+    /// Roll a randomized 2–3 step physical service choreography for a newly docked ship.
+    pub fn begin_pad_service(&mut self, pad: LandingPadId, ship_id: u32, class: ShipClass) {
+        let pool: &[ServiceKind] = match class {
+            ShipClass::CorporateShuttle => &[
+                ServiceKind::BoardingRampExchange,
+                ServiceKind::FuelUmbilical,
+                ServiceKind::BioScanSweep,
+                ServiceKind::CargoTransfer,
+            ],
+            ShipClass::BulkFreighter => &[
+                ServiceKind::CargoTransfer,
+                ServiceKind::FuelUmbilical,
+                ServiceKind::ArticulatedRepairArm,
+                ServiceKind::BioScanSweep,
+            ],
+            ShipClass::PatrolCutter => &[
+                ServiceKind::DroneResupply,
+                ServiceKind::ArticulatedRepairArm,
+                ServiceKind::FuelUmbilical,
+                ServiceKind::BioScanSweep,
+            ],
+            ShipClass::MaintenanceTug => &[
+                ServiceKind::ArticulatedRepairArm,
+                ServiceKind::CargoTransfer,
+                ServiceKind::DroneResupply,
+                ServiceKind::FuelUmbilical,
+            ],
+            ShipClass::MedicalCourier => &[
+                ServiceKind::BioScanSweep,
+                ServiceKind::BoardingRampExchange,
+                ServiceKind::CargoTransfer,
+                ServiceKind::FuelUmbilical,
+            ],
+            ShipClass::SurveyProbeCarrier => &[
+                ServiceKind::DroneResupply,
+                ServiceKind::BioScanSweep,
+                ServiceKind::ArticulatedRepairArm,
+                ServiceKind::FuelUmbilical,
+            ],
+            ShipClass::FuelTanker => &[
+                ServiceKind::FuelUmbilical,
+                ServiceKind::BioScanSweep,
+                ServiceKind::ArticulatedRepairArm,
+                ServiceKind::DroneResupply,
+            ],
+        };
+
+        let mut remaining: Vec<ServiceKind> = pool.to_vec();
+        let step_count = if (self.rng.next_u64() & 1) == 0 { 2 } else { 3 };
+        let mut steps = Vec::with_capacity(step_count);
+
+        if matches!(
+            class,
+            ShipClass::BulkFreighter | ShipClass::FuelTanker | ShipClass::MedicalCourier
+        ) && !remaining.is_empty()
+        {
+            steps.push(remaining.remove(0));
+        }
+        while steps.len() < step_count && !remaining.is_empty() {
+            let pick = (self.rng.next_u64() as usize) % remaining.len();
+            steps.push(remaining.remove(pick));
+        }
+
+        let first_dur = steps.first().map(|s| s.duration_secs()).unwrap_or(6.0);
+
+        self.pad_services[pad.index()] = PadServiceState {
+            ship_id: Some(ship_id),
+            steps,
+            current_step: 0,
+            step_progress: 0.0,
+            step_duration: first_dur,
+            repair_arm_ext: 0.0,
+            fuel_boom_ext: 0.0,
+            scan_sweep_t: 0.0,
+            drone_deploy: 0.0,
+            ramp_deploy: 0.0,
+            crates_transferred: 0,
+        };
+    }
+
+    fn step_pad_services(&mut self, dt: f32) {
+        for pad_idx in 0..3 {
+            let svc = &mut self.pad_services[pad_idx];
+            if svc.ship_id.is_none() {
+                svc.repair_arm_ext = ease_scalar(svc.repair_arm_ext, 0.0, 3.2, dt);
+                svc.fuel_boom_ext = ease_scalar(svc.fuel_boom_ext, 0.0, 3.2, dt);
+                svc.drone_deploy = ease_scalar(svc.drone_deploy, 0.0, 3.2, dt);
+                svc.ramp_deploy = ease_scalar(svc.ramp_deploy, 0.0, 3.2, dt);
+                svc.scan_sweep_t = 0.0;
+                continue;
+            }
+
+            let active = svc.active_kind();
+            if let Some(kind) = active {
+                svc.step_progress += dt / svc.step_duration.max(1.0);
+                let p = svc.step_progress.clamp(0.0, 1.0);
+
+                let arm_tgt = if kind == ServiceKind::ArticulatedRepairArm && p < 0.82 {
+                    1.0
                 } else {
+                    0.0
+                };
+                let fuel_tgt = if kind == ServiceKind::FuelUmbilical && p < 0.82 {
+                    1.0
+                } else {
+                    0.0
+                };
+                let drone_tgt = if kind == ServiceKind::DroneResupply && p < 0.82 {
+                    1.0
+                } else {
+                    0.0
+                };
+                let ramp_tgt = if kind == ServiceKind::BoardingRampExchange && p < 0.82 {
+                    1.0
+                } else {
+                    0.0
+                };
+
+                svc.repair_arm_ext = ease_scalar(svc.repair_arm_ext, arm_tgt, 3.6, dt);
+                svc.fuel_boom_ext = ease_scalar(svc.fuel_boom_ext, fuel_tgt, 3.6, dt);
+                svc.drone_deploy = ease_scalar(svc.drone_deploy, drone_tgt, 3.4, dt);
+                svc.ramp_deploy = ease_scalar(svc.ramp_deploy, ramp_tgt, 3.6, dt);
+                svc.scan_sweep_t = if kind == ServiceKind::BioScanSweep {
+                    p
+                } else {
+                    0.0
+                };
+
+                if svc.step_progress >= 1.0 {
+                    if kind == ServiceKind::CargoTransfer {
+                        svc.crates_transferred = svc.crates_transferred.saturating_add(1);
+                    }
+                    svc.current_step += 1;
+                    svc.step_progress = 0.0;
+                    svc.step_duration = svc
+                        .active_kind()
+                        .map(|next| next.duration_secs())
+                        .unwrap_or(1.0);
+                }
+            } else {
+                svc.repair_arm_ext = ease_scalar(svc.repair_arm_ext, 0.0, 4.2, dt);
+                svc.fuel_boom_ext = ease_scalar(svc.fuel_boom_ext, 0.0, 4.2, dt);
+                svc.drone_deploy = ease_scalar(svc.drone_deploy, 0.0, 4.2, dt);
+                svc.ramp_deploy = ease_scalar(svc.ramp_deploy, 0.0, 4.2, dt);
+                svc.scan_sweep_t = 0.0;
+            }
+        }
+    }
+
+    fn spawn_inbound_ship_for_pad(&mut self, pad: LandingPadId) {
+        let roll = self.rng.range(0.0, 1.0);
+        let class = match pad {
+            LandingPadId::PadAHangar => {
+                if roll < 0.34 {
+                    ShipClass::CorporateShuttle
+                } else if roll < 0.62 {
+                    ShipClass::MedicalCourier
+                } else if roll < 0.84 {
+                    ShipClass::SurveyProbeCarrier
+                } else {
+                    ShipClass::PatrolCutter
+                }
+            }
+            LandingPadId::PadBPort => {
+                if roll < 0.38 {
+                    ShipClass::BulkFreighter
+                } else if roll < 0.68 {
+                    ShipClass::FuelTanker
+                } else if roll < 0.86 {
                     ShipClass::MaintenanceTug
+                } else {
+                    ShipClass::SurveyProbeCarrier
                 }
             }
             LandingPadId::PadCStarboard => {
-                if self.rng.range(0.0, 1.0) < 0.5 {
+                if roll < 0.28 {
                     ShipClass::MaintenanceTug
+                } else if roll < 0.54 {
+                    ShipClass::FuelTanker
+                } else if roll < 0.76 {
+                    ShipClass::MedicalCourier
+                } else if roll < 0.90 {
+                    ShipClass::PatrolCutter
                 } else {
                     ShipClass::BulkFreighter
                 }
@@ -643,6 +843,94 @@ impl OrbitalHavenState {
                 let z = side * 11.0;
                 a.pos = [x, y, z];
                 a.yaw = a.phase * 0.3;
+                continue;
+            }
+
+            // Interactive Pad CargoForklifts: respond directly to their pad's active `CargoTransfer` step!
+            if kind == AgentKind::CargoForklift {
+                let (pad_idx, stage_pos, load_pos, face_ship_yaw, face_stage_yaw) = match zone {
+                    AgentZone::HangarBay => {
+                        if self.agents[idx].pos[0] < 0.0 {
+                            (
+                                0usize,
+                                [-7.35, -3.88, 22.0],
+                                [-7.35, -3.88, 26.8],
+                                std::f32::consts::FRAC_PI_2,
+                                0.0,
+                            )
+                        } else {
+                            (
+                                0usize,
+                                [7.35, -3.88, 31.4],
+                                [7.35, -3.88, 26.8],
+                                -std::f32::consts::FRAC_PI_2,
+                                std::f32::consts::PI,
+                            )
+                        }
+                    }
+                    AgentZone::PadBPort => (
+                        1usize,
+                        [-31.3, -1.42, -5.2],
+                        [-31.3, -1.42, 0.2],
+                        -std::f32::consts::FRAC_PI_2,
+                        0.0,
+                    ),
+                    _ => (
+                        2usize,
+                        [31.3, -1.42, 3.5],
+                        [31.3, -1.42, -0.4],
+                        std::f32::consts::FRAC_PI_2,
+                        std::f32::consts::PI,
+                    ),
+                };
+
+                let cargo_active =
+                    self.pad_services[pad_idx].active_kind() == Some(ServiceKind::CargoTransfer);
+                let p = self.pad_services[pad_idx].step_progress.clamp(0.0, 1.0);
+                let a = &mut self.agents[idx];
+                a.yielding = false;
+
+                if cargo_active {
+                    let (tgt_pos, tgt_yaw, tgt_lift) = if p < 0.34 {
+                        let u = smoothstep(p / 0.34);
+                        let pos = lerp3(stage_pos, load_pos, u);
+                        let move_yaw =
+                            (load_pos[0] - stage_pos[0]).atan2(load_pos[2] - stage_pos[2]);
+                        (pos, move_yaw, if a.carrying_cargo { 0.34 } else { 0.08 })
+                    } else if p < 0.66 {
+                        let u = (p - 0.34) / 0.32;
+                        let lift = if u < 0.65 { 0.88 } else { 0.36 };
+                        if (0.45..0.55).contains(&u) && a.dwell_timer <= 0.0 {
+                            a.carrying_cargo = !a.carrying_cargo;
+                            a.dwell_timer = 1.5;
+                        }
+                        (load_pos, face_ship_yaw, lift)
+                    } else {
+                        let u = smoothstep((p - 0.66) / 0.34);
+                        let pos = lerp3(load_pos, stage_pos, u);
+                        let move_yaw =
+                            (stage_pos[0] - load_pos[0]).atan2(stage_pos[2] - load_pos[2]);
+                        (pos, move_yaw, if a.carrying_cargo { 0.34 } else { 0.08 })
+                    };
+                    a.dwell_timer = (a.dwell_timer - dt).max(0.0);
+                    a.pos = [
+                        ease_scalar(a.pos[0], tgt_pos[0], 5.5, dt),
+                        tgt_pos[1],
+                        ease_scalar(a.pos[2], tgt_pos[2], 5.5, dt),
+                    ];
+                    a.yaw = turn_yaw(a.yaw, tgt_yaw, 5.2, dt);
+                    a.lift_height = ease_scalar(a.lift_height, tgt_lift, 4.5, dt);
+                } else {
+                    a.dwell_timer = 0.0;
+                    a.pos = [
+                        ease_scalar(a.pos[0], stage_pos[0], 3.5, dt),
+                        stage_pos[1],
+                        ease_scalar(a.pos[2], stage_pos[2], 3.5, dt),
+                    ];
+                    a.yaw = turn_yaw(a.yaw, face_stage_yaw, 3.2, dt);
+                    a.lift_height = ease_scalar(a.lift_height, 0.06, 3.8, dt);
+                }
+                all_bodies[idx + 1].1 = self.agents[idx].pos;
                 continue;
             }
 
@@ -986,15 +1274,15 @@ impl OrbitalHavenState {
         const D3: f32 = 12.05; // Deck 3: Ops & Command Spire
 
         const ROUTE: &[WalkerLeg] = &[
-            // 1. Start in Main Hangar Bay, inspect Pad A & cyan forcefield, walk to Hangar Blast Door
+            // 1. Start in Main Hangar Bay behind Pad A safety line, inspect docked ship & forcefield!
             WalkerLeg::Walk {
-                target: [0.0, D2, 22.0],
-                dwell: 2.0,
-                look_yaw: Some(0.0), // face +Z toward Pad A & forcefield
+                target: [0.0, D2, 15.8],
+                dwell: 2.2,
+                look_yaw: Some(0.0), // face +Z toward Pad A ship & cyan forcefield
                 room: "MAIN HANGAR BAY",
             },
             WalkerLeg::Walk {
-                target: [0.0, D2, 13.8],
+                target: [0.0, D2, 13.6],
                 dwell: 0.4,
                 look_yaw: None,
                 room: "HANGAR AIRLOCK",

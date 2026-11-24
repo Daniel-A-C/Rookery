@@ -433,9 +433,14 @@ fn all_rolling_robots_navigate_without_collisions() {
             }
         }
 
-        // 4. Every 30 seconds (300 steps), verify NO rolling robot is stuck staring at another bot!
+        // 4. Every 30 seconds (300 steps), verify NO patrolling robot is stuck staring at another bot!
+        // (CargoForklifts intentionally park on standby between CargoTransfer turnarounds.)
         if step_idx > 0 && step_idx % 300 == 0 {
-            for a in st.agents.iter().filter(|a| a.kind != AgentKind::HullWelder) {
+            for a in st
+                .agents
+                .iter()
+                .filter(|a| !matches!(a.kind, AgentKind::HullWelder | AgentKind::CargoForklift))
+            {
                 let moved = window_dist.get(&a.id).copied().unwrap_or(0.0);
                 assert!(
                     moved >= 8.0,
@@ -611,4 +616,69 @@ fn walker_never_wedges_between_ops_holotable_and_droid() {
         "BOT-01 wedged on Ops Command Deck (final pos {:?}, route_index={})",
         st.walker.pos, st.walker.route_index
     );
+}
+
+#[test]
+fn docked_ships_complete_randomized_service_sequences_and_depart() {
+    let mut st = OrbitalHavenState::new(808);
+    let mut saw_cargo = false;
+    let mut saw_other_service = false;
+    let mut saw_pad_a_service = false;
+    let mut saw_pad_b_depart = false;
+
+    for _ in 0..800 {
+        st.step(0.1);
+        for (pad_idx, svc) in st.pad_services.iter().enumerate() {
+            if let Some(kind) = svc.active_kind() {
+                if pad_idx == 0 {
+                    saw_pad_a_service = true;
+                }
+                if kind == ServiceKind::CargoTransfer {
+                    saw_cargo = true;
+                } else {
+                    saw_other_service = true;
+                }
+            }
+        }
+        if st.ships.iter().any(|s| {
+            s.assigned_pad == LandingPadId::PadBPort
+                && matches!(
+                    s.phase,
+                    ShipFlightPhase::Liftoff | ShipFlightPhase::OutboundBurn
+                )
+        }) {
+            saw_pad_b_depart = true;
+        }
+    }
+
+    assert!(
+        saw_pad_a_service,
+        "expected Pad A ship to enter service choreography"
+    );
+    assert!(saw_cargo, "expected CargoTransfer service to run");
+    assert!(
+        saw_other_service,
+        "expected non-cargo service (welding arm, fuel boom, bio-scan, drone, or ramp) to run"
+    );
+    assert!(
+        saw_pad_b_depart,
+        "expected Pad B Bulk Freighter to finish its service sequence and lift off"
+    );
+}
+
+#[test]
+fn walker_bot_never_enters_pad_a_landing_zone() {
+    let mut st = OrbitalHavenState::new(303);
+    for step in 0..3000 {
+        st.step(0.1);
+        let wp = st.walker.pos;
+        if (wp[1] - (-3.85)).abs() < 1.0 {
+            let in_pad_a = wp[0].abs() <= 6.8 && (17.5..=35.0).contains(&wp[2]);
+            assert!(
+                !in_pad_a,
+                "step {step}: BOT-01 entered Pad A ship landing zone at {:?}",
+                wp
+            );
+        }
+    }
 }

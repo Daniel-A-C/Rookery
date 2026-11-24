@@ -310,37 +310,49 @@ pub fn resolve_camera(
         CameraFeedId::PadAHangarInterior => {
             let eye = [-10.4, 7.6, 14.2];
             let tgt = [0.8, -0.8, 34.0];
+            let sub = state.pad_services[0]
+                .status_label()
+                .map(|s| format!("PAD-A · {s}"))
+                .unwrap_or_else(|| "ATMO FIELD 101.3 KPA · PAD-A".to_string());
             (
                 eye,
                 apply_pan(eye, tgt, servo_sweep * 0.65, 0.0),
                 [0.0, 1.0, 0.0],
                 66.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
-                "ATMO FIELD 101.3 KPA · PAD-A".to_string(),
+                sub,
             )
         }
         CameraFeedId::PadBPortDeck => {
             let eye = [-24.5, 11.2, 16.5];
             let tgt = [PAD_B_POS[0] - 1.5, PAD_B_POS[1] + 1.2, PAD_B_POS[2]];
+            let sub = state.pad_services[1]
+                .status_label()
+                .map(|s| format!("PAD-B · {s}"))
+                .unwrap_or_else(|| "PORT FREIGHT DECK · PAD-B".to_string());
             (
                 eye,
                 apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
                 55.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
-                "PORT FREIGHT DECK · PAD-B".to_string(),
+                sub,
             )
         }
         CameraFeedId::PadCStarboardDeck => {
             let eye = [24.5, 11.2, 16.5];
             let tgt = [PAD_C_POS[0] + 1.5, PAD_C_POS[1] + 1.2, PAD_C_POS[2]];
+            let sub = state.pad_services[2]
+                .status_label()
+                .map(|s| format!("PAD-C · {s}"))
+                .unwrap_or_else(|| "STBD UTILITY DECK · PAD-C".to_string());
             (
                 eye,
                 apply_pan(eye, tgt, -servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
                 55.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
-                "STBD UTILITY DECK · PAD-C".to_string(),
+                sub,
             )
         }
         CameraFeedId::IntCentralAtrium => {

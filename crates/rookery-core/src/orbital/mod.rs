@@ -81,6 +81,9 @@ pub struct OrbitalHavenState {
     /// Entity ID (`0` = BOT-01 Walker Rover, `> 0` = agent ID) holding single-lane Pipe Tunnel mutex.
     #[serde(default)]
     pub pipe_tunnel_owner: Option<u32>,
+    /// Active docked-ship service choreographies for Pad A (`[0]`), Pad B (`[1]`), and Pad C (`[2]`).
+    #[serde(default)]
+    pub pad_services: [PadServiceState; 3],
     /// Monotonic entity ID counter.
     pub next_id: u32,
     /// Cached operational telemetry.
@@ -307,6 +310,9 @@ impl OrbitalHavenState {
             ..Default::default()
         };
 
+        let pad_b_ship_id = ships[1].id;
+        let pad_b_ship_class = ships[1].class;
+
         let mut state = Self {
             version: ORBITAL_HAVEN_STATE_VERSION,
             seed,
@@ -328,9 +334,15 @@ impl OrbitalHavenState {
             walker: WalkerBotState::default(),
             door_open: [0.0; 3],
             pipe_tunnel_owner: None,
+            pad_services: [
+                PadServiceState::default(),
+                PadServiceState::default(),
+                PadServiceState::default(),
+            ],
             next_id,
             stats: OrbitalHavenStats::default(),
         };
+        state.begin_pad_service(LandingPadId::PadBPort, pad_b_ship_id, pad_b_ship_class);
         state.recompute_telemetry();
         state
     }

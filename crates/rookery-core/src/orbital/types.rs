@@ -456,10 +456,16 @@ pub enum ShipClass {
     CorporateShuttle,
     /// Heavy boxy twin-pod industrial bulk freighter — docks on external Pad B or Pad C.
     BulkFreighter,
-    /// Swept-wing orbital security interceptor — patrols perimeter or lands on Pad C.
+    /// Swept-wing orbital security interceptor — patrols perimeter or lands on Pad A / Pad C.
     PatrolCutter,
     /// Chunky utility maintenance tug with amber work strobes — services Pads B & C.
     MaintenanceTug,
+    /// Crisp white-and-crimson triangular bio-rescue courier with med-beacon & cryo-pods.
+    MedicalCourier,
+    /// Asymmetric science/recon carrier with spinning dorsal dish & ventral probe bay.
+    SurveyProbeCarrier,
+    /// Heavy industrial girder tanker carrying 4 glowing plasma-fuel drums & quad VTOL pods.
+    FuelTanker,
 }
 
 impl ShipClass {
@@ -469,6 +475,9 @@ impl ShipClass {
             Self::BulkFreighter => "Bulk Freighter",
             Self::PatrolCutter => "Patrol Cutter",
             Self::MaintenanceTug => "Maintenance Tug",
+            Self::MedicalCourier => "Medical Courier",
+            Self::SurveyProbeCarrier => "Survey Carrier",
+            Self::FuelTanker => "Fuel Tanker",
         }
     }
 }
@@ -493,6 +502,110 @@ impl LandingPadId {
             Self::PadBPort => "PAD-B",
             Self::PadCStarboard => "PAD-C",
         }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::PadAHangar => 0,
+            Self::PadBPort => 1,
+            Self::PadCStarboard => 2,
+        }
+    }
+}
+
+/// Physical interactive service operation performed on a docked spacecraft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceKind {
+    /// Pad CargoForklift drives up to the ship flank, raises forks, and transfers a crate.
+    CargoTransfer,
+    /// Articulated 3-joint gantry repair arm unfolds over the hull with plasma welding sparks.
+    ArticulatedRepairArm,
+    /// Cryo-fuel umbilical boom extends to the hull with chasing plasma-flow lights.
+    FuelUmbilical,
+    /// Translucent holographic laser inspection curtain sweeps nose-to-tail across the hull.
+    BioScanSweep,
+    /// Pair of hovering pad utility micro-drones swap wingtip/mast sensor or ordnance pods.
+    DroneResupply,
+    /// Ship boarding ramp lowers while a wheeled courier/med-cart exchanges a glowing case.
+    BoardingRampExchange,
+}
+
+impl ServiceKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CargoTransfer => "CARGO TRANSFER",
+            Self::ArticulatedRepairArm => "WELDING ARM",
+            Self::FuelUmbilical => "FUEL UMBILICAL",
+            Self::BioScanSweep => "BIO-SCAN SWEEP",
+            Self::DroneResupply => "DRONE RESUPPLY",
+            Self::BoardingRampExchange => "BOARDING RAMP",
+        }
+    }
+
+    pub fn duration_secs(self) -> f32 {
+        match self {
+            Self::CargoTransfer => 9.0,
+            Self::ArticulatedRepairArm => 7.5,
+            Self::FuelUmbilical => 7.0,
+            Self::BioScanSweep => 6.0,
+            Self::DroneResupply => 7.0,
+            Self::BoardingRampExchange => 7.5,
+        }
+    }
+}
+
+/// Live turnaround service choreography state for one landing pad (`PadA`, `PadB`, or `PadC`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PadServiceState {
+    /// ID of the spacecraft currently docked on this pad (if any).
+    pub ship_id: Option<u32>,
+    /// Queued randomized service steps for the active turnaround.
+    pub steps: Vec<ServiceKind>,
+    /// Index of the currently executing step in `steps`.
+    pub current_step: usize,
+    /// `[0.0, 1.0]` normalized progress through the active step.
+    pub step_progress: f32,
+    /// Duration in seconds of the active step.
+    pub step_duration: f32,
+    /// `[0.0, 1.0]` smooth extension of the pad's articulated repair/welding arm.
+    pub repair_arm_ext: f32,
+    /// `[0.0, 1.0]` smooth extension of the pad's cryo-fuel umbilical boom.
+    pub fuel_boom_ext: f32,
+    /// `[0.0, 1.0]` laser scan curtain sweep position (nose-to-tail).
+    pub scan_sweep_t: f32,
+    /// `[0.0, 1.0]` hover micro-drone deployment progress.
+    pub drone_deploy: f32,
+    /// `[0.0, 1.0]` ship boarding ramp & courier cart exchange progress.
+    pub ramp_deploy: f32,
+    /// Number of crates transferred during this turnaround.
+    pub crates_transferred: u8,
+}
+
+impl PadServiceState {
+    pub fn active_kind(&self) -> Option<ServiceKind> {
+        self.steps.get(self.current_step).copied()
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.ship_id.is_none() || self.current_step >= self.steps.len()
+    }
+
+    pub fn hardware_retracted(&self) -> bool {
+        self.repair_arm_ext < 0.12
+            && self.fuel_boom_ext < 0.12
+            && self.drone_deploy < 0.12
+            && self.ramp_deploy < 0.12
+    }
+
+    pub fn status_label(&self) -> Option<String> {
+        let kind = self.active_kind()?;
+        Some(format!(
+            "{} [{}/{}]",
+            kind.label(),
+            self.current_step + 1,
+            self.steps.len().max(1)
+        ))
     }
 }
 
@@ -748,8 +861,8 @@ pub struct WalkerBotState {
 impl Default for WalkerBotState {
     fn default() -> Self {
         Self {
-            pos: [0.0, -3.85, 22.0],
-            yaw: std::f32::consts::PI,
+            pos: [0.0, -3.85, 15.8],
+            yaw: 0.0,
             pitch: 0.0,
             walk_phase: 0.0,
             route_index: 0,
