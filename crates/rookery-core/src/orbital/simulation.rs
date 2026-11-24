@@ -634,8 +634,7 @@ impl OrbitalHavenState {
     }
 
     fn step_pad_services(&mut self, dt: f32) {
-        for pad_idx in 0..3 {
-            let svc = &mut self.pad_services[pad_idx];
+        for svc in &mut self.pad_services {
             if svc.ship_id.is_none() {
                 svc.repair_arm_ext = ease_scalar(svc.repair_arm_ext, 0.0, 3.2, dt);
                 svc.fuel_boom_ext = ease_scalar(svc.fuel_boom_ext, 0.0, 3.2, dt);
