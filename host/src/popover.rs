@@ -50,6 +50,14 @@ pub fn toggle_at_cursor(app: &AppHandle) {
 pub fn hide(app: &AppHandle) {
     if let Some(state) = app.try_state::<HostState>() {
         state.popover_visible.store(false, Ordering::SeqCst);
+        if state.hotkey_recording.swap(false, Ordering::SeqCst)
+            && let Ok(inner) = state.inner.lock()
+        {
+            let settings = inner.settings.clone();
+            let is_interactive = inner.interaction.is_interactive();
+            drop(inner);
+            crate::hotkey::sync_all_hotkeys_best_effort(app, &settings, is_interactive);
+        }
     }
     IS_FOCUSED.store(false, Ordering::SeqCst);
     if let Some(existing) = app.get_webview_window(POPOVER_LABEL) {

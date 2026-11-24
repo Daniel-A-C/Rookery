@@ -52,6 +52,7 @@ const settingsNavBtns = document.querySelectorAll<HTMLButtonElement>(".settings-
 
 for (const navBtn of settingsNavBtns) {
   navBtn.addEventListener("click", () => {
+    cancelRecordingHotkey();
     const targetTab = navBtn.getAttribute("data-settings-tab") || "general";
     for (const b of settingsNavBtns) {
       b.classList.toggle("active", b === navBtn);
@@ -62,13 +63,75 @@ for (const navBtn of settingsNavBtns) {
   });
 }
 
+const DEFAULT_HOTKEY = "CommandOrControl+Alt+Shift+P";
+const DEFAULT_POPOVER_HOTKEY = "CommandOrControl+Alt+Shift+M";
+const FAVORITE_HOTKEY_SLOTS = 9;
+
+function defaultFavoriteHotkeys(): string[] {
+  return Array.from(
+    { length: FAVORITE_HOTKEY_SLOTS },
+    (_, i) => `CommandOrControl+Alt+Shift+${i + 1}`,
+  );
+}
+
+const IS_MAC = /Mac|iPhone|iPad|iPod/i.test(
+  navigator.platform || navigator.userAgent,
+);
+
+function formatShortcutForDisplay(shortcut: string): string {
+  const parts = shortcut
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (IS_MAC) {
+    return parts
+      .map((p) => {
+        switch (p.toLowerCase()) {
+          case "commandorcontrol":
+          case "cmdorctrl":
+          case "command":
+          case "cmd":
+          case "super":
+          case "meta":
+            return "⌘";
+          case "alt":
+          case "option":
+            return "⌥";
+          case "shift":
+            return "⇧";
+          case "control":
+          case "ctrl":
+            return "⌃";
+          case "space":
+            return "Space";
+          default:
+            return p.length === 1 ? p.toUpperCase() : p;
+        }
+      })
+      .join("");
+  }
+  return parts
+    .map((p) => {
+      switch (p.toLowerCase()) {
+        case "commandorcontrol":
+        case "cmdorctrl":
+          return "Ctrl";
+        default:
+          return p.length === 1 ? p.toUpperCase() : p;
+      }
+    })
+    .join("+");
+}
+
 type ActiveView = "realm" | "library" | "settings";
 let activeView: ActiveView = "realm";
 let activeLibraryFilter = "all";
 let librarySearchQuery = "";
 let favoriteApps: string[] = [];
+let favoriteHotkeys: string[] = defaultFavoriteHotkeys();
 
 function setActiveView(view: ActiveView): void {
+  cancelRecordingHotkey();
   activeView = view;
   const isLibrary = view === "library";
   const isSettings = view === "settings";
@@ -700,6 +763,8 @@ const valLowPower = el<HTMLElement>("val-lowpower");
 const chkBattery = el<HTMLInputElement>("chk-battery");
 const btnRecordHotkey = el<HTMLButtonElement>("btn-record-hotkey");
 const btnRecordPopoverHotkey = el<HTMLButtonElement>("btn-record-popover-hotkey");
+const btnResetHotkeys = el<HTMLButtonElement>("btn-reset-hotkeys");
+const favoriteHotkeysList = el<HTMLUListElement>("favorite-hotkeys-list");
 const hotkeyError = el<HTMLParagraphElement>("hotkey-error");
 const btnQuit = el<HTMLButtonElement>("btn-quit");
 
@@ -760,9 +825,14 @@ const btnScatterSnacks = el<HTMLButtonElement>("btn-scatter-snacks");
 const btnDebugResetWorld = el<HTMLButtonElement>("btn-debug-reset-world");
 const debugMsgStatus = el<HTMLSpanElement>("debug-msg-status");
 
+type HotkeyTarget =
+  | { kind: "interaction" }
+  | { kind: "popover" }
+  | { kind: "favorite"; index: number };
+
 let currentStatus: HostStatus | null = null;
-let recordingInteractionHotkey = false;
-let recordingPopoverHotkey = false;
+let currentSettings: Settings | null = null;
+let recordingTarget: HotkeyTarget | null = null;
 
 let appCatalog: AppManifest[] = [];
 
@@ -819,11 +889,13 @@ function renderLibraryGrid(): void {
     return haystack.includes(q);
   });
 
-  // Sort favorites first when viewing "all"
+  // Sort favorites first in their pinned slot order
   const sorted = [...filtered].sort((a, b) => {
-    const aFav = favoriteApps.includes(a.metadata.id) ? 0 : 1;
-    const bFav = favoriteApps.includes(b.metadata.id) ? 0 : 1;
-    return aFav - bFav;
+    const aIdx = favoriteApps.indexOf(a.metadata.id);
+    const bIdx = favoriteApps.indexOf(b.metadata.id);
+    const aRank = aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx;
+    const bRank = bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx;
+    return aRank - bRank;
   });
 
   libraryGrid.replaceChildren();
@@ -879,6 +951,18 @@ function renderLibraryGrid(): void {
       activePill.className = "library-active-pill";
       activePill.textContent = "Active";
       titleRow.appendChild(activePill);
+    }
+
+    const favSlotIdx = favoriteApps.indexOf(id);
+    if (favSlotIdx >= 0 && favSlotIdx < FAVORITE_HOTKEY_SLOTS) {
+      const favShortcut =
+        favoriteHotkeys[favSlotIdx] ||
+        `CommandOrControl+Alt+Shift+${favSlotIdx + 1}`;
+      const shortcutPill = document.createElement("span");
+      shortcutPill.className = "library-shortcut-pill";
+      shortcutPill.textContent = `#${favSlotIdx + 1} · ${formatShortcutForDisplay(favShortcut)}`;
+      shortcutPill.title = `Favorite #${favSlotIdx + 1} shortcut (${favShortcut})`;
+      titleRow.appendChild(shortcutPill);
     }
 
     const descEl = document.createElement("span");
@@ -1163,6 +1247,7 @@ function applyCatalog(): void {
   }
 
   renderLibraryGrid();
+  renderFavoriteHotkeysList();
 
   if (currentStatus) {
     const active = currentStatus.active_app || "living-rookery";
@@ -1506,15 +1591,22 @@ function renderStatus(s: HostStatus): void {
 }
 
 function renderSettings(st: Settings): void {
+  currentSettings = st;
   try {
     localStorage.setItem("rookery_settings", JSON.stringify(st));
   } catch {}
 
   if (Array.isArray(st.favorite_apps)) {
     favoriteApps = st.favorite_apps;
-    if (activeView === "library") {
-      renderLibraryGrid();
-    }
+  }
+  const defaults = defaultFavoriteHotkeys();
+  favoriteHotkeys = defaults.map((def, i) => {
+    const val = st.favorite_hotkeys?.[i]?.trim();
+    return val ? val : def;
+  });
+
+  if (activeView === "library") {
+    renderLibraryGrid();
   }
 
   applyMenuAppearance(st.popover_opacity ?? 0.92, st.popover_blur ?? 20);
@@ -1535,14 +1627,25 @@ function renderSettings(st: Settings): void {
 
   chkBattery.checked = st.frame.pause_on_battery;
 
-  kbdHotkey.textContent = st.hotkey
-    .replace("CommandOrControl", "⌘")
-    .replace("Alt", "⌥")
-    .replace("Shift", "⇧");
-  btnRecordHotkey.textContent = st.hotkey;
+  const interactionHk = st.hotkey?.trim() || DEFAULT_HOTKEY;
+  const popoverHk = st.popover_hotkey?.trim() || DEFAULT_POPOVER_HOTKEY;
+  kbdHotkey.textContent = formatShortcutForDisplay(interactionHk);
 
-  btnRecordPopoverHotkey.textContent =
-    st.popover_hotkey || "CommandOrControl+Alt+Shift+P";
+  if (recordingTarget?.kind !== "interaction") {
+    btnRecordHotkey.textContent = formatShortcutForDisplay(interactionHk);
+    btnRecordHotkey.classList.remove("recording");
+    btnRecordHotkey.setAttribute("aria-pressed", "false");
+    btnRecordHotkey.title = `Mouse Interaction shortcut (${interactionHk})`;
+  }
+
+  if (recordingTarget?.kind !== "popover") {
+    btnRecordPopoverHotkey.textContent = formatShortcutForDisplay(popoverHk);
+    btnRecordPopoverHotkey.classList.remove("recording");
+    btnRecordPopoverHotkey.setAttribute("aria-pressed", "false");
+    btnRecordPopoverHotkey.title = `Menu at Cursor shortcut (${popoverHk})`;
+  }
+
+  renderFavoriteHotkeysList();
 
   selectScheduleMode.value = st.schedule_mode;
   sliderInterval.value = String(st.schedule_interval_mins);
@@ -2014,26 +2117,257 @@ chkAudioDirectMode.addEventListener("change", async () => {
   }
 });
 
+function sameHotkeyTarget(a: HotkeyTarget | null, b: HotkeyTarget | null): boolean {
+  if (!a || !b) return false;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "favorite" && b.kind === "favorite") {
+    return a.index === b.index;
+  }
+  return true;
+}
+
+function getRealmDisplayName(appId: string): string {
+  const fromCatalog = appCatalog.find((m) => m.metadata.id === appId)?.metadata.name;
+  if (fromCatalog) return fromCatalog;
+  if (appThemes[appId]?.title) return appThemes[appId].title;
+  return appId.replace(/-/g, " ");
+}
+
+function renderFavoriteHotkeysList(): void {
+  favoriteHotkeysList.replaceChildren();
+
+  const pinned = favoriteApps.slice(0, FAVORITE_HOTKEY_SLOTS);
+  if (pinned.length === 0) {
+    const emptyLi = document.createElement("li");
+    emptyLi.className = "favorite-hotkeys-empty";
+    emptyLi.textContent = `Star realms in the Realm Library to pin quick-jump hotkeys (${formatShortcutForDisplay("CommandOrControl+Alt+Shift+1")}–9).`;
+    favoriteHotkeysList.appendChild(emptyLi);
+    return;
+  }
+
+  pinned.forEach((appId, idx) => {
+    const slotNum = idx + 1;
+    const realmName = getRealmDisplayName(appId);
+    const shortcut =
+      favoriteHotkeys[idx] || `CommandOrControl+Alt+Shift+${slotNum}`;
+    const isRecordingThis =
+      recordingTarget?.kind === "favorite" && recordingTarget.index === idx;
+
+    const li = document.createElement("li");
+    li.className = "hotkey-row";
+
+    const labelWrap = document.createElement("span");
+    labelWrap.className = "favorite-hotkey-label";
+    labelWrap.id = `lbl-hotkey-fav-${slotNum}`;
+
+    const slotBadge = document.createElement("span");
+    slotBadge.className = "favorite-slot-badge";
+    slotBadge.textContent = `#${slotNum}`;
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "favorite-realm-name";
+    nameSpan.textContent = realmName;
+    nameSpan.title = realmName;
+
+    labelWrap.append(slotBadge, nameSpan);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `hotkey-btn${isRecordingThis ? " recording" : ""}`;
+    btn.id = `btn-record-fav-hotkey-${slotNum}`;
+    btn.setAttribute("aria-pressed", String(isRecordingThis));
+    btn.setAttribute("aria-labelledby", `${labelWrap.id} ${btn.id}`);
+    btn.title = `Jump to ${realmName} (${shortcut})`;
+    btn.textContent = isRecordingThis
+      ? "Press shortcut… (Esc)"
+      : formatShortcutForDisplay(shortcut);
+
+    btn.addEventListener("click", () => {
+      toggleRecordingHotkey({ kind: "favorite", index: idx });
+    });
+
+    li.append(labelWrap, btn);
+    favoriteHotkeysList.appendChild(li);
+  });
+}
+
+function restoreHotkeyButtons(): void {
+  const interactionHk = currentSettings?.hotkey?.trim() || DEFAULT_HOTKEY;
+  const popoverHk = currentSettings?.popover_hotkey?.trim() || DEFAULT_POPOVER_HOTKEY;
+
+  btnRecordHotkey.classList.remove("recording");
+  btnRecordHotkey.setAttribute("aria-pressed", "false");
+  btnRecordHotkey.textContent = formatShortcutForDisplay(interactionHk);
+
+  btnRecordPopoverHotkey.classList.remove("recording");
+  btnRecordPopoverHotkey.setAttribute("aria-pressed", "false");
+  btnRecordPopoverHotkey.textContent = formatShortcutForDisplay(popoverHk);
+
+  renderFavoriteHotkeysList();
+}
+
+function cancelRecordingHotkey(notifyBackend = true): void {
+  if (!recordingTarget) return;
+  recordingTarget = null;
+  restoreHotkeyButtons();
+  if (notifyBackend) {
+    api.setHotkeyRecording(false).catch(() => {});
+  }
+}
+
+function toggleRecordingHotkey(target: HotkeyTarget): void {
+  if (sameHotkeyTarget(recordingTarget, target)) {
+    cancelRecordingHotkey(true);
+    return;
+  }
+
+  const wasRecording = recordingTarget !== null;
+  recordingTarget = target;
+  hotkeyError.hidden = true;
+  restoreHotkeyButtons();
+
+  if (target.kind === "interaction") {
+    btnRecordHotkey.classList.add("recording");
+    btnRecordHotkey.setAttribute("aria-pressed", "true");
+    btnRecordHotkey.textContent = "Press shortcut… (Esc)";
+  } else if (target.kind === "popover") {
+    btnRecordPopoverHotkey.classList.add("recording");
+    btnRecordPopoverHotkey.setAttribute("aria-pressed", "true");
+    btnRecordPopoverHotkey.textContent = "Press shortcut… (Esc)";
+  } else {
+    renderFavoriteHotkeysList();
+  }
+
+  if (!wasRecording) {
+    api.setHotkeyRecording(true).catch((err) => {
+      console.warn("setHotkeyRecording(true) failed:", err);
+    });
+  }
+}
+
+function codeToTauriKey(code: string): string | null {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^Numpad[0-9]$/.test(code)) return `Num${code.slice(6)}`;
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+
+  const specialMap: Record<string, string> = {
+    Space: "Space",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Enter: "Enter",
+    Tab: "Tab",
+    Backspace: "Backspace",
+    Delete: "Delete",
+    Insert: "Insert",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    Minus: "Minus",
+    Equal: "Equal",
+    BracketLeft: "BracketLeft",
+    BracketRight: "BracketRight",
+    Backslash: "Backslash",
+    Semicolon: "Semicolon",
+    Quote: "Quote",
+    Comma: "Comma",
+    Period: "Period",
+    Slash: "Slash",
+    Backquote: "Backquote",
+  };
+  return specialMap[code] ?? null;
+}
+
+const MODIFIER_CODES = new Set([
+  "ControlLeft",
+  "ControlRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "AltLeft",
+  "AltRight",
+  "MetaLeft",
+  "MetaRight",
+  "OSLeft",
+  "OSRight",
+]);
+
+function eventToAccelerator(ev: KeyboardEvent):
+  | { status: "ignore" }
+  | { status: "cancel" }
+  | { status: "invalid"; reason: string }
+  | { status: "ok"; shortcut: string } {
+  if (
+    MODIFIER_CODES.has(ev.code) ||
+    ["Control", "Alt", "Shift", "Meta"].includes(ev.key)
+  ) {
+    return { status: "ignore" };
+  }
+
+  if (ev.code === "Escape" || ev.key === "Escape") {
+    return { status: "cancel" };
+  }
+
+  const keyToken = codeToTauriKey(ev.code);
+  if (!keyToken) {
+    return {
+      status: "invalid",
+      reason: `Unsupported key (${ev.code || ev.key}). Try a letter, number, or function key.`,
+    };
+  }
+
+  const hasModifier = ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey;
+  const isFunctionKey = /^F([1-9]|1[0-9]|2[0-4])$/.test(keyToken);
+  if (!hasModifier && !isFunctionKey) {
+    return {
+      status: "invalid",
+      reason: "Include at least one modifier (⌘/Ctrl, ⌥/Alt, or ⇧Shift).",
+    };
+  }
+
+  const parts: string[] = [];
+  if (ev.metaKey || ev.ctrlKey) parts.push("CommandOrControl");
+  if (ev.altKey) parts.push("Alt");
+  if (ev.shiftKey) parts.push("Shift");
+  parts.push(keyToken);
+
+  return { status: "ok", shortcut: parts.join("+") };
+}
+
 // Interaction Hotkey Recording
 btnRecordHotkey.addEventListener("click", () => {
-  if (recordingPopoverHotkey) recordingPopoverHotkey = false;
-  recordingInteractionHotkey = true;
-  btnRecordHotkey.classList.add("recording");
-  btnRecordHotkey.textContent = "Press shortcut keys…";
-  hotkeyError.hidden = true;
+  toggleRecordingHotkey({ kind: "interaction" });
 });
 
 // Popover Toggle Hotkey Recording
 btnRecordPopoverHotkey.addEventListener("click", () => {
-  if (recordingInteractionHotkey) recordingInteractionHotkey = false;
-  recordingPopoverHotkey = true;
-  btnRecordPopoverHotkey.classList.add("recording");
-  btnRecordPopoverHotkey.textContent = "Press shortcut keys…";
+  toggleRecordingHotkey({ kind: "popover" });
+});
+
+// Reset All Hotkeys to Defaults
+btnResetHotkeys.addEventListener("click", async () => {
+  cancelRecordingHotkey(false);
   hotkeyError.hidden = true;
+  btnResetHotkeys.disabled = true;
+  try {
+    const st = await api.resetHotkeys();
+    renderSettings(st);
+  } catch (err) {
+    hotkeyError.textContent = `Could not reset hotkeys: ${err}`;
+    hotkeyError.hidden = false;
+  } finally {
+    btnResetHotkeys.disabled = false;
+  }
+});
+
+window.addEventListener("blur", () => {
+  cancelRecordingHotkey(true);
 });
 
 window.addEventListener("keydown", async (ev) => {
-  if (!recordingInteractionHotkey && !recordingPopoverHotkey) {
+  if (!recordingTarget) {
     if (ev.key === "Escape" && activeView !== "realm") {
       ev.preventDefault();
       const prev = activeView;
@@ -2046,43 +2380,52 @@ window.addEventListener("keydown", async (ev) => {
     }
     return;
   }
-  if (["Control", "Alt", "Shift", "Meta"].includes(ev.key)) return;
+
+  const result = eventToAccelerator(ev);
+  if (result.status === "ignore") return;
 
   ev.preventDefault();
-  const parts: string[] = [];
-  if (ev.metaKey || ev.ctrlKey) parts.push("CommandOrControl");
-  if (ev.altKey) parts.push("Alt");
-  if (ev.shiftKey) parts.push("Shift");
+  ev.stopPropagation();
 
-  let key = ev.key.toUpperCase();
-  if (key === " ") key = "SPACE";
-  parts.push(key);
+  if (result.status === "cancel") {
+    cancelRecordingHotkey(true);
+    return;
+  }
 
-  const shortcut = parts.join("+");
+  if (result.status === "invalid") {
+    hotkeyError.textContent = result.reason;
+    hotkeyError.hidden = false;
+    return;
+  }
 
-  if (recordingInteractionHotkey) {
-    recordingInteractionHotkey = false;
-    btnRecordHotkey.classList.remove("recording");
-    try {
-      const st = await api.updateSettings({ hotkey: shortcut });
-      renderSettings(st);
-    } catch (err) {
-      hotkeyError.textContent = `Could not bind ${shortcut}: ${err}`;
-      hotkeyError.hidden = false;
-      const st = await api.getSettings();
-      renderSettings(st);
+  const target = recordingTarget;
+  const shortcut = result.shortcut;
+  recordingTarget = null;
+  hotkeyError.hidden = true;
+
+  try {
+    let st: Settings;
+    if (target.kind === "interaction") {
+      st = await api.updateSettings({ hotkey: shortcut });
+    } else if (target.kind === "popover") {
+      st = await api.updateSettings({ popover_hotkey: shortcut });
+    } else {
+      const nextFavs = [...favoriteHotkeys];
+      nextFavs[target.index] = shortcut;
+      st = await api.updateSettings({ favorite_hotkeys: nextFavs });
     }
-  } else if (recordingPopoverHotkey) {
-    recordingPopoverHotkey = false;
-    btnRecordPopoverHotkey.classList.remove("recording");
+    renderSettings(st);
+  } catch (err) {
+    hotkeyError.textContent = `Could not bind ${formatShortcutForDisplay(shortcut)}: ${err}`;
+    hotkeyError.hidden = false;
     try {
-      const st = await api.updateSettings({ popover_hotkey: shortcut });
-      renderSettings(st);
-    } catch (err) {
-      hotkeyError.textContent = `Could not bind ${shortcut}: ${err}`;
-      hotkeyError.hidden = false;
+      await api.setHotkeyRecording(false);
+    } catch {}
+    try {
       const st = await api.getSettings();
       renderSettings(st);
+    } catch {
+      restoreHotkeyButtons();
     }
   }
 });

@@ -74,6 +74,8 @@ pub fn run() {
             commands::set_interactive,
             commands::get_settings,
             commands::update_settings,
+            commands::set_hotkey_recording,
+            commands::reset_hotkeys,
             commands::set_popover_blur,
             commands::start_drag,
             commands::get_catalog,
@@ -193,8 +195,7 @@ pub fn run() {
                 apps_dir.as_deref(),
             ));
 
-            let initial_hotkey = settings.hotkey.clone();
-            let initial_popover_hotkey = settings.popover_hotkey.clone();
+            let initial_settings = settings.clone();
             let initial_manifests = AppCatalog::all_manifests(apps_dir.as_deref());
             let host_state = HostState {
                 settings_path,
@@ -217,6 +218,7 @@ pub fn run() {
                     displays: BTreeMap::new(),
                 }),
                 popover_visible: AtomicBool::new(false),
+                hotkey_recording: AtomicBool::new(false),
                 settings_dirty: AtomicBool::new(false),
                 world_dirty: AtomicBool::new(false),
                 orbital_dirty: AtomicBool::new(false),
@@ -229,12 +231,7 @@ pub fn run() {
             tray::setup_tray(handle)?;
             popover::prewarm(handle);
 
-            if let Err(e) = hotkey::register_interaction_hotkey(handle, &initial_hotkey) {
-                log::warn!("{e:#}");
-            }
-            if let Err(e) = hotkey::register_popover_hotkey(handle, &initial_popover_hotkey) {
-                log::warn!("{e:#}");
-            }
+            hotkey::sync_all_hotkeys_best_effort(handle, &initial_settings, false);
 
             spawn_governor_thread(handle.clone());
             Ok(())

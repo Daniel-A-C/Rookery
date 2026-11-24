@@ -208,6 +208,7 @@ export interface Settings {
   update?: UpdateSettings;
   active_app: string;
   favorite_apps?: string[];
+  favorite_hotkeys?: string[];
   schedule_mode: ScheduleMode;
   schedule_interval_mins: number;
   debug_mode?: boolean;
@@ -224,6 +225,7 @@ export interface SettingsPatch {
   pause_on_battery?: boolean;
   active_app?: string;
   favorite_apps?: string[];
+  favorite_hotkeys?: string[];
   schedule_mode?: ScheduleMode;
   schedule_interval_mins?: number;
   audio_enabled?: boolean;
@@ -255,6 +257,9 @@ export const api = {
   getSettings: (): Promise<Settings> => invoke("get_settings"),
   updateSettings: (patch: SettingsPatch): Promise<Settings> =>
     invoke("update_settings", { patch }),
+  setHotkeyRecording: (recording: boolean): Promise<void> =>
+    invoke("set_hotkey_recording", { recording }),
+  resetHotkeys: (): Promise<Settings> => invoke("reset_hotkeys"),
   setPopoverBlur: (blur: number): Promise<void> =>
     invoke("set_popover_blur", { blur }),
   startDrag: (): Promise<void> => invoke("start_drag"),

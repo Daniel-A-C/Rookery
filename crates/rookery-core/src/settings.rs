@@ -18,13 +18,22 @@ use crate::manifest::{DayNightMapping, ScheduleMode};
 /// Current on-disk schema version. Bump and extend [`Settings::migrate`] on breaking changes.
 pub const SETTINGS_VERSION: u32 = 1;
 
-/// Default global hotkey for Direct Interaction Mode (Tauri accelerator syntax).
-/// `CommandOrControl` maps to Cmd on macOS and Ctrl on Windows. Deliberately avoids
-/// `Cmd/Ctrl+Shift+R`, which is "hard reload" in every major browser.
-pub const DEFAULT_HOTKEY: &str = "CommandOrControl+Alt+Shift+R";
+/// Default global hotkey for Direct Interaction Mode / Mouse interaction (Tauri accelerator syntax).
+/// `CommandOrControl` maps to Cmd on macOS and Ctrl on Windows.
+pub const DEFAULT_HOTKEY: &str = "CommandOrControl+Alt+Shift+P";
 
 /// Default global hotkey to summon / toggle the Rookery popover menu from anywhere.
-pub const DEFAULT_POPOVER_HOTKEY: &str = "CommandOrControl+Alt+Shift+P";
+pub const DEFAULT_POPOVER_HOTKEY: &str = "CommandOrControl+Alt+Shift+M";
+
+/// Maximum number of numbered favorite Rookery quick-jump hotkey slots (`1`..=`9`).
+pub const FAVORITE_HOTKEY_SLOTS: usize = 9;
+
+/// Default global hotkeys for jumping to favorite Rookeries (`CommandOrControl+Alt+Shift+1`..`9`).
+pub fn default_favorite_hotkeys() -> Vec<String> {
+    (1..=FAVORITE_HOTKEY_SLOTS)
+        .map(|n| format!("CommandOrControl+Alt+Shift+{n}"))
+        .collect()
+}
 
 /// Default popover menu background opacity (0.15..=1.0).
 pub const DEFAULT_POPOVER_OPACITY: f32 = 0.92;
@@ -102,6 +111,9 @@ pub struct Settings {
     pub active_app: String,
     #[serde(default)]
     pub favorite_apps: Vec<String>,
+    /// Global hotkeys for jumping directly to favorite Rookeries (slots 1..=9).
+    #[serde(default = "default_favorite_hotkeys")]
+    pub favorite_hotkeys: Vec<String>,
     pub schedule_mode: ScheduleMode,
     pub schedule_interval_mins: u32,
     pub day_night_mapping: DayNightMapping,
@@ -131,6 +143,7 @@ impl Default for Settings {
             popover_blur: DEFAULT_POPOVER_BLUR,
             active_app: "living-rookery".to_owned(),
             favorite_apps: Vec::new(),
+            favorite_hotkeys: default_favorite_hotkeys(),
             schedule_mode: ScheduleMode::Manual,
             schedule_interval_mins: 30,
             day_night_mapping: DayNightMapping::default(),
@@ -206,9 +219,27 @@ impl Settings {
         if self.popover_hotkey.trim().is_empty() {
             self.popover_hotkey = DEFAULT_POPOVER_HOTKEY.to_owned();
         }
+        let defaults = default_favorite_hotkeys();
+        if self.favorite_hotkeys.len() > FAVORITE_HOTKEY_SLOTS {
+            self.favorite_hotkeys.truncate(FAVORITE_HOTKEY_SLOTS);
+        }
+        for (idx, default_hk) in defaults.into_iter().enumerate() {
+            match self.favorite_hotkeys.get_mut(idx) {
+                Some(slot) if slot.trim().is_empty() => *slot = default_hk,
+                Some(_) => {}
+                None => self.favorite_hotkeys.push(default_hk),
+            }
+        }
         if self.active_app.trim().is_empty() {
             self.active_app = "living-rookery".to_owned();
         }
+    }
+
+    /// Reset all global hotkeys (interaction, popover menu, and favorite slots) to defaults.
+    pub fn reset_hotkeys(&mut self) {
+        self.hotkey = DEFAULT_HOTKEY.to_owned();
+        self.popover_hotkey = DEFAULT_POPOVER_HOTKEY.to_owned();
+        self.favorite_hotkeys = default_favorite_hotkeys();
     }
 
     /// Atomically write settings to `path` (write temp file, fsync, rename).
@@ -389,5 +420,39 @@ mod tests {
         let aurora = loaded.app_controls.get("aurora-waves").unwrap();
         assert_eq!(aurora.get("wave_speed").unwrap(), "2.4");
         assert_eq!(aurora.get("color_speed").unwrap(), "1.25");
+    }
+
+    #[test]
+    fn hotkey_defaults_and_reset() {
+        let mut s = Settings::default();
+        assert_eq!(s.hotkey, "CommandOrControl+Alt+Shift+P");
+        assert_eq!(s.popover_hotkey, "CommandOrControl+Alt+Shift+M");
+        assert_eq!(s.favorite_hotkeys.len(), FAVORITE_HOTKEY_SLOTS);
+        assert_eq!(s.favorite_hotkeys[0], "CommandOrControl+Alt+Shift+1");
+        assert_eq!(s.favorite_hotkeys[8], "CommandOrControl+Alt+Shift+9");
+
+        s.hotkey = "Alt+Shift+X".into();
+        s.popover_hotkey = "Alt+Shift+Y".into();
+        s.favorite_hotkeys[0] = "Alt+Shift+1".into();
+        s.reset_hotkeys();
+
+        assert_eq!(s.hotkey, DEFAULT_HOTKEY);
+        assert_eq!(s.popover_hotkey, DEFAULT_POPOVER_HOTKEY);
+        assert_eq!(s.favorite_hotkeys, default_favorite_hotkeys());
+    }
+
+    #[test]
+    fn favorite_hotkeys_migration_fills_missing_and_empty_slots() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, r#"{"favorite_hotkeys":["Alt+Shift+1",""]}"#).unwrap();
+
+        let (loaded, outcome) = Settings::load(&path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        assert_eq!(loaded.favorite_hotkeys.len(), FAVORITE_HOTKEY_SLOTS);
+        assert_eq!(loaded.favorite_hotkeys[0], "Alt+Shift+1");
+        assert_eq!(loaded.favorite_hotkeys[1], "CommandOrControl+Alt+Shift+2");
+        assert_eq!(loaded.favorite_hotkeys[8], "CommandOrControl+Alt+Shift+9");
     }
 }

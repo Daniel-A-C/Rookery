@@ -335,7 +335,7 @@
         <section class="actions-row">
           <button id="btn-interactive" class="btn primary game-cmd-btn" type="button">
             <span class="btn-label"><rk-icon id="ico-interactive" name="cursor-click"></rk-icon><span id="lbl-interactive">Interact on Desktop</span></span>
-            <kbd id="kbd-hotkey">⌘⌥⇧R</kbd>
+            <kbd id="kbd-hotkey">⌘⌥⇧P</kbd>
           </button>
           <button id="btn-pause" class="btn secondary game-cmd-btn" type="button">
             <rk-icon id="ico-pause" name="pause"></rk-icon><span id="lbl-pause">Pause</span>
@@ -578,26 +578,56 @@
           </section>
 
           <section class="card">
-            <div class="section-title">Global Hotkeys</div>
+            <div class="card-header-row hotkey-card-header">
+              <div class="section-title">Global Hotkeys</div>
+              <button
+                id="btn-reset-hotkeys"
+                class="btn small game-cmd-btn hotkey-reset-btn"
+                type="button"
+                title="Reset all global hotkeys to their default bindings"
+              >
+                <rk-icon name="arrow-clockwise"></rk-icon><span>Reset Hotkeys</span>
+              </button>
+            </div>
             <div class="hotkey-row">
-              <span>Interaction Hotkey</span>
-              <button id="btn-record-hotkey" class="hotkey-btn" type="button">
-                CommandOrControl+Alt+Shift+R
+              <span id="lbl-hotkey-interaction">Mouse Interaction</span>
+              <button
+                id="btn-record-hotkey"
+                class="hotkey-btn"
+                type="button"
+                aria-pressed="false"
+                aria-labelledby="lbl-hotkey-interaction btn-record-hotkey"
+                title="Global shortcut to toggle Direct Mouse Interaction Mode"
+              >
+                ⌘⌥⇧P
               </button>
             </div>
 
             <div class="hotkey-row">
-              <span>Menu at Cursor Hotkey</span>
+              <span id="lbl-hotkey-popover">Menu at Cursor</span>
               <button
                 id="btn-record-popover-hotkey"
                 class="hotkey-btn"
                 type="button"
+                aria-pressed="false"
+                aria-labelledby="lbl-hotkey-popover btn-record-popover-hotkey"
                 title="Global shortcut to summon menu at your mouse cursor"
               >
-                CommandOrControl+Alt+Shift+P
+                ⌘⌥⇧M
               </button>
             </div>
-            <p id="hotkey-error" class="error-msg" hidden></p>
+
+            <div class="favorite-hotkeys-section">
+              <div class="favorite-hotkeys-header">
+                <span class="favorite-hotkeys-title">
+                  <rk-icon name="star"></rk-icon><span>Favorite Realms</span>
+                </span>
+                <span class="favorite-hotkeys-hint">Slots 1–9</span>
+              </div>
+              <ul id="favorite-hotkeys-list" class="favorite-hotkeys-list" role="list"></ul>
+            </div>
+
+            <p id="hotkey-error" class="error-msg" role="alert" hidden></p>
           </section>
         </div>
 

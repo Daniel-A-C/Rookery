@@ -50,39 +50,104 @@ pub async fn get_settings(state: State<'_, HostState>) -> Result<Settings, Strin
 }
 
 #[tauri::command]
+pub async fn set_hotkey_recording(
+    app: AppHandle,
+    state: State<'_, HostState>,
+    recording: bool,
+) -> Result<(), String> {
+    state
+        .hotkey_recording
+        .store(recording, std::sync::atomic::Ordering::SeqCst);
+    if recording {
+        hotkey::suspend_all_hotkeys(&app);
+    } else {
+        let (settings, is_interactive) = {
+            let inner = state.inner.lock().map_err(|_| "state poisoned")?;
+            (inner.settings.clone(), inner.interaction.is_interactive())
+        };
+        hotkey::sync_all_hotkeys_best_effort(&app, &settings, is_interactive);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_hotkeys(
+    app: AppHandle,
+    state: State<'_, HostState>,
+) -> Result<Settings, String> {
+    state
+        .hotkey_recording
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let (previous, candidate, is_interactive) = {
+        let inner = state.inner.lock().map_err(|_| "state poisoned")?;
+        let previous = inner.settings.clone();
+        let mut candidate = previous.clone();
+        candidate.reset_hotkeys();
+        (previous, candidate, inner.interaction.is_interactive())
+    };
+
+    hotkey::apply_hotkeys(&app, &previous, &candidate, is_interactive)
+        .map_err(|e| e.to_string())?;
+
+    let updated = {
+        let mut inner = state.inner.lock().map_err(|_| "state poisoned")?;
+        inner.settings.hotkey = candidate.hotkey;
+        inner.settings.popover_hotkey = candidate.popover_hotkey;
+        inner.settings.favorite_hotkeys = candidate.favorite_hotkeys;
+        inner.settings.clone()
+    };
+    state.mark_settings_dirty();
+    state.emit_status_if_popover_open(&app);
+    Ok(updated)
+}
+
+#[tauri::command]
 pub async fn update_settings(
     app: AppHandle,
     state: State<'_, HostState>,
     patch: SettingsPatch,
 ) -> Result<Settings, String> {
-    if let Some(ref new_hk) = patch.hotkey {
-        let trimmed = new_hk.trim();
-        if trimmed.is_empty() {
-            return Err("Hotkey cannot be empty".into());
-        }
-        let old_hk = state
-            .inner
-            .lock()
-            .map_err(|_| "state poisoned")?
-            .settings
-            .hotkey
-            .clone();
-        hotkey::replace_interaction_hotkey(&app, &old_hk, trimmed).map_err(|e| e.to_string())?;
-    }
+    let hotkeys_changed = patch.hotkey.is_some()
+        || patch.popover_hotkey.is_some()
+        || patch.favorite_hotkeys.is_some()
+        || patch.favorite_apps.is_some();
 
-    if let Some(ref new_p_hk) = patch.popover_hotkey {
-        let trimmed = new_p_hk.trim();
-        if trimmed.is_empty() {
-            return Err("Popover hotkey cannot be empty".into());
+    if hotkeys_changed {
+        let (previous, mut candidate, is_interactive) = {
+            let inner = state.inner.lock().map_err(|_| "state poisoned")?;
+            (
+                inner.settings.clone(),
+                inner.settings.clone(),
+                inner.interaction.is_interactive(),
+            )
+        };
+
+        if let Some(ref new_hk) = patch.hotkey {
+            candidate.hotkey = new_hk.trim().to_owned();
         }
-        let old_hk = state
-            .inner
-            .lock()
-            .map_err(|_| "state poisoned")?
-            .settings
-            .popover_hotkey
-            .clone();
-        hotkey::replace_popover_hotkey(&app, &old_hk, trimmed).map_err(|e| e.to_string())?;
+        if let Some(ref new_p_hk) = patch.popover_hotkey {
+            candidate.popover_hotkey = new_p_hk.trim().to_owned();
+        }
+        if let Some(ref fav_hks) = patch.favorite_hotkeys {
+            let defaults = rookery_core::settings::default_favorite_hotkeys();
+            let mut normalized = Vec::with_capacity(rookery_core::settings::FAVORITE_HOTKEY_SLOTS);
+            for (idx, default_hk) in defaults.into_iter().enumerate() {
+                match fav_hks.get(idx) {
+                    Some(hk) => normalized.push(hk.trim().to_owned()),
+                    None => normalized.push(default_hk),
+                }
+            }
+            candidate.favorite_hotkeys = normalized;
+        }
+        if let Some(ref favs) = patch.favorite_apps {
+            candidate.favorite_apps = favs.clone();
+        }
+
+        state
+            .hotkey_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        hotkey::apply_hotkeys(&app, &previous, &candidate, is_interactive)
+            .map_err(|e| e.to_string())?;
     }
 
     let updated = {
@@ -92,6 +157,17 @@ pub async fn update_settings(
         }
         if let Some(hk) = patch.popover_hotkey {
             inner.settings.popover_hotkey = hk.trim().to_owned();
+        }
+        if let Some(fav_hks) = patch.favorite_hotkeys {
+            let defaults = rookery_core::settings::default_favorite_hotkeys();
+            let mut normalized = Vec::with_capacity(rookery_core::settings::FAVORITE_HOTKEY_SLOTS);
+            for (idx, default_hk) in defaults.into_iter().enumerate() {
+                match fav_hks.get(idx) {
+                    Some(hk) => normalized.push(hk.trim().to_owned()),
+                    None => normalized.push(default_hk),
+                }
+            }
+            inner.settings.favorite_hotkeys = normalized;
         }
         if let Some(opacity) = patch.popover_opacity {
             inner.settings.popover_opacity = opacity.clamp(
