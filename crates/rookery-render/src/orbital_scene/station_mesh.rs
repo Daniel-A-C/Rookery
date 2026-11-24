@@ -674,29 +674,35 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
     // Aft Rotating-Ring Bearing Hub & Recessed Collar Track (Z = -15..-25, ring spins at Z = -20)
-    // Heavy central axle core passing through the ring bearing
-    op.push_box(
+    // True cylindrical Z-axis axle core so the rotating drum & spokes never clip square corners
+    op.push_cylinder_z(
         [0.0, 0.0, -20.0],
-        [11.5, 11.5, 10.0],
+        5.6,
+        10.0,
+        12,
+        0.0,
         Tile::DarkSteelRib,
-        4.0,
         rib,
         0.0,
     );
-    // Fore & aft armored collar flanges framing the rotating ring's track slot (Z = -16.4 and -23.6)
-    op.push_box(
+    // Fore & aft cylindrical hazard collar flanges framing the rotating ring's track slot
+    op.push_cylinder_z(
         [0.0, 0.0, -16.4],
-        [14.8, 14.8, 1.4],
+        8.0,
+        1.4,
+        12,
+        0.0,
         Tile::HazardStripe,
-        3.2,
         bright_white,
         0.0,
     );
-    op.push_box(
+    op.push_cylinder_z(
         [0.0, 0.0, -23.6],
-        [14.8, 14.8, 1.4],
+        8.0,
+        1.4,
+        12,
+        0.0,
         Tile::HazardStripe,
-        3.2,
         bright_white,
         0.0,
     );

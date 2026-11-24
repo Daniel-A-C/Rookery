@@ -302,6 +302,72 @@ impl MeshBuilder {
         }
     }
 
+    /// Push a cylinder oriented along the Z axis (for rotating ring bearing hubs & collars).
+    #[allow(clippy::too_many_arguments)]
+    pub fn push_cylinder_z(
+        &mut self,
+        center: [f32; 3],
+        radius: f32,
+        depth: f32,
+        segments: u32,
+        angle_offset: f32,
+        tile: Tile,
+        color: [f32; 4],
+        emissive: f32,
+    ) {
+        let [cx, cy, cz] = center;
+        let z0 = cz - depth * 0.5;
+        let z1 = cz + depth * 0.5;
+        let segs = segments.max(6);
+
+        for i in 0..segs {
+            let a0 = angle_offset + (i as f32 / segs as f32) * TAU;
+            let a1 = angle_offset + ((i + 1) as f32 / segs as f32) * TAU;
+            let (c0, s0) = (a0.cos(), a0.sin());
+            let (c1, s1) = (a1.cos(), a1.sin());
+
+            let p00 = [cx + c0 * radius, cy + s0 * radius, z0];
+            let p10 = [cx + c1 * radius, cy + s1 * radius, z0];
+            let p11 = [cx + c1 * radius, cy + s1 * radius, z1];
+            let p01 = [cx + c0 * radius, cy + s0 * radius, z1];
+
+            let am = (a0 + a1) * 0.5;
+            let n = [am.cos(), am.sin(), 0.0];
+            // Outward CCW winding when viewed from outside the Z-axis cylinder
+            self.push_quad(
+                p00,
+                p10,
+                p11,
+                p01,
+                n,
+                [1.0, (depth / 4.0).max(0.5)],
+                tile,
+                color,
+                emissive,
+            );
+            // +Z front cap (CCW looking from +Z: center -> p01 -> p11)
+            self.push_tri(
+                [cx, cy, z1],
+                p01,
+                p11,
+                [0.0, 0.0, 1.0],
+                tile,
+                color,
+                emissive,
+            );
+            // -Z back cap (CCW looking from -Z: center -> p10 -> p00)
+            self.push_tri(
+                [cx, cy, z0],
+                p10,
+                p00,
+                [0.0, 0.0, -1.0],
+                tile,
+                color,
+                emissive,
+            );
+        }
+    }
+
     /// Push a low-poly oriented box aligned to a spacecraft/entity basis `(right, up, forward)`.
     #[allow(clippy::too_many_arguments)]
     pub fn push_oriented_box(

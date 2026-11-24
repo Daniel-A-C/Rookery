@@ -46,18 +46,14 @@ pub fn build_dynamic_entities(
     let ring_segs = 12;
     let ring_r = 25.0;
     let ring_z = -20.0;
-    // Rotating central bearing drum seated between the static fore/aft hazard collar flanges
-    let ba = state.hab_ring_angle;
-    let b_rad = [ba.cos(), ba.sin(), 0.0];
-    let b_tan = [-ba.sin(), ba.cos(), 0.0];
     let fwd = [0.0, 0.0, 1.0];
-    op.push_oriented_box(
+    // True cylindrical 12-sided rotating bearing drum seated cleanly inside the R=8.0 collar flanges
+    op.push_cylinder_z(
         [0.0, 0.0, ring_z],
-        b_rad,
-        b_tan,
-        fwd,
-        [0.0, 0.0, 0.0],
-        [13.4, 13.4, 5.4],
+        6.9,
+        5.2,
+        12,
+        state.hab_ring_angle,
         Tile::DarkSteelRib,
         theme.rib_tint,
         0.0,
@@ -71,19 +67,19 @@ pub fn build_dynamic_entities(
         let radial = [a.cos(), a.sin(), 0.0];
         let tangent = [-a.sin(), a.cos(), 0.0];
 
-        // Outer habitation module room (radial = 3.4 thick, tangent = 11.6 wide, Z = 5.0 deep)
+        // Outer habitation module room (radial = 3.4 thick, tangent = 11.4 wide, Z = 5.0 deep — clean gap, zero overlap)
         op.push_oriented_box(
             [cx, cy, ring_z],
             radial,
             tangent,
             fwd,
             [0.0, 0.0, 0.0],
-            [3.4, 11.6, 5.0],
+            [3.4, 11.4, 5.0],
             Tile::HullPanel,
             theme.hull_tint,
             0.0,
         );
-        // Continuous inner structural steel track girder uniting all 12 sectors
+        // Inner structural steel track girder trimmed cleanly to chord length (11.55 < 11.75) so adjacent girders never Z-fight
         let track_r = ring_r - 2.3;
         op.push_oriented_box(
             [a.cos() * track_r, a.sin() * track_r, ring_z],
@@ -91,9 +87,25 @@ pub fn build_dynamic_entities(
             tangent,
             fwd,
             [0.0, 0.0, 0.0],
-            [1.2, 13.2, 3.2],
+            [1.15, 11.55, 3.1],
             Tile::DarkSteelRib,
             theme.rib_tint,
+            0.0,
+        );
+        // Proud bolted structural coupler bracket at the midpoint between adjacent girders (wider Z = 3.55 -> zero coplanar face!)
+        let joint_a = a + (0.5 / ring_segs as f32) * TAU;
+        let j_rad = [joint_a.cos(), joint_a.sin(), 0.0];
+        let j_tan = [-joint_a.sin(), joint_a.cos(), 0.0];
+        let joint_r = track_r - 0.15;
+        op.push_oriented_box(
+            [joint_a.cos() * joint_r, joint_a.sin() * joint_r, ring_z],
+            j_rad,
+            j_tan,
+            fwd,
+            [0.0, 0.0, 0.0],
+            [1.65, 1.5, 3.55],
+            Tile::HazardStripe,
+            white,
             0.0,
         );
         // Warm glowing crew viewport strip facing forward (+Z)
@@ -108,10 +120,12 @@ pub fn build_dynamic_entities(
             sec,
             0.95,
         );
-        // Heavy radial tension spoke anchored cleanly into the rotating central bearing drum
+        // Heavy radial tension spoke anchored cleanly between the cylindrical bearing drum (R=6.7) and inner track (R=22.1)
         if i % 3 == 0 {
-            let spoke_mid_r = (6.4 + track_r) * 0.5;
-            let spoke_len = (track_r - 6.4).max(4.0);
+            let r_start = 6.7;
+            let r_end = track_r - 0.55;
+            let spoke_mid_r = (r_start + r_end) * 0.5;
+            let spoke_len = (r_end - r_start).max(4.0);
             op.push_oriented_box(
                 [a.cos() * spoke_mid_r, a.sin() * spoke_mid_r, ring_z],
                 radial,
