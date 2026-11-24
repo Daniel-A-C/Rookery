@@ -303,7 +303,7 @@ impl MeshBuilder {
     }
 
     /// Push a cylinder oriented along the Z axis (for rotating ring bearing hubs & collars).
-    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub fn push_cylinder_z(
         &mut self,
         center: [f32; 3],

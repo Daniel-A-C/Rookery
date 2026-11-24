@@ -78,28 +78,37 @@ pub enum CameraFeedId {
     PadBPortDeck,
     /// External Starboard Landing Pad C floodlight-tower CCTV.
     PadCStarboardDeck,
+    /// Interior 2-story Central Core Atrium CCTV overlooking Hangar door & glass Elevator.
+    IntCentralAtrium,
     /// Interior Ops & Command Deck CCTV looking past CRT consoles out the main viewports.
     IntOpsDeck,
     /// Interior Concourse Corridor CCTV with grated catwalk and space observation windows.
     IntConcourseWalk,
-    /// Interior Reactor Chamber CCTV overlooking the pulsing plasma column.
+    /// Interior Reactor Chamber CCTV overlooking the pulsing plasma column & Deck 1 elevator.
     IntReactorCore,
+    /// Interior Aft Solar & Power Engineering Bay CCTV looking out onto the Solar Collector Wings.
+    IntSolarBay,
+    /// Live first-person camera from the patrolling Interior Walker Bot (BOT-01).
+    WalkerBotCam,
     /// Live cockpit/nose uplink feed from the active approaching or departing spacecraft.
     ShipNoseUplink,
     /// Live dorsal over-the-shoulder hull feed from the active spacecraft.
     ShipDorsalUplink,
 }
 
-pub const ALL_CAMERA_FEEDS: [CameraFeedId; 11] = [
+pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
     CameraFeedId::DroneAlphaWide,
     CameraFeedId::DroneBetaPatrol,
     CameraFeedId::ExtHangarApproach,
     CameraFeedId::PadAHangarInterior,
     CameraFeedId::PadBPortDeck,
     CameraFeedId::PadCStarboardDeck,
+    CameraFeedId::IntCentralAtrium,
     CameraFeedId::IntOpsDeck,
     CameraFeedId::IntConcourseWalk,
     CameraFeedId::IntReactorCore,
+    CameraFeedId::IntSolarBay,
+    CameraFeedId::WalkerBotCam,
     CameraFeedId::ShipNoseUplink,
     CameraFeedId::ShipDorsalUplink,
 ];
@@ -113,9 +122,12 @@ impl CameraFeedId {
             Self::PadAHangarInterior => "CAM-04",
             Self::PadBPortDeck => "CAM-05",
             Self::PadCStarboardDeck => "CAM-06",
-            Self::IntOpsDeck => "CAM-07",
-            Self::IntConcourseWalk => "CAM-08",
-            Self::IntReactorCore => "CAM-09",
+            Self::IntCentralAtrium => "CAM-07",
+            Self::IntOpsDeck => "CAM-08",
+            Self::IntConcourseWalk => "CAM-09",
+            Self::IntReactorCore => "CAM-10",
+            Self::IntSolarBay => "CAM-11",
+            Self::WalkerBotCam => "BOT-01",
             Self::ShipNoseUplink => "UPLINK-1",
             Self::ShipDorsalUplink => "UPLINK-2",
         }
@@ -129,9 +141,12 @@ impl CameraFeedId {
             Self::PadAHangarInterior => "PAD-A // MAIN HANGAR BAY",
             Self::PadBPortDeck => "PAD-B // PORT FREIGHT DECK",
             Self::PadCStarboardDeck => "PAD-C // STBD UTILITY DECK",
-            Self::IntOpsDeck => "INT-01 // OPS COMMAND DECK",
-            Self::IntConcourseWalk => "INT-02 // CONCOURSE WALK",
-            Self::IntReactorCore => "INT-03 // REACTOR CHAMBER",
+            Self::IntCentralAtrium => "INT-01 // CENTRAL CORE ATRIUM",
+            Self::IntOpsDeck => "INT-02 // OPS COMMAND DECK",
+            Self::IntConcourseWalk => "INT-03 // CONCOURSE WALK",
+            Self::IntReactorCore => "INT-04 // REACTOR CHAMBER",
+            Self::IntSolarBay => "INT-05 // SOLAR ENGINEERING",
+            Self::WalkerBotCam => "ROVER // INTERIOR WALKER-CAM",
             Self::ShipNoseUplink => "LIVE // SHIP NOSE-CAM",
             Self::ShipDorsalUplink => "LIVE // SHIP DORSAL-CAM",
         }
@@ -145,9 +160,12 @@ impl CameraFeedId {
             Self::PadAHangarInterior => "PAD-A BAY",
             Self::PadBPortDeck => "PAD-B PORT",
             Self::PadCStarboardDeck => "PAD-C STBD",
+            Self::IntCentralAtrium => "ATRIUM",
             Self::IntOpsDeck => "OPS DECK",
             Self::IntConcourseWalk => "CONCOURSE",
             Self::IntReactorCore => "REACTOR",
+            Self::IntSolarBay => "SOLAR BAY",
+            Self::WalkerBotCam => "WALKER BOT",
             Self::ShipNoseUplink => "SHIP NOSE",
             Self::ShipDorsalUplink => "SHIP DORSAL",
         }
@@ -157,9 +175,12 @@ impl CameraFeedId {
         matches!(
             self,
             Self::PadAHangarInterior
+                | Self::IntCentralAtrium
                 | Self::IntOpsDeck
                 | Self::IntConcourseWalk
                 | Self::IntReactorCore
+                | Self::IntSolarBay
+                | Self::WalkerBotCam
         )
     }
 
@@ -183,9 +204,12 @@ impl CameraFeedId {
             Self::PadAHangarInterior => "pad_a",
             Self::PadBPortDeck => "pad_b",
             Self::PadCStarboardDeck => "pad_c",
+            Self::IntCentralAtrium => "atrium",
             Self::IntOpsDeck => "ops_deck",
             Self::IntConcourseWalk => "concourse",
             Self::IntReactorCore => "reactor",
+            Self::IntSolarBay => "solar_bay",
+            Self::WalkerBotCam => "walker_bot",
             Self::ShipNoseUplink => "ship_nose",
             Self::ShipDorsalUplink => "ship_dorsal",
         }
@@ -199,9 +223,12 @@ impl CameraFeedId {
             "pad_a" | "cam_04" => Some(Self::PadAHangarInterior),
             "pad_b" | "cam_05" => Some(Self::PadBPortDeck),
             "pad_c" | "cam_06" => Some(Self::PadCStarboardDeck),
-            "ops_deck" | "cam_07" => Some(Self::IntOpsDeck),
-            "concourse" | "cam_08" => Some(Self::IntConcourseWalk),
-            "reactor" | "cam_09" => Some(Self::IntReactorCore),
+            "atrium" | "cam_07" => Some(Self::IntCentralAtrium),
+            "ops_deck" | "cam_08" => Some(Self::IntOpsDeck),
+            "concourse" | "cam_09" => Some(Self::IntConcourseWalk),
+            "reactor" | "cam_10" => Some(Self::IntReactorCore),
+            "solar_bay" | "cam_11" => Some(Self::IntSolarBay),
+            "walker_bot" | "bot_01" => Some(Self::WalkerBotCam),
             "ship_nose" | "uplink_1" => Some(Self::ShipNoseUplink),
             "ship_dorsal" | "uplink_2" => Some(Self::ShipDorsalUplink),
             _ => None,
@@ -491,6 +518,86 @@ pub struct StationAgent {
     pub dwell_timer: f32,
 }
 
+/// Station deck levels served by the 3-deck central glass elevator (`X = 0, Z = -6.0`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ElevatorDeck {
+    /// Deck 1 (`Y = -14.95`): Concourse Corridor & Reactor Core.
+    Deck1Reactor,
+    /// Deck 2 (`Y = -3.85`): Main Hangar Bay, Central Atrium, Axial Pipe Tunnel & Solar Bay.
+    #[default]
+    Deck2Atrium,
+    /// Deck 3 (`Y = +12.05`): Ops & Command Spire.
+    Deck3Ops,
+}
+
+impl ElevatorDeck {
+    pub fn floor_y(self) -> f32 {
+        match self {
+            Self::Deck1Reactor => -14.95,
+            Self::Deck2Atrium => -3.85,
+            Self::Deck3Ops => 12.05,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Deck1Reactor => "DECK-1 REACTOR",
+            Self::Deck2Atrium => "DECK-2 ATRIUM",
+            Self::Deck3Ops => "DECK-3 OPS",
+        }
+    }
+}
+
+/// Functioning 3-deck central elevator state (`X = 0, Z = -6.0`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ElevatorState {
+    pub current_y: f32,
+    pub target_deck: ElevatorDeck,
+    /// `[0.0, 1.0]` animated sliding glass/steel elevator door opening.
+    pub door_open: f32,
+    pub moving: bool,
+}
+
+impl Default for ElevatorState {
+    fn default() -> Self {
+        Self {
+            current_y: ElevatorDeck::Deck2Atrium.floor_y(),
+            target_deck: ElevatorDeck::Deck2Atrium,
+            door_open: 0.0,
+            moving: false,
+        }
+    }
+}
+
+/// Physical 3D Interior Walker Camera Bot (`BOT-01`) patrolling all interconnected decks & tunnels.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkerBotState {
+    pub pos: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub walk_phase: f32,
+    pub route_index: usize,
+    pub dwell_timer: f32,
+    pub riding_elevator: bool,
+    pub current_room: String,
+}
+
+impl Default for WalkerBotState {
+    fn default() -> Self {
+        Self {
+            pos: [0.0, -3.85, 22.0],
+            yaw: std::f32::consts::PI,
+            pitch: 0.0,
+            walk_phase: 0.0,
+            route_index: 0,
+            dwell_timer: 1.5,
+            riding_elevator: false,
+            current_room: "MAIN HANGAR BAY".into(),
+        }
+    }
+}
+
 /// Multi-camera surveillance rig & auto-director state.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CameraRigState {
@@ -513,15 +620,12 @@ impl Default for CameraRigState {
         Self {
             layout: CameraLayout::Pip,
             primary_feed: CameraFeedId::DroneAlphaWide,
-            pip_feeds: [
-                CameraFeedId::PadAHangarInterior,
-                CameraFeedId::ShipNoseUplink,
-            ],
+            pip_feeds: [CameraFeedId::WalkerBotCam, CameraFeedId::ShipNoseUplink],
             grid_feeds: [
                 CameraFeedId::DroneAlphaWide,
-                CameraFeedId::ShipNoseUplink,
+                CameraFeedId::WalkerBotCam,
                 CameraFeedId::PadAHangarInterior,
-                CameraFeedId::IntOpsDeck,
+                CameraFeedId::IntCentralAtrium,
             ],
             auto_director: true,
             director_timer: 18.0,

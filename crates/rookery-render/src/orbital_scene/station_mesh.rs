@@ -133,27 +133,44 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
 
-    // Hangar Rear Bulkhead (Z = 12) with giant reinforced Blast Door
+    // Hangar Rear Bulkhead (Z = 11.6) split around a real 6.4x7.1 doorway opening into the Central Core Atrium!
     op.push_box(
-        [0.0, 3.0, 11.6],
-        [24.0, 14.2, 1.4],
+        [-7.6, 3.0, 11.6],
+        [8.8, 14.2, 1.4],
         Tile::HullPanel,
         5.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [0.0, 1.2, 12.45],
-        [10.0, 9.2, 0.6],
-        Tile::BlastDoor,
-        9.5,
+        [7.6, 3.0, 11.6],
+        [8.8, 14.2, 1.4],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 6.65, 11.6],
+        [6.4, 6.9, 1.4],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    // Hazard-striped doorway frame around the Hangar <-> Atrium sliding blast door
+    op.push_box(
+        [0.0, 3.25, 12.25],
+        [6.8, 0.5, 0.4],
+        Tile::HazardStripe,
+        2.0,
         bright_white,
         0.0,
     );
-    // Hangar control booth window above blast door
+    // Hangar control booth window above doorway
     op.push_box(
-        [0.0, 7.6, 12.5],
-        [9.0, 2.2, 0.5],
+        [0.0, 7.6, 12.45],
+        [9.0, 2.2, 0.45],
         Tile::CrtConsole,
         3.0,
         accent_em,
@@ -238,10 +255,34 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     // =========================================================================
     // 2. CENTRAL OPS & COMMAND SPIRE — Seamless Windowed Interior (`Y: +12..+21`)
     // =========================================================================
-    // Floor slab & ceiling slab
+    // Floor slab split around the 3-Deck Elevator Shaft cutout (`X:-2.6..2.6, Z:-8.6..-3.4`)
     op.push_box(
-        [0.0, 11.4, 0.0],
-        [22.0, 1.2, 22.0],
+        [0.0, 11.4, 3.8],
+        [22.0, 1.2, 14.4],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 11.4, -9.8],
+        [22.0, 1.2, 2.4],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [-6.8, 11.4, -6.0],
+        [8.4, 1.2, 5.2],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [6.8, 11.4, -6.0],
+        [8.4, 1.2, 5.2],
         Tile::FloorGrate,
         3.0,
         hull,
@@ -423,9 +464,34 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         hull,
         0.0,
     );
+    // Lower deck ceiling split around the 3-Deck Elevator Shaft cutout (`X:-2.6..2.6, Z:-8.6..-3.4`)
     op.push_box(
-        [0.0, -4.9, 0.0],
-        [38.0, 1.2, 20.0],
+        [0.0, -4.9, 3.3],
+        [38.0, 1.2, 13.4],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, -4.9, -9.3],
+        [38.0, 1.2, 1.4],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [-10.8, -4.9, -6.0],
+        [16.4, 1.2, 5.2],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [10.8, -4.9, -6.0],
+        [16.4, 1.2, 5.2],
         Tile::HullPanel,
         5.0,
         dark_hull,
@@ -662,68 +728,380 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     }
 
     // =========================================================================
-    // 5. EXTERIOR SUPERSTRUCTURE, COMMS SPIRE, SOLAR WINGS & RADIATORS
+    // 5. HOLLOWED CENTRAL CORE ATRIUM, 3-DECK ELEVATOR SHAFT, AXIAL PIPE TUNNEL & SOLAR BAY
     // =========================================================================
-    // Central core hull casing between Concourse and Ops Deck (Z:-15.0..+10.8, clear of Hangar rear bulkhead)
+    // 5A. Central Core Atrium (2-story interior `X:-11.4..11.4, Y:-3.9..10.8, Z:-14.2..10.9`)
+    // Atrium Floor (`Y = -4.25..-3.85`) split cleanly around the Elevator Shaft (`X:-2.6..2.6, Z:-8.6..-3.4`)
     op.push_box(
-        [0.0, 3.5, -2.1],
-        [24.0, 15.0, 25.8],
-        Tile::HullPanel,
-        6.0,
+        [0.0, -4.10, 3.7],
+        [23.2, 0.45, 14.2],
+        Tile::FloorGrate,
+        3.0,
         hull,
         0.0,
     );
-    // Aft Rotating-Ring Bearing Hub & Recessed Collar Track (Z = -15..-25, ring spins at Z = -20)
-    // True cylindrical Z-axis axle core so the rotating drum & spokes never clip square corners
-    op.push_cylinder_z(
-        [0.0, 0.0, -20.0],
-        5.6,
-        10.0,
-        12,
-        0.0,
-        Tile::DarkSteelRib,
-        rib,
-        0.0,
-    );
-    // Fore & aft cylindrical hazard collar flanges framing the rotating ring's track slot
-    op.push_cylinder_z(
-        [0.0, 0.0, -16.4],
-        8.0,
-        1.4,
-        12,
-        0.0,
-        Tile::HazardStripe,
-        bright_white,
-        0.0,
-    );
-    op.push_cylinder_z(
-        [0.0, 0.0, -23.6],
-        8.0,
-        1.4,
-        12,
-        0.0,
-        Tile::HazardStripe,
-        bright_white,
-        0.0,
-    );
-
-    // Aft Engineering & Solar Spine Block (Z = -25..-43 — completely clear behind the rotating ring!)
     op.push_box(
-        [0.0, 0.5, -34.0],
-        [14.0, 12.0, 18.0],
+        [0.0, -4.10, -11.6],
+        [23.2, 0.45, 6.0],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [-7.1, -4.10, -6.0],
+        [9.0, 0.45, 5.2],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [7.1, -4.10, -6.0],
+        [9.0, 0.45, 5.2],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    // Atrium Port & Starboard windowed walls (`X = ±11.7`) looking out toward Pads B & C!
+    for x_side in [-11.7f32, 11.7f32] {
+        op.push_box(
+            [x_side, -1.7, -1.8],
+            [1.0, 4.4, 25.4],
+            Tile::CorridorWall,
+            4.5,
+            corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, 8.6, -1.8],
+            [1.0, 4.4, 25.4],
+            Tile::HullPanel,
+            5.0,
+            hull,
+            0.0,
+        );
+        // Vertical armored window mullions between sill (Y=0.5) and upper wall (Y=6.4)
+        for z_m in [-13.8, -7.5, -1.5, 4.5, 10.3] {
+            op.push_box(
+                [x_side, 3.45, z_m],
+                [1.15, 5.9, 1.3],
+                Tile::DarkSteelRib,
+                3.0,
+                rib,
+                0.0,
+            );
+        }
+        // Mid-level industrial mezzanine catwalk inside the 2-story Atrium (`Y = 3.0`)
+        let cat_x = if x_side < 0.0 { -8.8 } else { 8.8 };
+        op.push_box(
+            [cat_x, 3.0, -1.5],
+            [4.2, 0.45, 22.0],
+            Tile::FloorGrate,
+            2.8,
+            hull,
+            0.0,
+        );
+        let rail_x = if x_side < 0.0 { -6.8 } else { 6.8 };
+        op.push_box(
+            [rail_x, 3.65, -1.5],
+            [0.24, 0.85, 22.0],
+            Tile::HazardStripe,
+            2.2,
+            bright_white,
+            0.0,
+        );
+    }
+    // Atrium Rear Bulkhead (`Z = -14.6`) split around the Axial Pipe Tunnel doorway (`X:-2.6..2.6, Y:-3.9..1.8`)
+    op.push_box(
+        [-7.3, 3.4, -14.6],
+        [9.4, 14.8, 0.9],
         Tile::HullPanel,
-        6.0,
+        5.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [0.0, 7.0, -34.0],
-        [11.0, 1.2, 15.0],
+        [7.3, 3.4, -14.6],
+        [9.4, 14.8, 0.9],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 6.3, -14.6],
+        [5.2, 9.0, 0.9],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 2.0, -14.1],
+        [5.8, 0.45, 0.35],
+        Tile::HazardStripe,
+        2.0,
+        bright_white,
+        0.0,
+    );
+    // Atrium Server & CRT Status Pillars + Ceiling Fluorescent Strips
+    for (px, pz) in [(-6.8, 5.2), (6.8, 5.2), (-7.2, -10.2), (7.2, -10.2)] {
+        op.push_box(
+            [px, -0.5, pz],
+            [2.0, 6.6, 2.0],
+            Tile::ServerRack,
+            2.2,
+            bright_white,
+            0.72,
+        );
+    }
+    for z_l in [-10.0, -1.0, 7.0] {
+        op.push_box(
+            [-4.8, 10.65, z_l],
+            [3.2, 0.2, 1.1],
+            Tile::CeilingLight,
+            3.0,
+            bright_white,
+            0.92,
+        );
+        op.push_box(
+            [4.8, 10.65, z_l],
+            [3.2, 0.2, 1.1],
+            Tile::CeilingLight,
+            3.0,
+            bright_white,
+            0.92,
+        );
+    }
+
+    // 5B. Continuous 3-Deck Glass Elevator Shaft Frame (`X = 0, Z = -6.0`, spanning `Y = -15.0..+20.6`)
+    for sx in [-2.65f32, 2.65f32] {
+        for sz in [-8.65f32, -3.35f32] {
+            op.push_box(
+                [sx, 2.8, sz],
+                [0.45, 35.6, 0.45],
+                Tile::DarkSteelRib,
+                3.0,
+                rib,
+                0.0,
+            );
+        }
+    }
+    // Glowing cyan deck-level guide bands on the elevator shaft rear rail at Deck 1, Deck 2, and Deck 3
+    for deck_y in [-14.2f32, -3.1f32, 12.8f32] {
+        op.push_box(
+            [0.0, deck_y, -8.55],
+            [4.8, 0.35, 0.22],
+            Tile::CeilingLight,
+            2.4,
+            accent_em,
+            1.15,
+        );
+    }
+
+    // 5C. Hollowed-Out Axial Pipe Connector Tunnel (`Z = -15.0..-25.0`, inside the rotating ring core!)
+    // Floor walkway & overhead glowing fluorescent conduit ceiling
+    op.push_box(
+        [0.0, -4.25, -20.0],
+        [5.4, 0.75, 10.2],
+        Tile::FloorGrate,
+        2.5,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 2.25, -20.0],
+        [5.4, 0.8, 10.2],
         Tile::DarkSteelRib,
-        4.0,
+        3.0,
         rib,
         0.0,
     );
+    op.push_box(
+        [0.0, 1.78, -20.0],
+        [1.1, 0.16, 8.6],
+        Tile::CeilingLight,
+        2.5,
+        bright_white,
+        0.95,
+    );
+    // Tunnel side walls with armored side portholes at Z = -20.0 so the Walker Bot sees rotating ring spokes sweep past!
+    for x_side in [-2.85f32, 2.85f32] {
+        // Fore & aft solid tunnel wall segments
+        op.push_box(
+            [x_side, -1.0, -16.3],
+            [0.5, 5.7, 2.6],
+            Tile::CorridorWall,
+            3.0,
+            corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, -1.0, -23.7],
+            [0.5, 5.7, 2.6],
+            Tile::CorridorWall,
+            3.0,
+            corr,
+            0.0,
+        );
+        // Porthole lower sill & upper header at Z = -20.0 (leaving open window `Y = -2.2..+0.8, Z = -22.4..-17.6`)
+        op.push_box(
+            [x_side, -3.05, -20.0],
+            [0.5, 1.7, 4.8],
+            Tile::CorridorWall,
+            3.0,
+            corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, 1.35, -20.0],
+            [0.5, 1.1, 4.8],
+            Tile::DarkSteelRib,
+            3.0,
+            rib,
+            0.0,
+        );
+    }
+    // Outer hollow annular hazard collar flanges (`R = 7.4`, leaving the inner tunnel completely open!)
+    for z_col in [-16.4f32, -23.6f32] {
+        for i in 0..12 {
+            let a = (i as f32 / 12.0) * TAU;
+            let rad = [a.cos(), a.sin(), 0.0];
+            let tan = [-a.sin(), a.cos(), 0.0];
+            let fwd = [0.0, 0.0, 1.0];
+            op.push_oriented_box(
+                [a.cos() * 7.2, a.sin() * 7.2, z_col],
+                rad,
+                tan,
+                fwd,
+                [0.0, 0.0, 0.0],
+                [1.8, 3.8, 1.4],
+                Tile::HazardStripe,
+                bright_white,
+                0.0,
+            );
+        }
+    }
+
+    // 5D. Hollowed-Out Aft Solar & Power Engineering Bay (`X:-6.6..6.6, Y:-3.9..6.4, Z:-42.6..-25.0`)
+    op.push_box(
+        [0.0, -4.3, -33.8],
+        [14.0, 0.85, 17.8],
+        Tile::FloorGrate,
+        3.0,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 6.7, -33.8],
+        [14.0, 0.85, 17.8],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    for z_l in [-29.0, -34.5, -39.5] {
+        op.push_box(
+            [0.0, 6.18, z_l],
+            [4.2, 0.2, 1.1],
+            Tile::CeilingLight,
+            3.0,
+            bright_white,
+            0.95,
+        );
+    }
+    // Front doorway wall (`Z = -25.1`) split around Pipe Tunnel entrance (`X:-2.6..2.6, Y:-3.9..1.8`)
+    op.push_box(
+        [-4.8, 1.2, -25.1],
+        [4.4, 10.2, 0.8],
+        Tile::CorridorWall,
+        4.0,
+        corr,
+        0.0,
+    );
+    op.push_box(
+        [4.8, 1.2, -25.1],
+        [4.4, 10.2, 0.8],
+        Tile::CorridorWall,
+        4.0,
+        corr,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 4.1, -25.1],
+        [5.2, 4.4, 0.8],
+        Tile::CorridorWall,
+        4.0,
+        corr,
+        0.0,
+    );
+    // Rear solid bulkhead (`Z = -42.5`) with glowing Solar Grid CRT Bank
+    op.push_box(
+        [0.0, 1.2, -42.5],
+        [14.0, 10.2, 0.9],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 0.6, -41.8],
+        [7.4, 3.8, 0.5],
+        Tile::CrtConsole,
+        2.4,
+        accent_em,
+        0.95,
+    );
+    // Port & Starboard huge armored viewports (`X = ±6.7`) looking straight out at the Solar Collector Wings!
+    for x_side in [-6.7f32, 6.7f32] {
+        op.push_box(
+            [x_side, -2.75, -33.8],
+            [0.8, 2.3, 17.2],
+            Tile::CorridorWall,
+            3.5,
+            corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, 5.35, -33.8],
+            [0.8, 1.9, 17.2],
+            Tile::DarkSteelRib,
+            3.5,
+            rib,
+            0.0,
+        );
+        for z_m in [-25.6, -31.2, -36.8, -42.0] {
+            op.push_box(
+                [x_side, 1.4, z_m],
+                [0.95, 6.0, 0.95],
+                Tile::DarkSteelRib,
+                3.0,
+                rib,
+                0.0,
+            );
+        }
+    }
+    // High-voltage solar power bus capacitor towers flanking the Solar Bay walkway
+    for (tx, tz) in [(-4.4, -29.8), (4.4, -29.8), (-4.4, -37.2), (4.4, -37.2)] {
+        op.push_box(
+            [tx, -1.6, tz],
+            [1.9, 4.4, 2.2],
+            Tile::ServerRack,
+            2.2,
+            bright_white,
+            0.75,
+        );
+        op.push_box(
+            [tx, 1.0, tz],
+            [1.3, 0.8, 1.4],
+            Tile::ReactorCoil,
+            1.4,
+            sec_em,
+            1.1,
+        );
+    }
 
     // Dorsal Communications & Sensor Mast atop Ops Spire (Y = 22..44)
     op.push_cylinder(

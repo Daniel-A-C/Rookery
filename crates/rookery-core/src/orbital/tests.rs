@@ -221,3 +221,61 @@ fn cargo_loaders_stay_clear_of_crates_and_cycle_forks() {
         "expected cargo loaders to load/unload crates during dwell cycles"
     );
 }
+
+#[test]
+fn walker_bot_completes_full_three_deck_and_solar_loop() {
+    let mut st = OrbitalHavenState::new(303);
+    let mut visited_hangar = false;
+    let mut visited_atrium = false;
+    let mut visited_ops = false;
+    let mut visited_reactor = false;
+    let mut visited_pipe = false;
+    let mut visited_solar = false;
+    let mut opened_doors = [false; 3];
+
+    // Simulate ~120 seconds of patrol at 10 Hz
+    for _ in 0..1200 {
+        st.step(0.1);
+        let p = st.walker.pos;
+        if p[2] > 14.0 && (p[1] - (-3.85)).abs() < 0.5 {
+            visited_hangar = true;
+        }
+        if (-10.0..=8.0).contains(&p[2]) && (p[1] - (-3.85)).abs() < 0.5 {
+            visited_atrium = true;
+        }
+        if p[1] > 11.5 {
+            visited_ops = true;
+        }
+        if p[1] < -14.0 {
+            visited_reactor = true;
+        }
+        if (-24.0..=-16.0).contains(&p[2]) && (p[1] - (-3.85)).abs() < 0.5 {
+            visited_pipe = true;
+        }
+        if p[2] < -32.0 && (p[1] - (-3.85)).abs() < 0.5 {
+            visited_solar = true;
+        }
+        for (opened, &val) in opened_doors.iter_mut().zip(st.door_open.iter()) {
+            if val > 0.7 {
+                *opened = true;
+            }
+        }
+    }
+
+    assert!(visited_hangar, "walker should visit Main Hangar Bay");
+    assert!(visited_atrium, "walker should visit Central Core Atrium");
+    assert!(visited_ops, "walker should ride elevator up to Ops Deck");
+    assert!(
+        visited_reactor,
+        "walker should ride elevator down to Reactor Core"
+    );
+    assert!(visited_pipe, "walker should traverse Axial Pipe Tunnel");
+    assert!(
+        visited_solar,
+        "walker should visit Aft Solar Engineering Bay"
+    );
+    assert!(
+        opened_doors.iter().all(|&o| o),
+        "all 3 sliding blast doors should open as walker traverses: {opened_doors:?}"
+    );
+}

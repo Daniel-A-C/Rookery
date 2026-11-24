@@ -48,9 +48,9 @@ pub use nebula::{
 };
 pub use orbital::{
     ALL_CAMERA_FEEDS, AgentKind, AgentZone, CameraDrone, CameraFeedId, CameraLayout,
-    CameraRigState, LandingPadId, ORBITAL_PALETTE_NAMES, ORBITAL_STATE_FILE_NAME,
-    OrbitalHavenState, OrbitalHavenStats, OrbitalPalette, ShipClass, ShipFlightPhase, Spacecraft,
-    StationAgent, StationEventKind,
+    CameraRigState, ElevatorDeck, ElevatorState, LandingPadId, ORBITAL_PALETTE_NAMES,
+    ORBITAL_STATE_FILE_NAME, OrbitalHavenState, OrbitalHavenStats, OrbitalPalette, ShipClass,
+    ShipFlightPhase, Spacecraft, StationAgent, StationEventKind, WalkerBotState,
 };
 pub use settings::{AudioSettings, Settings};
 pub use shinjuku::{

@@ -68,6 +68,15 @@ pub struct OrbitalHavenState {
     pub ships: Vec<Spacecraft>,
     /// Autonomous bots and crew operating inside interiors and on landing pads.
     pub agents: Vec<StationAgent>,
+    /// Functioning 3-deck central glass elevator (`X = 0, Z = -6.0`).
+    #[serde(default)]
+    pub elevator: ElevatorState,
+    /// Patrolling Interior Walker Camera Bot (`BOT-01`).
+    #[serde(default)]
+    pub walker: WalkerBotState,
+    /// `[0.0, 1.0]` sliding blast door openings: `[0]` Hangar↔Atrium, `[1]` Atrium↔Pipe, `[2]` Pipe↔Solar.
+    #[serde(default)]
+    pub door_open: [f32; 3],
     /// Monotonic entity ID counter.
     pub next_id: u32,
     /// Cached operational telemetry.
@@ -349,6 +358,9 @@ impl OrbitalHavenState {
             drones,
             ships,
             agents,
+            elevator: ElevatorState::default(),
+            walker: WalkerBotState::default(),
+            door_open: [0.0; 3],
             next_id,
             stats: OrbitalHavenStats::default(),
         };

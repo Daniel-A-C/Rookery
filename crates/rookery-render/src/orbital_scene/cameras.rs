@@ -339,8 +339,24 @@ pub fn resolve_camera(
                 "STBD UTILITY DECK · PAD-C".to_string(),
             )
         }
+        CameraFeedId::IntCentralAtrium => {
+            // High corner inside the 2-story Central Core Atrium overlooking Hangar door, catwalks & glass Elevator!
+            let eye = [-9.8, 8.6, 8.4];
+            let tgt = [0.6, 0.2, -5.8];
+            (
+                eye,
+                apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
+                [0.0, 1.0, 0.0],
+                66.0,
+                format!("{} // {}", feed.code(), feed.label()),
+                format!(
+                    "DECK-2 ATRIUM · ELEVATOR {}",
+                    state.elevator.target_deck.label()
+                ),
+            )
+        }
         CameraFeedId::IntOpsDeck => {
-            // High corner inside Ops Command Spire looking across CRT consoles & holotable out the big +Z viewports!
+            // High corner inside Ops Command Spire looking across CRT consoles, holotable & live exterior viewports!
             let eye = [-7.8, 19.2, -7.2];
             let tgt = [1.5, 14.2, 24.0];
             (
@@ -362,20 +378,53 @@ pub fn resolve_camera(
                 [0.0, 1.0, 0.0],
                 68.0,
                 format!("{} // {}", feed.code(), feed.label()),
-                "DECK-03 CONCOURSE · SEC-CAM".to_string(),
+                "DECK-1 CONCOURSE · SEC-CAM".to_string(),
             )
         }
         CameraFeedId::IntReactorCore => {
-            // Elevated catwalk angle looking across the pulsing plasma core & exterior hull window
-            let eye = [11.5, -7.2, -7.2];
-            let tgt = [-2.0, -11.4, 4.0];
+            // Elevated catwalk angle looking across the pulsing plasma core & Deck 1 elevator landing
+            let eye = [11.5, -7.2, 6.8];
+            let tgt = [-1.0, -11.8, -4.5];
             (
                 eye,
                 apply_pan(eye, tgt, -servo_sweep * 0.6, 0.0),
                 [0.0, 1.0, 0.0],
                 66.0,
                 format!("{} // {}", feed.code(), feed.label()),
-                "CORE OUTPUT 480 MW · NOMINAL".to_string(),
+                "CORE OUTPUT 480 MW · DECK-1".to_string(),
+            )
+        }
+        CameraFeedId::IntSolarBay => {
+            // Interior corner inside the Aft Solar Engineering Bay looking across transformers out onto the Solar Wings!
+            let eye = [-5.4, 4.8, -26.4];
+            let tgt = [4.5, 0.5, -37.5];
+            (
+                eye,
+                apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
+                [0.0, 1.0, 0.0],
+                68.0,
+                format!("{} // {}", feed.code(), feed.label()),
+                "AFT SOLAR GRID · LIVE VIEWPORT".to_string(),
+            )
+        }
+        CameraFeedId::WalkerBotCam => {
+            // First-person patrolling camera mounted cleanly ahead of BOT-01's optical turret
+            let wp = state.walker.pos;
+            let (sy, cy) = state.walker.yaw.sin_cos();
+            let bob = if state.walker.riding_elevator || state.walker.dwell_timer > 0.0 {
+                0.0
+            } else {
+                (state.walker.walk_phase * 2.0).sin() * 0.07
+            };
+            let eye = [wp[0] + sy * 0.68, wp[1] + 1.92 + bob, wp[2] + cy * 0.68];
+            let tgt = [eye[0] + sy * 16.0, eye[1] - 0.65, eye[2] + cy * 16.0];
+            (
+                eye,
+                tgt,
+                [0.0, 1.0, 0.0],
+                72.0,
+                format!("{} // {}", feed.code(), feed.label()),
+                format!("LOC: {}", state.walker.current_room),
             )
         }
         CameraFeedId::ShipNoseUplink => {

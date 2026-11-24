@@ -138,6 +138,9 @@ impl OrbitalHavenState {
         // 3. Update interior crew, security droids, cargo loaders & exterior welders
         self.step_agents(dt);
 
+        // 3b. Update Interior Walker Camera Bot, 3-deck Glass Elevator & sliding blast doors
+        self.step_walker_and_elevator(dt);
+
         // 4. Update station event cycle
         self.step_events(dt);
 
@@ -744,6 +747,353 @@ impl OrbitalHavenState {
                     agent.yaw = agent.phase * 0.3;
                 }
             }
+        }
+    }
+
+    fn step_walker_and_elevator(&mut self, dt: f32) {
+        use std::f32::consts::{FRAC_PI_2, PI};
+
+        #[derive(Clone, Copy)]
+        enum WalkerLeg {
+            Walk {
+                target: [f32; 3],
+                dwell: f32,
+                look_yaw: Option<f32>,
+                room: &'static str,
+            },
+            WaitElevator {
+                deck: ElevatorDeck,
+                room: &'static str,
+            },
+            RideElevator {
+                target_deck: ElevatorDeck,
+                room: &'static str,
+            },
+        }
+
+        const D1: f32 = -14.95; // Deck 1: Concourse & Reactor
+        const D2: f32 = -3.85; // Deck 2: Hangar, Central Atrium, Pipe Tunnel, Solar Bay
+        const D3: f32 = 12.05; // Deck 3: Ops & Command Spire
+
+        const ROUTE: &[WalkerLeg] = &[
+            // 1. Start in Main Hangar Bay, inspect Pad A & cyan forcefield, walk to Hangar Blast Door
+            WalkerLeg::Walk {
+                target: [0.0, D2, 22.0],
+                dwell: 2.0,
+                look_yaw: Some(0.0), // face +Z toward Pad A & forcefield
+                room: "MAIN HANGAR BAY",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, 13.8],
+                dwell: 0.4,
+                look_yaw: None,
+                room: "HANGAR AIRLOCK",
+            },
+            // 2. Enter 2-story Central Core Atrium
+            WalkerLeg::Walk {
+                target: [0.0, D2, 3.8],
+                dwell: 1.8,
+                look_yaw: Some(PI - 0.35),
+                room: "CENTRAL CORE ATRIUM",
+            },
+            // 3. Call & board 3-deck glass Elevator at Deck 2 -> Ride UP to Deck 3 (Ops Command Spire)
+            WalkerLeg::Walk {
+                target: [0.0, D2, -1.6],
+                dwell: 0.0,
+                look_yaw: Some(PI),
+                room: "DECK-2 ELEVATOR LOBBY",
+            },
+            WalkerLeg::WaitElevator {
+                deck: ElevatorDeck::Deck2Atrium,
+                room: "BOARDING ELEVATOR",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, -6.0],
+                dwell: 0.5,
+                look_yaw: Some(0.0), // face +Z out the glass elevator doors
+                room: "ELEVATOR CAR",
+            },
+            WalkerLeg::RideElevator {
+                target_deck: ElevatorDeck::Deck3Ops,
+                room: "ELEVATOR -> DECK-3 OPS",
+            },
+            // 4. Patrol Ops Command Deck (around holotable & CRT consoles looking out front viewports!)
+            WalkerLeg::Walk {
+                target: [0.0, D3, -2.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "OPS COMMAND DECK",
+            },
+            WalkerLeg::Walk {
+                target: [-4.2, D3, 3.4],
+                dwell: 2.4,
+                look_yaw: Some(0.22), // look out +Z armored viewports at ships & space!
+                room: "OPS DECK VIEWPORT",
+            },
+            WalkerLeg::Walk {
+                target: [4.2, D3, 3.4],
+                dwell: 1.8,
+                look_yaw: Some(-0.25),
+                room: "OPS COMMAND DECK",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D3, -2.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "OPS ELEVATOR LOBBY",
+            },
+            WalkerLeg::WaitElevator {
+                deck: ElevatorDeck::Deck3Ops,
+                room: "BOARDING ELEVATOR",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D3, -6.0],
+                dwell: 0.5,
+                look_yaw: Some(0.0),
+                room: "ELEVATOR CAR",
+            },
+            // 5. Ride Elevator all the way DOWN to Deck 1 (Concourse & Reactor Core)
+            WalkerLeg::RideElevator {
+                target_deck: ElevatorDeck::Deck1Reactor,
+                room: "ELEVATOR -> DECK-1 REACTOR",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D1, -2.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "REACTOR CHAMBER",
+            },
+            WalkerLeg::Walk {
+                target: [5.6, D1, 0.5],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "REACTOR CATWALK",
+            },
+            WalkerLeg::Walk {
+                target: [5.6, D1, 5.4],
+                dwell: 2.2,
+                look_yaw: Some(-0.7), // look back across pulsing plasma core & space window
+                room: "CONCOURSE & REACTOR",
+            },
+            WalkerLeg::Walk {
+                target: [-5.6, D1, 5.4],
+                dwell: 1.6,
+                look_yaw: Some(0.55),
+                room: "DECK-1 CONCOURSE",
+            },
+            WalkerLeg::Walk {
+                target: [-5.6, D1, -1.8],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "REACTOR CATWALK",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D1, -2.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "DECK-1 ELEVATOR LOBBY",
+            },
+            WalkerLeg::WaitElevator {
+                deck: ElevatorDeck::Deck1Reactor,
+                room: "BOARDING ELEVATOR",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D1, -6.0],
+                dwell: 0.5,
+                look_yaw: Some(0.0),
+                room: "ELEVATOR CAR",
+            },
+            // 6. Ride Elevator UP to Deck 2 (Atrium) & detour around elevator shaft toward Aft Pipe Tunnel
+            WalkerLeg::RideElevator {
+                target_deck: ElevatorDeck::Deck2Atrium,
+                room: "ELEVATOR -> DECK-2 ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, -1.6],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [5.2, D2, -6.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, -11.5],
+                dwell: 0.3,
+                look_yaw: None,
+                room: "AFT AXIAL AIRLOCK",
+            },
+            // 7. Walk through Axial Pipe Tunnel inside the rotating ring core!
+            WalkerLeg::Walk {
+                target: [0.0, D2, -20.0],
+                dwell: 2.4,
+                look_yaw: Some(FRAC_PI_2), // look right out the side porthole at rotating ring spokes!
+                room: "AXIAL PIPE TUNNEL",
+            },
+            // 8. Enter Aft Solar & Power Engineering Bay and admire the Solar Collector Wings!
+            WalkerLeg::Walk {
+                target: [0.0, D2, -28.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "SOLAR ENGINEERING BAY",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, -37.0],
+                dwell: 2.6,
+                look_yaw: Some(-FRAC_PI_2), // look out huge viewport at glowing solar wings!
+                room: "SOLAR ENGINEERING BAY",
+            },
+            // 9. Return back through Pipe Tunnel & Atrium into Hangar Bay to restart loop
+            WalkerLeg::Walk {
+                target: [0.0, D2, -28.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "SOLAR ENGINEERING BAY",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, -11.5],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "AXIAL PIPE TUNNEL",
+            },
+            WalkerLeg::Walk {
+                target: [-5.2, D2, -6.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, 3.8],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, 13.8],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "HANGAR AIRLOCK",
+            },
+        ];
+
+        let turn_yaw = |curr: f32, target: f32, rate: f32, dt: f32| -> f32 {
+            let mut diff = (target - curr).rem_euclid(TAU);
+            if diff > PI {
+                diff -= TAU;
+            }
+            curr + diff * (1.0 - (-rate * dt).exp())
+        };
+
+        let idx = self.walker.route_index % ROUTE.len();
+        let leg = ROUTE[idx];
+        let mut want_elev_door_open = false;
+
+        match leg {
+            WalkerLeg::Walk {
+                target,
+                dwell,
+                look_yaw,
+                room,
+            } => {
+                self.walker.riding_elevator = false;
+                self.walker.current_room = room.to_string();
+
+                // Keep elevator doors open while stepping in or out of the shaft
+                if (self.walker.pos[2] - (-6.0)).abs() < 4.8 && self.walker.pos[0].abs() < 2.4 {
+                    want_elev_door_open = true;
+                }
+
+                let dx = target[0] - self.walker.pos[0];
+                let dz = target[2] - self.walker.pos[2];
+                let dist = (dx * dx + dz * dz).sqrt();
+                let walk_speed = 3.8;
+
+                if dist > 0.14 {
+                    let step = (walk_speed * dt).min(dist);
+                    self.walker.pos[0] += (dx / dist) * step;
+                    self.walker.pos[2] += (dz / dist) * step;
+                    self.walker.pos[1] = target[1];
+                    self.walker.walk_phase = (self.walker.walk_phase + dt * 7.2) % TAU;
+                    let travel_yaw = dx.atan2(dz);
+                    self.walker.yaw = turn_yaw(self.walker.yaw, travel_yaw, 5.0, dt);
+                    self.walker.dwell_timer = dwell;
+                } else {
+                    self.walker.pos = target;
+                    if let Some(ly) = look_yaw {
+                        self.walker.yaw = turn_yaw(self.walker.yaw, ly, 3.2, dt);
+                    }
+                    if self.walker.dwell_timer > 0.0 {
+                        self.walker.dwell_timer = (self.walker.dwell_timer - dt).max(0.0);
+                    } else {
+                        self.walker.route_index = (idx + 1) % ROUTE.len();
+                    }
+                }
+            }
+            WalkerLeg::WaitElevator { deck, room } => {
+                self.walker.riding_elevator = false;
+                self.walker.current_room = room.to_string();
+                self.elevator.target_deck = deck;
+                let tgt_y = deck.floor_y();
+                let dy = tgt_y - self.elevator.current_y;
+                if dy.abs() > 0.06 {
+                    self.elevator.moving = true;
+                    want_elev_door_open = false;
+                    if self.elevator.door_open < 0.08 {
+                        let step = (6.8 * dt).min(dy.abs());
+                        self.elevator.current_y += dy.signum() * step;
+                    }
+                } else {
+                    self.elevator.current_y = tgt_y;
+                    self.elevator.moving = false;
+                    want_elev_door_open = true;
+                    if self.elevator.door_open > 0.88 {
+                        self.walker.route_index = (idx + 1) % ROUTE.len();
+                    }
+                }
+            }
+            WalkerLeg::RideElevator { target_deck, room } => {
+                self.walker.riding_elevator = true;
+                self.walker.current_room = room.to_string();
+                self.walker.yaw = turn_yaw(self.walker.yaw, 0.0, 3.5, dt);
+                self.elevator.target_deck = target_deck;
+                let tgt_y = target_deck.floor_y();
+                let dy = tgt_y - self.elevator.current_y;
+                if dy.abs() > 0.06 {
+                    want_elev_door_open = false;
+                    if self.elevator.door_open < 0.08 {
+                        self.elevator.moving = true;
+                        let step = (6.4 * dt).min(dy.abs());
+                        self.elevator.current_y += dy.signum() * step;
+                    }
+                } else {
+                    self.elevator.current_y = tgt_y;
+                    self.elevator.moving = false;
+                    want_elev_door_open = true;
+                    if self.elevator.door_open > 0.88 {
+                        self.walker.riding_elevator = false;
+                        self.walker.route_index = (idx + 1) % ROUTE.len();
+                    }
+                }
+                self.walker.pos = [0.0, self.elevator.current_y, -6.0];
+            }
+        }
+
+        // Smoothly animate elevator doors
+        let elev_door_target = if want_elev_door_open { 1.0 } else { 0.0 };
+        self.elevator.door_open = ease_scalar(self.elevator.door_open, elev_door_target, 5.0, dt);
+
+        // Proximity-triggered sliding blast doors on Deck 2 (`Z = 11.6`, `Z = -14.6`, `Z = -25.0`)
+        let door_zs = [11.6f32, -14.6f32, -25.0f32];
+        let on_deck_2 = (self.walker.pos[1] - D2).abs() < 1.5;
+        for (i, &dz) in door_zs.iter().enumerate() {
+            let near = on_deck_2
+                && self.walker.pos[0].abs() < 3.5
+                && (self.walker.pos[2] - dz).abs() < 4.5;
+            let tgt = if near { 1.0 } else { 0.0 };
+            self.door_open[i] = ease_scalar(self.door_open[i], tgt, 4.8, dt);
         }
     }
 

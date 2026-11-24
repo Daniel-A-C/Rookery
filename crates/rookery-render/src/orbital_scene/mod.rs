@@ -10,8 +10,7 @@ use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
 use rookery_core::Activity;
 use rookery_core::orbital::{
-    CameraLayout, OrbitalHavenState, OrbitalPalette, PAD_A_POS, PAD_B_POS, PAD_C_POS,
-    StationEventKind,
+    CameraLayout, OrbitalHavenState, OrbitalPalette, PAD_B_POS, PAD_C_POS, StationEventKind,
 };
 use wgpu::util::DeviceExt;
 
@@ -770,28 +769,20 @@ impl OrbitalHavenScene {
                     1.55 + 0.25 * (t * 4.2).sin(),
                 ],
             },
-            // 6: Concourse Corridor Port fluorescent
+            // 6: Central Core Atrium overhead + elevator shaft light
             PointLightGpu {
-                pos_radius: [-11.5, -8.5, 3.0, 20.0],
+                pos_radius: [0.0, 6.5, -2.0, 32.0],
                 color_intensity: [
                     corr_col[0],
                     corr_col[1],
                     corr_col[2],
-                    if alert { 1.3 * alert_pulse } else { 1.05 },
+                    if alert { 1.35 * alert_pulse } else { 1.25 },
                 ],
             },
-            // 7: Active Uplink Ship thruster/headlight glow
-            {
-                let sp = state.uplink_ship().map(|s| s.pos).unwrap_or(PAD_A_POS);
-                PointLightGpu {
-                    pos_radius: [sp[0], sp[1] + 1.5, sp[2], 24.0],
-                    color_intensity: [
-                        th.accent_primary[0],
-                        th.accent_primary[1],
-                        th.accent_primary[2],
-                        1.1,
-                    ],
-                }
+            // 7: Aft Solar Engineering Bay & Axial Pipe Tunnel warm/cyan work light
+            PointLightGpu {
+                pos_radius: [0.0, 2.5, -31.0, 30.0],
+                color_intensity: [hangar_col[0], hangar_col[1], hangar_col[2], 1.25],
             },
         ]
     }

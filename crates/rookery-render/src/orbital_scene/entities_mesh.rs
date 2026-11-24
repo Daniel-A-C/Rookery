@@ -41,23 +41,29 @@ pub fn build_dynamic_entities(
     let dark_steel = [0.45, 0.50, 0.56, 1.0];
 
     // =========================================================================
-    // 1. ROTATING HABITATION COUNTERWEIGHT RING (seated in bearing collar at Z = -20)
+    // 1. ROTATING HABITATION COUNTERWEIGHT RING (hollow annular drum around Axial Pipe Tunnel at Z = -20)
     // =========================================================================
     let ring_segs = 12;
     let ring_r = 25.0;
     let ring_z = -20.0;
     let fwd = [0.0, 0.0, 1.0];
-    // True cylindrical 12-sided rotating bearing drum seated cleanly inside the R=8.0 collar flanges
-    op.push_cylinder_z(
-        [0.0, 0.0, ring_z],
-        6.9,
-        5.2,
-        12,
-        state.hab_ring_angle,
-        Tile::DarkSteelRib,
-        theme.rib_tint,
-        0.0,
-    );
+    // Hollow 12-segment annular rotating bearing drum (`R = 6.3`, inner clearance `5.4`) so the Pipe Tunnel passes right through!
+    for i in 0..12 {
+        let a = state.hab_ring_angle + (i as f32 / 12.0) * TAU;
+        let rad = [a.cos(), a.sin(), 0.0];
+        let tan = [-a.sin(), a.cos(), 0.0];
+        op.push_oriented_box(
+            [a.cos() * 6.35, a.sin() * 6.35, ring_z],
+            rad,
+            tan,
+            fwd,
+            [0.0, 0.0, 0.0],
+            [1.4, 3.2, 5.2],
+            Tile::DarkSteelRib,
+            theme.rib_tint,
+            0.0,
+        );
+    }
 
     for i in 0..ring_segs {
         let a = state.hab_ring_angle + (i as f32 / ring_segs as f32) * TAU;
@@ -997,5 +1003,216 @@ pub fn build_dynamic_entities(
                 }
             }
         }
+    }
+
+    // =========================================================================
+    // 6. FUNCTIONING 3-DECK GLASS ELEVATOR CAR, SLIDING BLAST DOORS & WALKER BOT
+    // =========================================================================
+    // 6A. Animated 3-Deck Elevator Car (`X = 0, Z = -6.0, Y = state.elevator.current_y`)
+    let ey = state.elevator.current_y;
+    let ez = -6.0;
+    // Grated elevator floor platform & hazard trim
+    op.push_box(
+        [0.0, ey - 0.16, ez],
+        [4.6, 0.32, 4.6],
+        Tile::FloorGrate,
+        2.5,
+        theme.hull_tint,
+        0.0,
+    );
+    op.push_box(
+        [0.0, ey - 0.16, ez + 2.35],
+        [4.6, 0.34, 0.2],
+        Tile::HazardStripe,
+        2.0,
+        white,
+        0.0,
+    );
+    // Elevator roof cap & glowing interior overhead strip
+    op.push_box(
+        [0.0, ey + 3.55, ez],
+        [4.6, 0.35, 4.6],
+        Tile::DarkSteelRib,
+        2.5,
+        theme.rib_tint,
+        0.0,
+    );
+    op.push_box(
+        [0.0, ey + 3.32, ez],
+        [2.4, 0.14, 2.4],
+        Tile::CeilingLight,
+        2.4,
+        accent,
+        1.1,
+    );
+    // 4 vertical cage corner struts
+    for cx in [-2.15f32, 2.15f32] {
+        for cz in [-2.15f32, 2.15f32] {
+            op.push_box(
+                [cx, ey + 1.7, ez + cz],
+                [0.24, 3.4, 0.24],
+                Tile::DarkSteelRib,
+                2.0,
+                dark_steel,
+                0.0,
+            );
+        }
+    }
+    // Translucent glass side & rear panels on the elevator car so you see the Atrium/Ops/Reactor while riding!
+    let glass_col = [accent[0], accent[1], accent[2], 0.22];
+    tr.push_quad(
+        [-2.1, ey + 0.1, ez - 2.1],
+        [2.1, ey + 0.1, ez - 2.1],
+        [2.1, ey + 3.3, ez - 2.1],
+        [-2.1, ey + 3.3, ez - 2.1],
+        [0.0, 0.0, 1.0],
+        [2.0, 1.5],
+        Tile::ForcefieldHex,
+        glass_col,
+        1.6,
+    );
+    // Twin animated sliding elevator doors on the `+Z` front side (`ez + 2.15`)
+    let e_slide = state.elevator.door_open.clamp(0.0, 1.0) * 1.95;
+    let e_door_w = (2.1 - e_slide * 0.4).max(0.25);
+    op.push_box(
+        [-1.08 - e_slide * 0.52, ey + 1.68, ez + 2.15],
+        [e_door_w, 3.25, 0.16],
+        Tile::BlastDoor,
+        3.2,
+        white,
+        0.0,
+    );
+    op.push_box(
+        [1.08 + e_slide * 0.52, ey + 1.68, ez + 2.15],
+        [e_door_w, 3.25, 0.16],
+        Tile::BlastDoor,
+        3.2,
+        white,
+        0.0,
+    );
+
+    // 6B. 3 Pairs of Proximity-Triggered Sliding Blast Doors on Deck 2
+    let door_specs = [
+        // (z, half_open_w, height, open_t)
+        (11.6f32, 3.15f32, 7.0f32, state.door_open[0]),
+        (-14.6f32, 2.55f32, 5.6f32, state.door_open[1]),
+        (-25.1f32, 2.55f32, 5.6f32, state.door_open[2]),
+    ];
+    for (dz, half_w, dh, open_t) in door_specs {
+        let o = open_t.clamp(0.0, 1.0);
+        let leaf_w = (half_w * (1.0 - o * 0.82)).max(0.18);
+        let cx_off = half_w - leaf_w * 0.5 + o * 0.15;
+        let cy = -3.85 + dh * 0.5;
+        op.push_box(
+            [-cx_off, cy, dz],
+            [leaf_w, dh, 0.45],
+            Tile::BlastDoor,
+            4.5,
+            white,
+            0.0,
+        );
+        op.push_box(
+            [cx_off, cy, dz],
+            [leaf_w, dh, 0.45],
+            Tile::BlastDoor,
+            4.5,
+            white,
+            0.0,
+        );
+    }
+
+    // 6C. Physical 3D Interior Walker Camera Bot (`BOT-01`, visible on all fixed interior CCTV feeds!)
+    {
+        let wp = state.walker.pos;
+        let (sy, cy) = state.walker.yaw.sin_cos();
+        let wf = [sy, 0.0, cy];
+        let wr = [cy, 0.0, -sy];
+        let wu = [0.0, 1.0, 0.0];
+        let stride = if state.walker.riding_elevator || state.walker.dwell_timer > 0.0 {
+            0.0
+        } else {
+            state.walker.walk_phase.sin() * 0.24
+        };
+        let bob = stride.abs() * 0.14;
+        // Articulated bipedal walker legs
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [-0.30, 0.48, stride],
+            [0.24, 0.96, 0.30],
+            Tile::DarkSteelRib,
+            dark_steel,
+            0.0,
+        );
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.30, 0.48, -stride],
+            [0.24, 0.96, 0.30],
+            Tile::DarkSteelRib,
+            dark_steel,
+            0.0,
+        );
+        // Armored Y2K security rover torso with hazard stripe accent
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.0, 1.28 + bob, 0.0],
+            [0.92, 0.78, 0.78],
+            Tile::ShipArmor,
+            theme.hull_tint,
+            0.0,
+        );
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.0, 1.02 + bob, 0.0],
+            [0.96, 0.22, 0.82],
+            Tile::HazardStripe,
+            white,
+            0.0,
+        );
+        // Rotating optical camera turret head + glowing red/cyan lens
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.0, 1.88 + bob, 0.05],
+            [0.62, 0.48, 0.68],
+            Tile::DarkSteelRib,
+            theme.rib_tint,
+            0.0,
+        );
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.0, 1.88 + bob, 0.42],
+            [0.34, 0.26, 0.10],
+            Tile::CeilingLight,
+            red_strobe,
+            1.35,
+        );
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.24, 2.25 + bob, -0.10],
+            [0.08, 0.42, 0.08],
+            Tile::CeilingLight,
+            accent,
+            1.1,
+        );
     }
 }
