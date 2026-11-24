@@ -685,9 +685,9 @@ impl AppCatalog {
                 metadata: AppMetadata {
                     id: "shinjuku-rain".into(),
                     name: "Shinjuku Rain".into(),
-                    description: "A heavy-rain Japanese city street rendered in monospace ASCII and wet-asphalt neon reflections, with passing commuter trains, ramen shop steam, umbrella pedestrians, and stray alley cats.".into(),
+                    description: "A heavy-rain Kabukicho street rendered in layered monospace ASCII and dynamic wet-asphalt neon reflections, featuring a Tokyo skyline, overhead commuter trains with pantograph sparks, ramen & konbini storefronts, crosswalk traffic signals, umbrella pedestrians, and stray alley cats.".into(),
                     author: "Rookery Team".into(),
-                    version: "1.0.0".into(),
+                    version: "2.0.0".into(),
                     archetype: AppArchetype::CozyEcosystem,
                     tags: vec!["ascii".into(), "rain".into(), "japan".into(), "shinjuku".into(), "neon".into(), "cyberpunk".into()],
                 },
@@ -753,10 +753,25 @@ impl AppCatalog {
                         tooltip: Some("Switch storefront neon signs and wet reflections on or off".into()),
                     },
                     AppControl::Button {
+                        id: "toggle_signal".into(),
+                        label: "Traffic Signal".into(),
+                        icon: Some("compass".into()),
+                        tooltip: Some("Flip the crosswalk traffic signal between green and red".into()),
+                    },
+                    AppControl::Button {
                         id: "thunder".into(),
                         label: "Distant Thunder".into(),
                         icon: Some("lightning".into()),
                         tooltip: Some("Trigger a distant storm flash and thunder roll".into()),
+                    },
+                    AppControl::Slider {
+                        id: "rain_intensity".into(),
+                        label: "Rain Intensity".into(),
+                        min: 0.2,
+                        max: 2.5,
+                        step: 0.1,
+                        default_val: 1.0,
+                        unit: Some("x".into()),
                     },
                     AppControl::Select {
                         id: "color_palette".into(),

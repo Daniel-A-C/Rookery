@@ -333,3 +333,66 @@ fn cosmic_nebula_all_palettes_and_events_render() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn shinjuku_rain_all_palettes_render() {
+    let gpu = Gpu::new_blocking().expect("GPU");
+    let state = Arc::new(Mutex::new(rookery_core::ShinjukuRainState::new(42)));
+
+    let width = 1280u32;
+    let height = 720u32;
+    let mut scene = rookery_render::ShinjukuRainScene::new(&gpu, OFFSCREEN_FORMAT, state.clone());
+    scene.resize(&gpu, width, height, 1.0);
+    let off = Offscreen::new(&gpu, width, height);
+    let dt = Duration::from_millis(33);
+
+    let snapshot_dir = std::env::var("ROOKERY_SNAPSHOT_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(ref dir) = snapshot_dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    let mut frames = Vec::new();
+    for palette_idx in 0..4u8 {
+        if let Ok(mut s) = state.lock() {
+            s.set_palette(rookery_core::ShinjukuPalette::from_u8(palette_idx));
+            s.palette_blend = 1.0;
+            if palette_idx == 0 {
+                s.set_rain_intensity(1.2);
+                s.splash_at(460.0, 860.0);
+            } else if palette_idx == 1 {
+                s.toggle_traffic_light();
+                s.trigger_lightning_at(380.0);
+            } else if palette_idx == 2 {
+                s.set_rain_intensity(2.1);
+                s.trigger_wind_gust();
+            } else {
+                s.set_rain_intensity(1.0);
+            }
+        }
+        let frame = off.run(&gpu, &mut scene, 15, dt).unwrap();
+        let luma = mean_luma(&frame);
+        assert!(
+            luma > 5.0 && luma < 200.0,
+            "Shinjuku palette {palette_idx} mean luma {luma} out of expected range"
+        );
+
+        if let Some(ref dir) = snapshot_dir {
+            let png_path = dir.join(format!("shinjuku_palette_{palette_idx}.png"));
+            rookery_render::capture::write_png(&png_path, width, height, &frame).unwrap();
+        }
+        frames.push(frame);
+    }
+
+    for i in 1..frames.len() {
+        let d = diff(&frames[i - 1], &frames[i]);
+        assert!(
+            d > 2.5,
+            "Shinjuku palette {} and palette {} look too similar (diff = {d})",
+            i - 1,
+            i
+        );
+    }
+}

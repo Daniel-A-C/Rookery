@@ -492,12 +492,18 @@ impl HostState {
                     let mut map = std::collections::BTreeMap::new();
                     map.insert(
                         "rain_rate".to_string(),
-                        format!("{} mm/hr", st.rain_rate_mm_hr),
+                        format!("{} mm/hr · {}", st.rain_rate_mm_hr, st.weather_label),
                     );
                     map.insert("pedestrians".to_string(), st.pedestrian_count.to_string());
                     map.insert("trains".to_string(), st.trains_passed.to_string());
                     map.insert("palette".to_string(), st.palette_name.clone());
                     self.catalog_state.set_stats("shinjuku-rain", map);
+                    self.catalog_state.set_control_value(
+                        "shinjuku-rain",
+                        "rain_intensity",
+                        format_rate_clean(s.rain_intensity),
+                        None,
+                    );
                     self.catalog_state.set_control_value(
                         "shinjuku-rain",
                         "color_speed",

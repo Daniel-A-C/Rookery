@@ -552,6 +552,25 @@ pub(crate) fn dispatch_app_action(
                     s.toggle_signs();
                     state.audio.play_sfx(SoundEffect::SignToggle);
                 }
+                "toggle_signal" => {
+                    s.toggle_traffic_light();
+                    state.audio.play_sfx(SoundEffect::SignToggle);
+                }
+                "rain_intensity" => {
+                    if let Some(intensity) = parse_f32_payload(&payload) {
+                        s.set_rain_intensity(intensity);
+                        let clamped = s.rain_intensity;
+                        drop(s);
+                        persist_control_value(
+                            state,
+                            "shinjuku-rain",
+                            "rain_intensity",
+                            format_rate(clamped),
+                        );
+                        state.with_renderer(|r| r.trigger_action());
+                        return Ok(());
+                    }
+                }
                 "thunder" => {
                     s.trigger_lightning();
                     state.audio.play_sfx(SoundEffect::ThunderRumble);
@@ -596,6 +615,8 @@ pub(crate) fn dispatch_app_action(
                 }
                 other => return Err(format!("Unknown shinjuku-rain action '{other}'")),
             }
+            drop(s);
+            state.with_renderer(|r| r.trigger_action());
         }
         "gothic-metropolis" => {
             let mut g = state

@@ -54,8 +54,9 @@ pub use orbital::{
 };
 pub use settings::{AudioSettings, Settings};
 pub use shinjuku::{
-    AlleyCat, ElevatedTrain, Pedestrian, PuddleSplash, RainLayer, Raindrop, SHINJUKU_PALETTE_NAMES,
-    ShinjukuPalette, ShinjukuRainState, ShinjukuStats, SteamParticle, Vehicle, VehicleKind,
+    AlleyCat, AwningDrip, ElevatedTrain, Pedestrian, PuddleSplash, RainLayer, Raindrop,
+    SHINJUKU_PALETTE_NAMES, ShinjukuInteraction, ShinjukuPalette, ShinjukuRainState, ShinjukuStats,
+    SteamParticle, TrafficLightState, Vehicle, VehicleKind,
 };
 pub use world::{
     Bird, BirdBath, BirdHouse, BirdSpecies, BirdState, Branch, FOREST_TREE_SPACING, FaunaSpecies,
