@@ -481,3 +481,53 @@ fn rotating_camera_feeds_cycle_and_stagger_slots() {
         }
     }
 }
+
+#[test]
+fn walker_and_courier_never_deadlock_at_solar_pipe_exit() {
+    let mut st = OrbitalHavenState::new(909);
+
+    // Place BOT-01 right at Solar Bay exit heading back into the Pipe Tunnel (target [0, D2, -11.5])
+    st.walker.pos = [0.0, -3.85, -28.0];
+    st.walker.route_index = 25; // return leg toward [0.0, D2, -11.5]
+    st.walker.dwell_timer = 0.0;
+    st.walker.riding_elevator = false;
+
+    // Place CourierRunner right in front of BOT-01 at node 19 ([0, -3.88, -27.5]) also heading into Pipe Tunnel
+    if let Some(courier) = st
+        .agents
+        .iter_mut()
+        .find(|a| a.kind == AgentKind::CourierRunner)
+    {
+        courier.pos = [0.0, -3.88, -27.5];
+        courier.nav_node = 19;
+        courier.nav_path = vec![18, 17, 16, 15, 11];
+        courier.carrying_cargo = false;
+        courier.dwell_timer = 0.0;
+    }
+
+    let mut walker_cleared = false;
+    let mut courier_cleared = false;
+    for _ in 0..250 {
+        st.step(0.1);
+        if st.walker.pos[2] > -14.0 {
+            walker_cleared = true;
+        }
+        if st
+            .agents
+            .iter()
+            .any(|a| a.kind == AgentKind::CourierRunner && a.pos[2] > -14.0)
+        {
+            courier_cleared = true;
+        }
+    }
+
+    assert!(
+        walker_cleared,
+        "BOT-01 deadlocked at Solar Bay Pipe Tunnel exit (final pos {:?})",
+        st.walker.pos
+    );
+    assert!(
+        courier_cleared,
+        "CourierRunner deadlocked at Solar Bay Pipe Tunnel exit"
+    );
+}

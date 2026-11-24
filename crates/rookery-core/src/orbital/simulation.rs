@@ -757,16 +757,13 @@ impl OrbitalHavenState {
                 continue;
             }
 
-            // 3. Single-lane Axial Pipe Tunnel mutual exclusion
-            if next_node.is_pipe_tunnel {
-                match self.pipe_tunnel_owner {
-                    None => self.pipe_tunnel_owner = Some(id),
-                    Some(owner) if owner == id => {}
-                    Some(_) => {
-                        self.agents[idx].yielding = true;
-                        continue;
-                    }
-                }
+            // 3. Single-lane Axial Pipe Tunnel mutual exclusion (read-only check first; only claim after passing yield!)
+            if next_node.is_pipe_tunnel
+                && let Some(owner) = self.pipe_tunnel_owner
+                && owner != id
+            {
+                self.agents[idx].yielding = true;
+                continue;
             }
 
             // 4. Forward-cone multi-agent collision avoidance & starboard passing steering
@@ -801,12 +798,12 @@ impl OrbitalHavenState {
                 if d < min_sep && d > 1e-4 {
                     let forward_dot = (ox * dir_x + oz * dir_z) / d;
                     if forward_dot > 0.35 {
-                        // Deadlock-free tie-breaker: higher ID yields briefly to lower ID
-                        if other_id < id {
+                        // A bot already inside the single-lane Pipe Tunnel must finish exiting rather than freezing in the doorway!
+                        if other_id < id && !in_pipe_now {
                             must_yield = true;
                             break;
                         } else if !next_node.is_pipe_tunnel && kind != AgentKind::CargoForklift {
-                            // Lower-ID bot arcs smoothly around the starboard side of the yielded bot
+                            // Lower-ID bot (or exiting tunnel bot) arcs smoothly around the starboard side
                             let strength =
                                 ((min_sep - d) / (min_sep - safe_r).max(0.25)).clamp(0.35, 1.5);
                             let right_x = dir_z;
@@ -825,6 +822,10 @@ impl OrbitalHavenState {
             }
 
             if must_yield {
+                // Never hold the Pipe Tunnel mutex while yielding outside the tunnel!
+                if !in_pipe_now && self.pipe_tunnel_owner == Some(id) {
+                    self.pipe_tunnel_owner = None;
+                }
                 self.agents[idx].yielding = true;
                 self.agents[idx].stuck_timer += dt;
                 // Anti-deadlock patience: if blocked > 1.3s, dynamically reroute to an unoccupied goal!
@@ -848,6 +849,10 @@ impl OrbitalHavenState {
                     self.agents[idx].nav_node = best_n;
                 }
                 continue;
+            }
+            // Safe to claim the Pipe Tunnel mutex now that we are actively advancing into it
+            if next_node.is_pipe_tunnel && self.pipe_tunnel_owner.is_none() {
+                self.pipe_tunnel_owner = Some(id);
             }
             self.agents[idx].yielding = false;
             self.agents[idx].stuck_timer = 0.0;
@@ -1226,13 +1231,20 @@ impl OrbitalHavenState {
                     && ((-25.6..=-14.2).contains(&target[2])
                         || (self.walker.pos[2] < -25.6 && target[2] > -14.2)
                         || (self.walker.pos[2] > -14.2 && target[2] < -25.6));
-                // Respect the single-lane Axial Pipe Tunnel mutex: wait politely if another bot is inside!
-                let waiting_for_pipe = heading_into_pipe
-                    && !walker_in_pipe
-                    && matches!(self.pipe_tunnel_owner, Some(owner) if owner != 0);
+                // Respect the single-lane Axial Pipe Tunnel mutex: wait politely ONLY if another bot is
+                // actually physically inside the tunnel; otherwise BOT-01 (priority 0) takes the tunnel!
+                let other_physically_in_pipe = self.agents.iter().any(|a| {
+                    a.kind != AgentKind::HullWelder
+                        && (a.pos[1] - D2).abs() < 1.2
+                        && (-25.6..=-14.2).contains(&a.pos[2])
+                });
+                let waiting_for_pipe =
+                    heading_into_pipe && !walker_in_pipe && other_physically_in_pipe;
                 if waiting_for_pipe {
                     self.walker.current_room = "AFT AIRLOCK (YIELDING)".to_string();
-                } else if heading_into_pipe && self.pipe_tunnel_owner.is_none() {
+                    // Step slightly off-center (X -> +2.1) so the exiting bot has a clear lane out!
+                    self.walker.pos[0] = ease_scalar(self.walker.pos[0], 2.1, 3.2, dt);
+                } else if heading_into_pipe {
                     self.pipe_tunnel_owner = Some(0);
                 }
 
