@@ -1485,7 +1485,7 @@ impl OrbitalHavenState {
             .map(|s| s.id);
         self.camera_rig.uplink_ship_id = best_ship_id;
 
-        if self.camera_rig.auto_director {
+        if self.camera_rig.auto_director && !self.camera_rig.primary_feed.is_rotating() {
             self.camera_rig.director_timer -= dt;
             if self.camera_rig.director_timer <= 0.0 {
                 self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
@@ -1618,7 +1618,7 @@ impl OrbitalHavenState {
 
     pub fn toggle_auto_director(&mut self) {
         self.camera_rig.auto_director = !self.camera_rig.auto_director;
-        if self.camera_rig.auto_director {
+        if self.camera_rig.auto_director && !self.camera_rig.primary_feed.is_rotating() {
             self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
         }
     }

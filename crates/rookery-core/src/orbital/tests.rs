@@ -457,3 +457,27 @@ fn all_rolling_robots_navigate_without_collisions() {
         "expected cross-room CourierRunner to traverse the Pipe Tunnel and reach Solar Bay"
     );
 }
+
+#[test]
+fn rotating_camera_feeds_cycle_and_stagger_slots() {
+    for slug in ["auto_all", "auto_interior", "auto_exterior"] {
+        let feed = CameraFeedId::from_slug(slug).expect("valid rotating feed slug");
+        assert!(feed.is_rotating());
+        assert_eq!(feed.slug(), slug);
+
+        let a0 = feed.resolve_active(0.0, 0);
+        let a1 = feed.resolve_active(ROTATING_FEED_INTERVAL_SECS + 1.0, 0);
+        let b0 = feed.resolve_active(0.0, 1);
+        assert!(!a0.is_rotating());
+        assert_ne!(a0, a1, "{slug} should rotate to a new camera over time");
+        assert_ne!(
+            a0, b0,
+            "{slug} should stagger simultaneous sub-view slots so they show distinct feeds"
+        );
+        if feed == CameraFeedId::AutoRotateInterior {
+            assert!(a0.is_interior() && a1.is_interior());
+        } else if feed == CameraFeedId::AutoRotateExterior {
+            assert!(!a0.is_interior() && !a1.is_interior());
+        }
+    }
+}

@@ -94,6 +94,12 @@ pub enum CameraFeedId {
     ShipNoseUplink,
     /// Live dorsal over-the-shoulder hull feed from the active spacecraft.
     ShipDorsalUplink,
+    /// Auto-rotating feed cycling through all station & ship cameras.
+    AutoRotateAll,
+    /// Auto-rotating feed cycling through interior rooms & the BOT-01 rover.
+    AutoRotateInterior,
+    /// Auto-rotating feed cycling through exterior drones, pads & ship uplinks.
+    AutoRotateExterior,
 }
 
 pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
@@ -113,6 +119,29 @@ pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
     CameraFeedId::ShipDorsalUplink,
 ];
 
+pub const INTERIOR_CAMERA_FEEDS: [CameraFeedId; 7] = [
+    CameraFeedId::PadAHangarInterior,
+    CameraFeedId::IntCentralAtrium,
+    CameraFeedId::IntOpsDeck,
+    CameraFeedId::IntConcourseWalk,
+    CameraFeedId::IntReactorCore,
+    CameraFeedId::IntSolarBay,
+    CameraFeedId::WalkerBotCam,
+];
+
+pub const EXTERIOR_CAMERA_FEEDS: [CameraFeedId; 7] = [
+    CameraFeedId::DroneAlphaWide,
+    CameraFeedId::DroneBetaPatrol,
+    CameraFeedId::ExtHangarApproach,
+    CameraFeedId::PadBPortDeck,
+    CameraFeedId::PadCStarboardDeck,
+    CameraFeedId::ShipNoseUplink,
+    CameraFeedId::ShipDorsalUplink,
+];
+
+/// Interval in seconds between automatic cuts on a rotating feed slot.
+pub const ROTATING_FEED_INTERVAL_SECS: f64 = 16.0;
+
 impl CameraFeedId {
     pub fn code(self) -> &'static str {
         match self {
@@ -130,6 +159,9 @@ impl CameraFeedId {
             Self::WalkerBotCam => "BOT-01",
             Self::ShipNoseUplink => "UPLINK-1",
             Self::ShipDorsalUplink => "UPLINK-2",
+            Self::AutoRotateAll => "AUTO",
+            Self::AutoRotateInterior => "AUTO-INT",
+            Self::AutoRotateExterior => "AUTO-EXT",
         }
     }
 
@@ -149,6 +181,9 @@ impl CameraFeedId {
             Self::WalkerBotCam => "ROVER // INTERIOR WALKER-CAM",
             Self::ShipNoseUplink => "LIVE // SHIP NOSE-CAM",
             Self::ShipDorsalUplink => "LIVE // SHIP DORSAL-CAM",
+            Self::AutoRotateAll => "AUTO // ROTATING ALL CAMS",
+            Self::AutoRotateInterior => "AUTO // ROTATING INTERIORS",
+            Self::AutoRotateExterior => "AUTO // ROTATING EXTERIORS",
         }
     }
 
@@ -168,6 +203,9 @@ impl CameraFeedId {
             Self::WalkerBotCam => "WALKER BOT",
             Self::ShipNoseUplink => "SHIP NOSE",
             Self::ShipDorsalUplink => "SHIP DORSAL",
+            Self::AutoRotateAll => "ROTATE ALL",
+            Self::AutoRotateInterior => "ROTATE INT",
+            Self::AutoRotateExterior => "ROTATE EXT",
         }
     }
 
@@ -181,11 +219,37 @@ impl CameraFeedId {
                 | Self::IntReactorCore
                 | Self::IntSolarBay
                 | Self::WalkerBotCam
+                | Self::AutoRotateInterior
         )
     }
 
     pub fn is_ship_uplink(self) -> bool {
         matches!(self, Self::ShipNoseUplink | Self::ShipDorsalUplink)
+    }
+
+    pub fn is_rotating(self) -> bool {
+        matches!(
+            self,
+            Self::AutoRotateAll | Self::AutoRotateInterior | Self::AutoRotateExterior
+        )
+    }
+
+    /// Resolve a rotating meta-feed into the concrete camera currently active at `total_age_secs`.
+    /// `slot_offset` staggers simultaneous rotating sub-views so they don't duplicate each other.
+    pub fn resolve_active(self, total_age_secs: f64, slot_offset: usize) -> Self {
+        let step = (total_age_secs.max(0.0) / ROTATING_FEED_INTERVAL_SECS) as usize;
+        match self {
+            Self::AutoRotateAll => {
+                ALL_CAMERA_FEEDS[(step + slot_offset * 3) % ALL_CAMERA_FEEDS.len()]
+            }
+            Self::AutoRotateInterior => {
+                INTERIOR_CAMERA_FEEDS[(step + slot_offset * 2) % INTERIOR_CAMERA_FEEDS.len()]
+            }
+            Self::AutoRotateExterior => {
+                EXTERIOR_CAMERA_FEEDS[(step + slot_offset * 2) % EXTERIOR_CAMERA_FEEDS.len()]
+            }
+            concrete => concrete,
+        }
     }
 
     pub fn next(self) -> Self {
@@ -212,6 +276,9 @@ impl CameraFeedId {
             Self::WalkerBotCam => "walker_bot",
             Self::ShipNoseUplink => "ship_nose",
             Self::ShipDorsalUplink => "ship_dorsal",
+            Self::AutoRotateAll => "auto_all",
+            Self::AutoRotateInterior => "auto_interior",
+            Self::AutoRotateExterior => "auto_exterior",
         }
     }
 
@@ -231,6 +298,9 @@ impl CameraFeedId {
             "walker_bot" | "bot_01" => Some(Self::WalkerBotCam),
             "ship_nose" | "uplink_1" => Some(Self::ShipNoseUplink),
             "ship_dorsal" | "uplink_2" => Some(Self::ShipDorsalUplink),
+            "auto_all" => Some(Self::AutoRotateAll),
+            "auto_interior" => Some(Self::AutoRotateInterior),
+            "auto_exterior" => Some(Self::AutoRotateExterior),
             _ => None,
         }
     }

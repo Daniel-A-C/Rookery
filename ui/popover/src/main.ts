@@ -789,6 +789,9 @@ const btnOrbitalLaunch = el<HTMLButtonElement>("btn-orbital-launch");
 const btnOrbitalScan = el<HTMLButtonElement>("btn-orbital-scan");
 
 const ORBITAL_CAMERA_OPTIONS: ReadonlyArray<{ slug: string; label: string }> = [
+  { slug: "auto_all", label: "AUTO · Rotate All Feeds" },
+  { slug: "auto_interior", label: "AUTO · Rotate Interiors" },
+  { slug: "auto_exterior", label: "AUTO · Rotate Exteriors" },
   { slug: "drone_alpha", label: "CAM-01 · Drone Alpha (Wide)" },
   { slug: "drone_beta", label: "CAM-02 · Drone Beta (Patrol)" },
   { slug: "hangar_approach", label: "CAM-03 · Hangar Approach" },

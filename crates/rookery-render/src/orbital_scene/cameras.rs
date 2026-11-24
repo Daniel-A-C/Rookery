@@ -230,7 +230,10 @@ pub fn resolve_camera(
     feed: CameraFeedId,
     time: f32,
     apply_manual_pan: bool,
+    slot_offset: usize,
 ) -> ResolvedCamera {
+    let is_rotating = feed.is_rotating();
+    let active_feed = feed.resolve_active(state.total_age_secs, slot_offset);
     let pan = if apply_manual_pan {
         state.camera_rig.manual_pan
     } else {
@@ -238,7 +241,7 @@ pub fn resolve_camera(
     };
     let servo_sweep = (time * 0.24).sin() * 0.14;
 
-    let (eye, mut target, up, fov_deg, title, subtitle) = match feed {
+    let (eye, mut target, up, fov_deg, raw_title, subtitle) = match active_feed {
         CameraFeedId::DroneAlphaWide => {
             let drone = state.drones.first();
             let raw_eye = drone.map(|d| d.pos).unwrap_or([58.0, 26.0, 58.0]);
@@ -504,9 +507,17 @@ pub fn resolve_camera(
                 )
             }
         }
+        CameraFeedId::AutoRotateAll
+        | CameraFeedId::AutoRotateInterior
+        | CameraFeedId::AutoRotateExterior => unreachable!("resolved above"),
     };
 
     target = apply_pan(eye, target, pan[0], pan[1]);
+    let title = if is_rotating {
+        format!("AUTO · {raw_title}")
+    } else {
+        raw_title
+    };
 
     ResolvedCamera {
         eye,
@@ -515,7 +526,7 @@ pub fn resolve_camera(
         fov_deg,
         title,
         subtitle,
-        is_interior: feed.is_interior(),
-        is_uplink: feed.is_ship_uplink(),
+        is_interior: active_feed.is_interior(),
+        is_uplink: active_feed.is_ship_uplink(),
     }
 }
