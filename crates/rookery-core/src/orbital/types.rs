@@ -480,6 +480,15 @@ pub struct StationAgent {
     pub speed: f32,
     pub direction: f32,
     pub phase: f32,
+    /// Whether a CargoLoader is currently carrying a crate on its hydraulic forks.
+    #[serde(default)]
+    pub carrying_cargo: bool,
+    /// `[0.0, 1.0]` normalized hydraulic fork lift height for CargoLoaders.
+    #[serde(default)]
+    pub lift_height: f32,
+    /// Pause timer (seconds) when loading/unloading at a staging alcove or docked ship.
+    #[serde(default)]
+    pub dwell_timer: f32,
 }
 
 /// Multi-camera surveillance rig & auto-director state.

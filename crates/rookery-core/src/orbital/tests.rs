@@ -162,3 +162,62 @@ fn spacecraft_orientation_never_snaps_and_hangar_reverses_out() {
         "expected to observe a Hangar Pad A reverse-out liftoff within 120s"
     );
 }
+
+#[test]
+fn cargo_loaders_stay_clear_of_crates_and_cycle_forks() {
+    let mut st = OrbitalHavenState::new(512);
+    let mut saw_lift = false;
+    let mut saw_cargo_toggle = false;
+    let initial_cargo: Vec<(u32, bool)> = st
+        .agents
+        .iter()
+        .filter(|a| a.kind == AgentKind::CargoLoader)
+        .map(|a| (a.id, a.carrying_cargo))
+        .collect();
+
+    for _ in 0..450 {
+        st.step(0.1);
+        for a in st
+            .agents
+            .iter()
+            .filter(|a| a.kind == AgentKind::CargoLoader)
+        {
+            if a.lift_height > 0.5 {
+                saw_lift = true;
+            }
+            if initial_cargo
+                .iter()
+                .any(|&(id, c)| id == a.id && c != a.carrying_cargo)
+            {
+                saw_cargo_toggle = true;
+            }
+            match a.zone {
+                AgentZone::HangarBay => {
+                    // Stay strictly inside Z = 22.0..31.4 (well clear of crates at Z <= 20.6 and Z >= 33.4)
+                    assert!(
+                        (21.9..=31.5).contains(&a.pos[2]),
+                        "hangar loader Z={} clipped crate zone",
+                        a.pos[2]
+                    );
+                }
+                AgentZone::PadBPort | AgentZone::PadCStarboard => {
+                    // Stay strictly inside Z = -5.2..+3.5 (well clear of staging crate at Z >= +5.4)
+                    assert!(
+                        (-5.3..=3.6).contains(&a.pos[2]),
+                        "pad loader Z={} clipped staging crate",
+                        a.pos[2]
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(
+        saw_lift,
+        "expected cargo loaders to actuate hydraulic forks"
+    );
+    assert!(
+        saw_cargo_toggle,
+        "expected cargo loaders to load/unload crates during dwell cycles"
+    );
+}

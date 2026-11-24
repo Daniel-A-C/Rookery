@@ -593,9 +593,114 @@ impl OrbitalHavenState {
         let pad_a_docked = self.ships.iter().any(|s| {
             s.assigned_pad == LandingPadId::PadAHangar && s.phase == ShipFlightPhase::Docked
         });
+        let pad_b_docked = self.ships.iter().any(|s| {
+            s.assigned_pad == LandingPadId::PadBPort && s.phase == ShipFlightPhase::Docked
+        });
+        let pad_c_docked = self.ships.iter().any(|s| {
+            s.assigned_pad == LandingPadId::PadCStarboard && s.phase == ShipFlightPhase::Docked
+        });
+
+        // Shortest-angle smooth yaw interpolation so loader bots never snap 180°
+        let turn_yaw = |curr: f32, target: f32, rate: f32, dt: f32| -> f32 {
+            let mut diff = (target - curr).rem_euclid(TAU);
+            if diff > std::f32::consts::PI {
+                diff -= TAU;
+            }
+            curr + diff * (1.0 - (-rate * dt).exp())
+        };
 
         for agent in &mut self.agents {
             agent.phase = (agent.phase + dt * 3.5) % TAU;
+
+            // CargoLoader bots use a dedicated clip-free dwell + hydraulic fork choreography
+            if agent.kind == AgentKind::CargoLoader {
+                let (lane_x, floor_y, z_min, z_max, ship_docked, ship_dir_yaw) = match agent.zone {
+                    AgentZone::HangarBay => {
+                        let is_port = agent.id % 2 == 0;
+                        // Stay strictly inside X=±7.35, Z=22.0..31.4 (zero overlap with crates at X=±9.6, Z<=20.6 / Z>=33.4)
+                        let x = if is_port { -7.35 } else { 7.35 };
+                        let face_ship = if is_port {
+                            std::f32::consts::FRAC_PI_2
+                        } else {
+                            -std::f32::consts::FRAC_PI_2
+                        };
+                        (x, -3.88, 22.0f32, 31.4f32, pad_a_docked, face_ship)
+                    }
+                    AgentZone::PadBPort => {
+                        // Pad B floor top is -1.42; staging crate sits at Z=+5.4..+7.6 -> stop cleanly at Z=+3.5!
+                        (
+                            -31.3,
+                            -1.42,
+                            -5.2f32,
+                            3.5f32,
+                            pad_b_docked,
+                            -std::f32::consts::FRAC_PI_2,
+                        )
+                    }
+                    AgentZone::PadCStarboard => {
+                        // Pad C floor top is -1.42; staging crate sits at Z=+5.4..+7.6 -> stop cleanly at Z=+3.5!
+                        (
+                            31.3,
+                            -1.42,
+                            -5.2f32,
+                            3.5f32,
+                            pad_c_docked,
+                            std::f32::consts::FRAC_PI_2,
+                        )
+                    }
+                    _ => (agent.pos[0], agent.pos[1], -4.0, 4.0, false, 0.0),
+                };
+
+                if agent.dwell_timer > 0.0 {
+                    agent.dwell_timer = (agent.dwell_timer - dt).max(0.0);
+                    // While dwelling at endpoint, smoothly turn toward ship (if docked) or staging stack and actuate forks
+                    let dwell_yaw = if ship_docked && agent.patrol_t < 0.5 {
+                        ship_dir_yaw
+                    } else if agent.patrol_t >= 0.5 {
+                        0.0
+                    } else {
+                        std::f32::consts::PI
+                    };
+                    agent.yaw = turn_yaw(agent.yaw, dwell_yaw, 4.5, dt);
+                    // Smoothly raise/lower hydraulic forks during load/unload
+                    let target_lift = if agent.dwell_timer > 1.1 {
+                        0.82
+                    } else if agent.carrying_cargo {
+                        0.32
+                    } else {
+                        0.06
+                    };
+                    agent.lift_height = ease_scalar(agent.lift_height, target_lift, 4.0, dt);
+                    if agent.dwell_timer <= 0.0 {
+                        // Toggle cargo transfer as the bot finishes loading/unloading
+                        agent.carrying_cargo = !agent.carrying_cargo;
+                    }
+                } else {
+                    agent.patrol_t += dt * agent.speed * agent.direction;
+                    if agent.patrol_t >= 1.0 {
+                        agent.patrol_t = 1.0;
+                        agent.direction = -1.0;
+                        agent.dwell_timer = 2.2;
+                    } else if agent.patrol_t <= 0.0 {
+                        agent.patrol_t = 0.0;
+                        agent.direction = 1.0;
+                        agent.dwell_timer = 2.2;
+                    }
+                    let travel_yaw = if agent.direction > 0.0 {
+                        0.0
+                    } else {
+                        std::f32::consts::PI
+                    };
+                    agent.yaw = turn_yaw(agent.yaw, travel_yaw, 4.5, dt);
+                    let cruise_lift = if agent.carrying_cargo { 0.32 } else { 0.06 };
+                    agent.lift_height = ease_scalar(agent.lift_height, cruise_lift, 4.0, dt);
+                }
+
+                let z = z_min + (z_max - z_min) * agent.patrol_t;
+                agent.pos = [lane_x, floor_y, z];
+                continue;
+            }
+
             agent.patrol_t += dt * agent.speed * agent.direction;
             if agent.patrol_t > 1.0 {
                 agent.patrol_t = 1.0;
@@ -607,35 +712,7 @@ impl OrbitalHavenState {
 
             let t = agent.patrol_t;
             match agent.zone {
-                AgentZone::HangarBay => {
-                    let lane_x = if agent.id % 2 == 0 { -8.0 } else { 8.0 };
-                    let target_x = if pad_a_docked { lane_x * 0.62 } else { lane_x };
-                    let z = 17.5 + t * 17.5;
-                    agent.pos = [target_x, -3.5, z];
-                    agent.yaw = if agent.direction > 0.0 {
-                        0.0
-                    } else {
-                        std::f32::consts::PI
-                    };
-                }
-                AgentZone::PadBPort => {
-                    let z = -6.5 + t * 13.0;
-                    agent.pos = [-31.5, -1.45, z];
-                    agent.yaw = if agent.direction > 0.0 {
-                        0.0
-                    } else {
-                        std::f32::consts::PI
-                    };
-                }
-                AgentZone::PadCStarboard => {
-                    let z = -6.5 + t * 13.0;
-                    agent.pos = [31.5, -1.45, z];
-                    agent.yaw = if agent.direction > 0.0 {
-                        0.0
-                    } else {
-                        std::f32::consts::PI
-                    };
-                }
+                AgentZone::HangarBay | AgentZone::PadBPort | AgentZone::PadCStarboard => {}
                 AgentZone::OpsDeck => {
                     let angle = t * TAU;
                     let r = 6.2;

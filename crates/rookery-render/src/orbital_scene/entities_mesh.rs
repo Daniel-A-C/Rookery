@@ -690,14 +690,38 @@ pub fn build_dynamic_entities(
 
         match agent.kind {
             AgentKind::CargoLoader => {
-                // Chunky tracked yellow/hazard cargo loader bot
+                // Detailed Y2K tracked industrial forklift / cargo-loader bot
+                // 1. Twin heavy caterpillar tread pods (left & right)
                 op.push_oriented_box(
                     p,
                     r,
                     u,
                     f,
-                    [0.0, 0.65, 0.0],
-                    [1.9, 1.1, 2.4],
+                    [-0.78, 0.28, -0.05],
+                    [0.36, 0.56, 2.15],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.78, 0.28, -0.05],
+                    [0.36, 0.56, 2.15],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                // 2. Low-slung yellow/black hazard main chassis & rear counterweight engine block
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.56, -0.10],
+                    [1.24, 0.62, 1.85],
                     Tile::HazardStripe,
                     white,
                     0.0,
@@ -707,24 +731,142 @@ pub fn build_dynamic_entities(
                     r,
                     u,
                     f,
-                    [0.0, 1.4, -0.3],
-                    [1.3, 0.7, 1.2],
-                    Tile::CargoCrate,
+                    [0.0, 0.88, -0.82],
+                    [1.18, 0.56, 0.55],
+                    Tile::HullPanel,
+                    theme.rib_tint,
+                    0.0,
+                );
+                // 3. Armored sensor cab & glowing cyan optical scanner bar
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.24, -0.18],
+                    [0.92, 0.72, 0.96],
+                    Tile::ShipArmor,
+                    theme.hull_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.32, 0.33],
+                    [0.68, 0.22, 0.08],
+                    Tile::CrtConsole,
+                    accent,
+                    1.15,
+                );
+                // 4. Twin forward work headlights
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [-0.45, 0.68, 0.85],
+                    [0.20, 0.16, 0.10],
+                    Tile::CeilingLight,
+                    white,
+                    1.2,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.45, 0.68, 0.85],
+                    [0.20, 0.16, 0.10],
+                    Tile::CeilingLight,
+                    white,
+                    1.2,
+                );
+                // 5. Twin vertical hydraulic lift mast rails
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [-0.50, 1.05, 0.92],
+                    [0.14, 1.75, 0.16],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.50, 1.05, 0.92],
+                    [0.14, 1.75, 0.16],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                // 6. Articulated lifting carriage & twin steel forklift prongs
+                let fork_y = 0.24 + agent.lift_height.clamp(0.0, 1.0) * 1.15;
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, fork_y + 0.14, 0.98],
+                    [1.12, 0.24, 0.12],
+                    Tile::HazardStripe,
                     white,
                     0.0,
                 );
-                // Flashing amber work beacon
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [-0.36, fork_y, 1.46],
+                    [0.14, 0.09, 0.96],
+                    Tile::DarkSteelRib,
+                    theme.hull_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.36, fork_y, 1.46],
+                    [0.14, 0.09, 0.96],
+                    Tile::DarkSteelRib,
+                    theme.hull_tint,
+                    0.0,
+                );
+                // 7. Dynamic cargo crate resting on the raised forks when hauling!
+                if agent.carrying_cargo {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, fork_y + 0.56, 1.50],
+                        [1.15, 0.98, 1.05],
+                        Tile::CargoCrate,
+                        white,
+                        0.0,
+                    );
+                }
+                // 8. Flashing rooftop amber warning strobe
                 if (time * 4.5 + agent.id as f32).sin() > 0.0 {
                     op.push_oriented_box(
                         p,
                         r,
                         u,
                         f,
-                        [0.0, 1.9, -0.3],
-                        [0.35, 0.35, 0.35],
+                        [0.0, 1.72, -0.22],
+                        [0.28, 0.24, 0.28],
                         Tile::CeilingLight,
                         sec,
-                        1.3,
+                        1.35,
                     );
                 }
             }

@@ -222,6 +222,13 @@ impl OrbitalHavenState {
                 speed,
                 direction,
                 phase: rng.range(0.0, PI * 2.0),
+                carrying_cargo: kind == AgentKind::CargoLoader && id.is_multiple_of(2),
+                lift_height: if kind == AgentKind::CargoLoader && id.is_multiple_of(2) {
+                    0.35
+                } else {
+                    0.05
+                },
+                dwell_timer: 0.0,
             });
         };
 
