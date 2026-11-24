@@ -29,13 +29,13 @@ pub const PAD_A_GATE: [f32; 3] = [0.0, 1.4, 58.0];
 
 /// External cantilevered Port Freight Deck (Pad B).
 pub const PAD_B_POS: [f32; 3] = [-38.0, -1.2, 0.0];
-/// Hover alignment gate above Port Pad B.
-pub const PAD_B_GATE: [f32; 3] = [-38.0, 16.0, 18.0];
+/// Hover alignment gate directly above Port Pad B (for vertical VTOL descent/ascent).
+pub const PAD_B_GATE: [f32; 3] = [-38.0, 14.5, 0.0];
 
 /// External cantilevered Starboard Utility Deck (Pad C).
 pub const PAD_C_POS: [f32; 3] = [38.0, -1.2, 0.0];
-/// Hover alignment gate above Starboard Pad C.
-pub const PAD_C_GATE: [f32; 3] = [38.0, 16.0, 18.0];
+/// Hover alignment gate directly above Starboard Pad C (for vertical VTOL descent/ascent).
+pub const PAD_C_GATE: [f32; 3] = [38.0, 14.5, 0.0];
 
 /// Deterministic 3D simulation state for *Orbital Haven v3*.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -126,7 +126,9 @@ impl OrbitalHavenState {
                 leg_progress: 0.18,
                 leg_duration: 15.0,
                 gear_deploy: 0.3,
-                thruster_power: 0.75,
+                thruster_power: 0.25,
+                vtol_thrust: 0.55,
+                retro_thrust: 0.45,
                 patrol_angle: 0.0,
                 patrol_radius: 0.0,
             },
@@ -146,7 +148,9 @@ impl OrbitalHavenState {
                 leg_progress: 0.35,
                 leg_duration: 24.0,
                 gear_deploy: 1.0,
-                thruster_power: 0.08,
+                thruster_power: 0.0,
+                vtol_thrust: 0.0,
+                retro_thrust: 0.0,
                 patrol_angle: 0.0,
                 patrol_radius: 0.0,
             },
@@ -166,7 +170,9 @@ impl OrbitalHavenState {
                 leg_progress: 0.25,
                 leg_duration: 18.0,
                 gear_deploy: 0.0,
-                thruster_power: 0.9,
+                thruster_power: 0.85,
+                vtol_thrust: 0.0,
+                retro_thrust: 0.0,
                 patrol_angle: 0.0,
                 patrol_radius: 0.0,
             },
@@ -187,6 +193,8 @@ impl OrbitalHavenState {
                 leg_duration: 1.0,
                 gear_deploy: 0.0,
                 thruster_power: 0.65,
+                vtol_thrust: 0.0,
+                retro_thrust: 0.0,
                 patrol_angle: 0.4,
                 patrol_radius: 64.0,
             },

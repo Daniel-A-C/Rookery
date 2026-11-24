@@ -360,8 +360,14 @@ pub struct Spacecraft {
     pub leg_duration: f32,
     /// `[0.0, 1.0]` landing gear extension.
     pub gear_deploy: f32,
-    /// `[0.0, 1.0]` main engine thruster glow intensity.
+    /// `[0.0, 1.0]` main aft engine thruster glow intensity.
     pub thruster_power: f32,
+    /// `[0.0, 1.0]` downward belly VTOL hover thruster intensity.
+    #[serde(default)]
+    pub vtol_thrust: f32,
+    /// `[0.0, 1.0]` forward retro/RCS braking & reverse-out thruster intensity.
+    #[serde(default)]
+    pub retro_thrust: f32,
     /// Patrol orbit angle (used only for `PerimeterPatrol`).
     pub patrol_angle: f32,
     /// Patrol orbit radius.

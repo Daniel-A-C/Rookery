@@ -55,6 +55,51 @@ fn smoothstep(t: f32) -> f32 {
     c * c * (3.0 - 2.0 * c)
 }
 
+fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Smoothly rotate unit vector `current` toward `target` without ever snapping, even across 180°.
+fn turn_toward(current: [f32; 3], target: [f32; 3], rate: f32, dt: f32) -> [f32; 3] {
+    let c = norm3(current, [0.0, 0.0, 1.0]);
+    let t = norm3(target, c);
+    let d = dot3(c, t);
+    // If nearly anti-parallel (180° turn), nudge sideways in XZ so the turn arcs smoothly instead of collapsing
+    let target_safe = if d < -0.985 {
+        norm3([c[2] + 0.15, c[1], -c[0]], [1.0, 0.0, 0.0])
+    } else {
+        t
+    };
+    let alpha = 1.0 - (-rate * dt).exp();
+    norm3(lerp3(c, target_safe, alpha), c)
+}
+
+/// Smoothly ease a scalar toward a target value.
+fn ease_scalar(current: f32, target: f32, rate: f32, dt: f32) -> f32 {
+    let alpha = 1.0 - (-rate * dt).exp();
+    current + (target - current) * alpha
+}
+
+/// Quadratic Bézier point evaluation for graceful curved approach/departure arcs.
+fn quad_bezier3(p0: [f32; 3], p1: [f32; 3], p2: [f32; 3], t: f32) -> [f32; 3] {
+    let u = 1.0 - t;
+    let uu = u * u;
+    let tt = t * t;
+    let two_ut = 2.0 * u * t;
+    [
+        uu * p0[0] + two_ut * p1[0] + tt * p2[0],
+        uu * p0[1] + two_ut * p1[1] + tt * p2[1],
+        uu * p0[2] + two_ut * p1[2] + tt * p2[2],
+    ]
+}
+
+fn pad_docked_forward(pad: LandingPadId) -> [f32; 3] {
+    match pad {
+        LandingPadId::PadAHangar => [0.0, 0.0, -1.0],
+        LandingPadId::PadBPort | LandingPadId::PadCStarboard => [0.0, 0.0, 1.0],
+    }
+}
+
 pub fn pad_touchdown_pos(pad: LandingPadId) -> [f32; 3] {
     match pad {
         LandingPadId::PadAHangar => PAD_A_POS,
@@ -143,6 +188,13 @@ impl OrbitalHavenState {
         let mut remove_ids: Vec<u32> = Vec::new();
 
         for ship in &mut self.ships {
+            let turn_rate = match ship.class {
+                ShipClass::PatrolCutter => 2.6,
+                ShipClass::CorporateShuttle => 2.0,
+                ShipClass::MaintenanceTug => 1.7,
+                ShipClass::BulkFreighter => 1.25,
+            };
+
             match ship.phase {
                 ShipFlightPhase::PerimeterPatrol => {
                     ship.patrol_angle = (ship.patrol_angle + dt * 0.16) % TAU;
@@ -154,25 +206,69 @@ impl OrbitalHavenState {
                     let dir = norm3(sub3(next_pos, ship.pos), ship.forward);
                     ship.vel = [dir[0] * 10.0, dir[1] * 10.0, dir[2] * 10.0];
                     ship.pos = next_pos;
-                    ship.forward = dir;
-                    ship.up = [0.0, 1.0, 0.0];
-                    ship.thruster_power = 0.65;
-                    ship.gear_deploy = 0.0;
+                    ship.forward = turn_toward(ship.forward, dir, turn_rate * 1.4, dt);
+                    // Subtle inward bank toward the station during orbital patrol
+                    let inward = norm3([-x, 0.0, -z], [0.0, 0.0, 0.0]);
+                    let banked_up =
+                        norm3([inward[0] * 0.34, 1.0, inward[2] * 0.34], [0.0, 1.0, 0.0]);
+                    ship.up = turn_toward(ship.up, banked_up, 2.2, dt);
+                    ship.thruster_power = ease_scalar(ship.thruster_power, 0.65, 3.0, dt);
+                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, 0.0, 4.0, dt);
+                    ship.retro_thrust = ease_scalar(ship.retro_thrust, 0.0, 4.0, dt);
+                    ship.gear_deploy = ease_scalar(ship.gear_deploy, 0.0, 3.0, dt);
                 }
                 ShipFlightPhase::InboundApproach => {
                     ship.leg_progress += dt / ship.leg_duration.max(1.0);
                     let t = smoothstep(ship.leg_progress);
                     let prev = ship.pos;
-                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+
+                    // Curved Bézier approach control point that swings smoothly into alignment with the gate
+                    let ctrl = match ship.assigned_pad {
+                        LandingPadId::PadAHangar => [
+                            ship.leg_start[0] * 0.35,
+                            (ship.leg_start[1] + ship.leg_end[1]) * 0.55,
+                            ship.leg_end[2] + 34.0,
+                        ],
+                        LandingPadId::PadBPort => [
+                            ship.leg_end[0] - 24.0,
+                            ship.leg_end[1] + 10.0,
+                            ship.leg_start[2] * 0.45,
+                        ],
+                        LandingPadId::PadCStarboard => [
+                            ship.leg_end[0] + 24.0,
+                            ship.leg_end[1] + 10.0,
+                            ship.leg_start[2] * 0.45,
+                        ],
+                    };
+                    ship.pos = quad_bezier3(ship.leg_start, ctrl, ship.leg_end, t);
                     let d = sub3(ship.pos, prev);
                     ship.vel = [
                         d[0] / dt.max(0.001),
                         d[1] / dt.max(0.001),
                         d[2] / dt.max(0.001),
                     ];
-                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), ship.forward);
-                    ship.thruster_power = 0.85 - 0.35 * t;
-                    ship.gear_deploy = (t - 0.65).max(0.0) / 0.35 * 0.3;
+
+                    // Blend desired heading from travel direction into level pad alignment as we reach the gate
+                    let travel_dir = norm3(d, ship.forward);
+                    let pad_fwd = pad_docked_forward(ship.assigned_pad);
+                    let align_blend = smoothstep((t - 0.55) / 0.45);
+                    let desired_fwd = norm3(lerp3(travel_dir, pad_fwd, align_blend), pad_fwd);
+                    ship.forward = turn_toward(ship.forward, desired_fwd, turn_rate, dt);
+                    ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 2.5, dt);
+
+                    // Taper main thrusters down and engage retro/VTOL braking near the gate
+                    let target_main = (0.85 * (1.0 - smoothstep((t - 0.5) / 0.5))).max(0.0);
+                    let target_retro = smoothstep((t - 0.65) / 0.35) * 0.55;
+                    let target_vtol = smoothstep((t - 0.72) / 0.28) * 0.45;
+                    ship.thruster_power = ease_scalar(ship.thruster_power, target_main, 3.5, dt);
+                    ship.retro_thrust = ease_scalar(ship.retro_thrust, target_retro, 4.0, dt);
+                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, target_vtol, 4.0, dt);
+                    ship.gear_deploy = ease_scalar(
+                        ship.gear_deploy,
+                        ((t - 0.72).max(0.0) / 0.28) * 0.35,
+                        3.0,
+                        dt,
+                    );
 
                     if ship.leg_progress >= 1.0 {
                         ship.phase = ShipFlightPhase::FinalDescent;
@@ -180,8 +276,8 @@ impl OrbitalHavenState {
                         ship.leg_end = pad_touchdown_pos(ship.assigned_pad);
                         ship.leg_progress = 0.0;
                         ship.leg_duration = match ship.assigned_pad {
-                            LandingPadId::PadAHangar => 14.0,
-                            _ => 12.0,
+                            LandingPadId::PadAHangar => 15.0,
+                            _ => 12.5,
                         };
                     }
                 }
@@ -189,12 +285,31 @@ impl OrbitalHavenState {
                     ship.leg_progress += dt / ship.leg_duration.max(1.0);
                     let t = smoothstep(ship.leg_progress);
                     let prev = ship.pos;
-                    // Smooth arc onto the pad
-                    let mut p = lerp3(ship.leg_start, ship.leg_end, t);
-                    if ship.assigned_pad == LandingPadId::PadAHangar {
-                        // Glide straight in through the forcefield, then settle down onto Pad A
-                        p[1] = ship.leg_start[1] * (1.0 - t * t) + ship.leg_end[1] * (t * t);
-                    }
+
+                    let p = if ship.assigned_pad == LandingPadId::PadAHangar {
+                        // Glide straight in through the forcefield at hover height, then settle gently onto Pad A
+                        let horiz_t = smoothstep((ship.leg_progress / 0.78).min(1.0));
+                        let drop_t =
+                            smoothstep(((ship.leg_progress - 0.62) / 0.38).clamp(0.0, 1.0));
+                        let hover_y = ship.leg_end[1] + 3.4;
+                        let z = ship.leg_start[2] + (ship.leg_end[2] - ship.leg_start[2]) * horiz_t;
+                        let y = if ship.leg_progress < 0.62 {
+                            ship.leg_start[1]
+                                + (hover_y - ship.leg_start[1])
+                                    * smoothstep(ship.leg_progress / 0.62)
+                        } else {
+                            hover_y + (ship.leg_end[1] - hover_y) * drop_t
+                        };
+                        [
+                            ship.leg_start[0] + (ship.leg_end[0] - ship.leg_start[0]) * horiz_t,
+                            y,
+                            z,
+                        ]
+                    } else {
+                        // External Pads B & C: pure smooth vertical VTOL descent straight onto the deck
+                        lerp3(ship.leg_start, ship.leg_end, t)
+                    };
+
                     ship.pos = p;
                     let d = sub3(ship.pos, prev);
                     ship.vel = [
@@ -202,80 +317,189 @@ impl OrbitalHavenState {
                         d[1] / dt.max(0.001),
                         d[2] / dt.max(0.001),
                     ];
-                    let desired_fwd = match ship.assigned_pad {
-                        LandingPadId::PadAHangar => [0.0, 0.0, -1.0],
-                        _ => [0.0, 0.0, 1.0],
+
+                    // Stay smoothly level on pad heading — zero sudden pitching or diving!
+                    let pad_fwd = pad_docked_forward(ship.assigned_pad);
+                    ship.forward = turn_toward(ship.forward, pad_fwd, turn_rate * 1.4, dt);
+                    ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 3.0, dt);
+
+                    // Main aft engines stay off during VTOL touchdown so plumes never clip the floor!
+                    let target_vtol = (0.78 * (1.0 - smoothstep((t - 0.86) / 0.14))).max(0.12);
+                    let target_retro = if ship.assigned_pad == LandingPadId::PadAHangar {
+                        0.55 * (1.0 - t)
+                    } else {
+                        0.0
                     };
-                    let flight_dir = norm3(sub3(ship.leg_end, ship.pos), desired_fwd);
-                    ship.forward = norm3(lerp3(flight_dir, desired_fwd, t), desired_fwd);
-                    ship.gear_deploy = (0.3 + t * 0.7).clamp(0.0, 1.0);
-                    ship.thruster_power = (0.75 * (1.0 - t) + 0.15).clamp(0.1, 0.9);
+                    ship.thruster_power = ease_scalar(ship.thruster_power, 0.0, 4.5, dt);
+                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, target_vtol, 4.0, dt);
+                    ship.retro_thrust = ease_scalar(ship.retro_thrust, target_retro, 4.0, dt);
+                    ship.gear_deploy =
+                        ease_scalar(ship.gear_deploy, (0.35 + t * 0.85).clamp(0.0, 1.0), 4.0, dt);
 
                     if ship.leg_progress >= 1.0 {
                         ship.phase = ShipFlightPhase::Docked;
                         ship.pos = ship.leg_end;
                         ship.vel = [0.0, 0.0, 0.0];
-                        ship.forward = desired_fwd;
                         ship.gear_deploy = 1.0;
-                        ship.thruster_power = 0.06;
                         ship.leg_progress = 0.0;
                         ship.leg_duration = 20.0;
                     }
                 }
                 ShipFlightPhase::Docked => {
                     ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let pad_fwd = pad_docked_forward(ship.assigned_pad);
+                    ship.forward = turn_toward(ship.forward, pad_fwd, 2.0, dt);
+                    ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 3.0, dt);
                     ship.gear_deploy = 1.0;
-                    ship.thruster_power = if ship.leg_progress > 0.85 { 0.45 } else { 0.06 };
+                    ship.thruster_power = ease_scalar(ship.thruster_power, 0.0, 5.0, dt);
+                    ship.retro_thrust = ease_scalar(ship.retro_thrust, 0.0, 5.0, dt);
+                    // Gentle VTOL pre-ignition warm-up in the last 14% of docked time before liftoff
+                    let pre_ignite = smoothstep((ship.leg_progress - 0.86) / 0.14) * 0.55;
+                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, pre_ignite, 4.0, dt);
+
                     if ship.leg_progress >= 1.0 {
                         ship.phase = ShipFlightPhase::Liftoff;
                         ship.leg_start = ship.pos;
                         ship.leg_end = pad_gate_pos(ship.assigned_pad);
                         ship.leg_progress = 0.0;
-                        ship.leg_duration = 11.0;
+                        ship.leg_duration = match ship.assigned_pad {
+                            LandingPadId::PadAHangar => 14.5,
+                            _ => 12.5,
+                        };
                     }
                 }
                 ShipFlightPhase::Liftoff => {
                     ship.leg_progress += dt / ship.leg_duration.max(1.0);
-                    let t = smoothstep(ship.leg_progress);
                     let prev = ship.pos;
-                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+                    let pad_fwd = pad_docked_forward(ship.assigned_pad);
+
+                    if ship.assigned_pad == LandingPadId::PadAHangar {
+                        // HANGAR REVERSE-OUT:
+                        // Phase A (0..0.30): Smooth vertical hover lift straight off Pad A (staying level!)
+                        // Phase B (0.30..1.0): Back straight out through the containment forcefield (staying facing -Z!)
+                        let hover_y = ship.leg_start[1] + 3.8;
+                        let p = if ship.leg_progress < 0.30 {
+                            let u = smoothstep(ship.leg_progress / 0.30);
+                            [
+                                ship.leg_start[0],
+                                ship.leg_start[1] + (hover_y - ship.leg_start[1]) * u,
+                                ship.leg_start[2],
+                            ]
+                        } else {
+                            let u = smoothstep((ship.leg_progress - 0.30) / 0.70);
+                            [
+                                ship.leg_start[0] + (ship.leg_end[0] - ship.leg_start[0]) * u,
+                                hover_y + (ship.leg_end[1] - hover_y) * u,
+                                ship.leg_start[2] + (ship.leg_end[2] - ship.leg_start[2]) * u,
+                            ]
+                        };
+                        ship.pos = p;
+                        // Keep nose facing smoothly into the hangar (-Z) while backing out — NO magical 180° spin!
+                        ship.forward = turn_toward(ship.forward, pad_fwd, 2.5, dt);
+                        ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 3.0, dt);
+                        ship.thruster_power = ease_scalar(ship.thruster_power, 0.0, 5.0, dt);
+                        let target_vtol = if ship.leg_progress < 0.38 { 0.85 } else { 0.45 };
+                        let target_retro = if ship.leg_progress >= 0.25 { 0.82 } else { 0.0 };
+                        ship.vtol_thrust = ease_scalar(ship.vtol_thrust, target_vtol, 4.0, dt);
+                        ship.retro_thrust = ease_scalar(ship.retro_thrust, target_retro, 4.0, dt);
+                        let target_gear = if ship.leg_progress < 0.20 { 1.0 } else { 0.0 };
+                        ship.gear_deploy = ease_scalar(ship.gear_deploy, target_gear, 3.0, dt);
+                    } else {
+                        // EXTERNAL PADS B & C:
+                        // Phase A (0..0.55): Pure vertical VTOL lift straight up off the deck (completely level, aft plumes OFF!)
+                        // Phase B (0.55..1.0): Smoothly drift outward away from the station & gently nose toward exit lane
+                        let side = if ship.assigned_pad == LandingPadId::PadBPort {
+                            -1.0
+                        } else {
+                            1.0
+                        };
+                        let hover_pt = ship.leg_end; // directly above pad at Y = +14.5
+                        let clear_pt = [
+                            hover_pt[0] + side * 16.0,
+                            hover_pt[1] + 6.5,
+                            hover_pt[2] + 18.0,
+                        ];
+
+                        let (p, desired_fwd, target_main, target_vtol) = if ship.leg_progress < 0.55
+                        {
+                            let u = smoothstep(ship.leg_progress / 0.55);
+                            (lerp3(ship.leg_start, hover_pt, u), pad_fwd, 0.0, 0.90)
+                        } else {
+                            let u = smoothstep((ship.leg_progress - 0.55) / 0.45);
+                            let pos = lerp3(hover_pt, clear_pt, u);
+                            let drift_dir = norm3([side * 0.55, 0.20, 0.80], pad_fwd);
+                            let fwd = norm3(lerp3(pad_fwd, drift_dir, u), pad_fwd);
+                            (pos, fwd, u * 0.55, (1.0 - u) * 0.75)
+                        };
+                        ship.pos = p;
+                        ship.forward = turn_toward(ship.forward, desired_fwd, turn_rate * 0.9, dt);
+                        ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 2.5, dt);
+                        ship.thruster_power =
+                            ease_scalar(ship.thruster_power, target_main, 3.0, dt);
+                        ship.vtol_thrust = ease_scalar(ship.vtol_thrust, target_vtol, 3.5, dt);
+                        ship.retro_thrust = ease_scalar(ship.retro_thrust, 0.0, 4.0, dt);
+                        let target_gear = if ship.leg_progress < 0.28 { 1.0 } else { 0.0 };
+                        ship.gear_deploy = ease_scalar(ship.gear_deploy, target_gear, 3.0, dt);
+                    }
+
                     let d = sub3(ship.pos, prev);
                     ship.vel = [
                         d[0] / dt.max(0.001),
                         d[1] / dt.max(0.001),
                         d[2] / dt.max(0.001),
                     ];
-                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), [0.0, 0.0, 1.0]);
-                    ship.gear_deploy = (1.0 - t * 1.4).clamp(0.0, 1.0);
-                    ship.thruster_power = 0.6 + 0.35 * t;
 
                     if ship.leg_progress >= 1.0 {
                         ship.phase = ShipFlightPhase::OutboundBurn;
                         ship.leg_start = ship.pos;
                         let exit_x = match ship.assigned_pad {
-                            LandingPadId::PadBPort => -135.0,
-                            LandingPadId::PadCStarboard => 135.0,
-                            LandingPadId::PadAHangar => 28.0,
+                            LandingPadId::PadBPort => -140.0,
+                            LandingPadId::PadCStarboard => 140.0,
+                            LandingPadId::PadAHangar => 48.0,
                         };
-                        ship.leg_end = [exit_x, 34.0, 145.0];
+                        ship.leg_end = [exit_x, 32.0, 155.0];
                         ship.leg_progress = 0.0;
-                        ship.leg_duration = 14.0;
+                        ship.leg_duration = 16.0;
                     }
                 }
                 ShipFlightPhase::OutboundBurn => {
                     ship.leg_progress += dt / ship.leg_duration.max(1.0);
-                    let t = smoothstep(ship.leg_progress);
                     let prev = ship.pos;
-                    ship.pos = lerp3(ship.leg_start, ship.leg_end, t);
+
+                    // Hangar departures start facing -Z outside the forcefield, so give them a graceful
+                    // wide curving turn in open space before lighting full main engines!
+                    let t = smoothstep(ship.leg_progress);
+                    let ctrl = match ship.assigned_pad {
+                        LandingPadId::PadAHangar => [26.0, 10.0, ship.leg_start[2] + 24.0],
+                        LandingPadId::PadBPort => [
+                            ship.leg_start[0] - 28.0,
+                            ship.leg_start[1] + 6.0,
+                            ship.leg_start[2] + 45.0,
+                        ],
+                        LandingPadId::PadCStarboard => [
+                            ship.leg_start[0] + 28.0,
+                            ship.leg_start[1] + 6.0,
+                            ship.leg_start[2] + 45.0,
+                        ],
+                    };
+                    ship.pos = quad_bezier3(ship.leg_start, ctrl, ship.leg_end, t);
                     let d = sub3(ship.pos, prev);
                     ship.vel = [
                         d[0] / dt.max(0.001),
                         d[1] / dt.max(0.001),
                         d[2] / dt.max(0.001),
                     ];
-                    ship.forward = norm3(sub3(ship.leg_end, ship.pos), ship.forward);
-                    ship.gear_deploy = 0.0;
-                    ship.thruster_power = 1.0;
+                    let exit_dir = norm3(d, ship.forward);
+                    ship.forward = turn_toward(ship.forward, exit_dir, turn_rate * 0.85, dt);
+                    ship.up = turn_toward(ship.up, [0.0, 1.0, 0.0], 2.0, dt);
+
+                    // Only ramp up main aft engines once the ship has swung reasonably toward its exit vector
+                    let align = dot3(ship.forward, exit_dir).clamp(0.0, 1.0);
+                    let target_main = 0.20 + 0.80 * align * align;
+                    ship.thruster_power = ease_scalar(ship.thruster_power, target_main, 2.8, dt);
+                    ship.vtol_thrust = ease_scalar(ship.vtol_thrust, 0.0, 4.0, dt);
+                    ship.retro_thrust = ease_scalar(ship.retro_thrust, 0.0, 4.0, dt);
+                    ship.gear_deploy = ease_scalar(ship.gear_deploy, 0.0, 4.0, dt);
 
                     if ship.leg_progress >= 1.0 {
                         serviced_delta += 1;
@@ -358,6 +582,8 @@ impl OrbitalHavenState {
             leg_duration: self.rng.range(14.0, 19.0),
             gear_deploy: 0.0,
             thruster_power: 0.85,
+            vtol_thrust: 0.0,
+            retro_thrust: 0.0,
             patrol_angle: 0.0,
             patrol_radius: 0.0,
         });

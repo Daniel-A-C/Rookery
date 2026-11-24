@@ -594,10 +594,10 @@ pub fn build_dynamic_entities(
             );
         }
 
-        // Translucent Plasma Thruster Plume
-        if ship.thruster_power > 0.1 {
+        // Translucent Main Aft Plasma Thruster Plumes (only when main engines fire — never clips deck!)
+        if ship.thruster_power > 0.08 {
             let plume_len =
-                2.2 + ship.thruster_power * 5.2 + (time * 18.0 + ship.id as f32).sin() * 0.45;
+                1.8 + ship.thruster_power * 5.2 + (time * 18.0 + ship.id as f32).sin() * 0.42;
             let aft_z = match ship.class {
                 ShipClass::BulkFreighter => -7.8 - plume_len * 0.5,
                 _ => -4.8 - plume_len * 0.5,
@@ -625,6 +625,56 @@ pub fn build_dynamic_entities(
                 plume_col,
                 1.9,
             );
+        }
+
+        // Downward Belly VTOL Hover Jets (for smooth vertical liftoff & touchdown)
+        if ship.vtol_thrust > 0.08 {
+            let v_len =
+                (0.55 + ship.vtol_thrust * 1.15 + (time * 24.0 + ship.id as f32).sin() * 0.12)
+                    .clamp(0.4, 1.8);
+            let v_col = [sec[0], sec[1], sec[2], 0.58 * ship.vtol_thrust];
+            let (vx, vz) = match ship.class {
+                ShipClass::BulkFreighter => (2.6, 3.6),
+                _ => (1.7, 2.0),
+            };
+            for sx in [-vx, vx] {
+                for sz in [-vz, vz] {
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, -v_len * 0.45, sz],
+                        [0.48, v_len, 0.48],
+                        Tile::ReactorCoil,
+                        v_col,
+                        1.85,
+                    );
+                }
+            }
+        }
+
+        // Forward Retro / RCS Braking & Hangar Reverse-Out Jets
+        if ship.retro_thrust > 0.08 {
+            let r_len = 0.7 + ship.retro_thrust * 1.9 + (time * 22.0 + ship.id as f32).sin() * 0.16;
+            let r_col = [white[0], accent[1], accent[2], 0.50 * ship.retro_thrust];
+            let fwd_z = match ship.class {
+                ShipClass::BulkFreighter => 6.2 + r_len * 0.5,
+                _ => 5.2 + r_len * 0.5,
+            };
+            for sx in [-1.45f32, 1.45f32] {
+                tr.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [sx, 0.6, fwd_z],
+                    [0.42, 0.42, r_len],
+                    Tile::ReactorCoil,
+                    r_col,
+                    1.85,
+                );
+            }
         }
     }
 

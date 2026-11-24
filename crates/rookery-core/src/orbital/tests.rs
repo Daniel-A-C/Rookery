@@ -101,3 +101,64 @@ fn share_uri_round_trip() {
     assert_eq!(from_state.seed, st.seed);
     assert_eq!(from_state.version, ORBITAL_HAVEN_STATE_VERSION);
 }
+
+#[test]
+fn spacecraft_orientation_never_snaps_and_hangar_reverses_out() {
+    use std::collections::HashMap;
+    let mut st = OrbitalHavenState::new(777);
+    let mut prev_fwd: HashMap<u32, [f32; 3]> = st.ships.iter().map(|s| (s.id, s.forward)).collect();
+    let mut saw_hangar_reverse = false;
+
+    // Step 120 seconds at 30 Hz (3600 ticks) covering full docking, liftoff, and departure cycles
+    let dt = 1.0 / 30.0;
+    for _ in 0..3600 {
+        st.step(dt);
+        for ship in &st.ships {
+            if let Some(&pf) = prev_fwd.get(&ship.id) {
+                let d = pf[0] * ship.forward[0] + pf[1] * ship.forward[1] + pf[2] * ship.forward[2];
+                assert!(
+                    d > 0.985,
+                    "ship {} snapped orientation in phase {:?}: dot={d}",
+                    ship.callsign,
+                    ship.phase
+                );
+            }
+            if ship.assigned_pad == LandingPadId::PadAHangar
+                && ship.phase == ShipFlightPhase::Liftoff
+                && ship.leg_progress > 0.4
+            {
+                // Ship must remain facing into the hangar (-Z) while backing out (+Z velocity)
+                assert!(
+                    ship.forward[2] < -0.9,
+                    "hangar ship should back out facing -Z, got {:?}",
+                    ship.forward
+                );
+                assert!(
+                    ship.thruster_power < 0.05,
+                    "hangar ship should not fire main rear engines while backing out"
+                );
+                saw_hangar_reverse = true;
+            }
+            if ship.assigned_pad != LandingPadId::PadAHangar
+                && ship.phase == ShipFlightPhase::Liftoff
+                && ship.leg_progress < 0.45
+            {
+                // Exterior VTOL liftoff must keep main aft engines off and nose level so plumes never clip pad
+                assert!(
+                    ship.thruster_power < 0.05,
+                    "exterior ship fired main aft engines during vertical VTOL liftoff"
+                );
+                assert!(
+                    ship.forward[1].abs() < 0.15,
+                    "exterior ship pitched sharply during vertical VTOL liftoff: {:?}",
+                    ship.forward
+                );
+            }
+            prev_fwd.insert(ship.id, ship.forward);
+        }
+    }
+    assert!(
+        saw_hangar_reverse,
+        "expected to observe a Hangar Pad A reverse-out liftoff within 120s"
+    );
+}
