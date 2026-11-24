@@ -78,6 +78,9 @@ pub struct OrbitalHavenState {
     /// `[0.0, 1.0]` sliding blast door openings: `[0]` Hangar↔Atrium, `[1]` Atrium↔Pipe, `[2]` Pipe↔Solar.
     #[serde(default)]
     pub door_open: [f32; 3],
+    /// Pressurized 2-door airlock states for Port Pad B (`[0]`) and Starboard Pad C (`[1]`).
+    #[serde(default)]
+    pub pad_airlocks: [AirlockState; 2],
     /// Entity ID (`0` = BOT-01 Walker Rover, `> 0` = agent ID) holding single-lane Pipe Tunnel mutex.
     #[serde(default)]
     pub pipe_tunnel_owner: Option<u32>,
@@ -333,6 +336,7 @@ impl OrbitalHavenState {
             elevator: ElevatorState::default(),
             walker: WalkerBotState::default(),
             door_open: [0.0; 3],
+            pad_airlocks: [AirlockState::default(), AirlockState::default()],
             pipe_tunnel_owner: None,
             pad_services: [
                 PadServiceState::default(),

@@ -6,6 +6,7 @@
 
 use std::f32::consts::TAU;
 
+use rookery_core::orbital::simulation::REACTOR_CORE_Z;
 use rookery_core::orbital::{
     AgentKind, OrbitalHavenState, PAD_A_POS, PAD_B_POS, PAD_C_POS, ServiceKind, ShipClass,
     StationEventKind,
@@ -187,7 +188,7 @@ pub fn build_dynamic_entities(
         accent
     };
     op.push_cylinder(
-        [0.0, -10.2, 0.0],
+        [0.0, -10.2, REACTOR_CORE_Z],
         1.55 * core_pulse,
         1.55 * core_pulse,
         7.8,
@@ -197,7 +198,7 @@ pub fn build_dynamic_entities(
         1.2,
     );
     tr.push_cylinder(
-        [0.0, -10.2, 0.0],
+        [0.0, -10.2, REACTOR_CORE_Z],
         2.45,
         2.45,
         7.4,
@@ -2072,13 +2073,64 @@ pub fn build_dynamic_entities(
         );
     }
 
+    // 6B-2. Port (`[0]`) & Starboard (`[1]`) Pressurized Pad Airlock Sliding Doors & Status Beacons
+    for (air_idx, side) in [-1.0f32, 1.0f32].into_iter().enumerate() {
+        let al = &state.pad_airlocks[air_idx];
+        let airlock_doors = [(side * 23.2, al.inner_door), (side * 28.6, al.outer_door)];
+        let half_w = 2.25f32;
+        let dh = 3.80f32;
+        let cy = -1.42 + dh * 0.5;
+        for (dx, open_t) in airlock_doors {
+            let o = open_t.clamp(0.0, 1.0);
+            let leaf_w = (half_w * (1.0 - o * 0.84)).max(0.18);
+            let cz_off = half_w - leaf_w * 0.5 + o * 0.12;
+            op.push_box(
+                [dx, cy, -cz_off],
+                [0.38, dh, leaf_w],
+                Tile::BlastDoor,
+                4.2,
+                white,
+                0.0,
+            );
+            op.push_box(
+                [dx, cy, cz_off],
+                [0.38, dh, leaf_w],
+                Tile::BlastDoor,
+                4.2,
+                white,
+                0.0,
+            );
+        }
+        // Diegetic pressure status beacons (cyan = pressurized, pulsing amber = cycling/busy, red = vacuum)
+        let beacon_col = if al.cycling && (time * 6.0).sin() > 0.0 {
+            sec
+        } else if al.pressure > 0.85 {
+            accent
+        } else {
+            red_strobe
+        };
+        for bx in [side * 22.8, side * 25.9, side * 29.0] {
+            for bz in [-1.75f32, 1.75f32] {
+                op.push_box(
+                    [bx, 2.52, bz],
+                    [0.24, 0.24, 0.32],
+                    Tile::CeilingLight,
+                    1.0,
+                    beacon_col,
+                    1.35,
+                );
+            }
+        }
+    }
+
     // 6C. Physical 3D Interior Tracked / 6-Wheel Camera Rover (`BOT-01`, visible on fixed interior CCTV feeds!)
     {
         let wp = state.walker.pos;
         let (sy, cy) = state.walker.yaw.sin_cos();
-        let wf = [sy, 0.0, cy];
+        let (sp, cp) = state.walker.pitch.sin_cos();
+        let wf = [sy * cp, sp, cy * cp];
         let wr = [cy, 0.0, -sy];
-        let wu = [0.0, 1.0, 0.0];
+        let wu = [-sy * sp, cp, -cy * sp];
         let rolling = !state.walker.riding_elevator && state.walker.dwell_timer <= 0.0;
         let suspension_bob = if rolling {
             (state.walker.walk_phase * 2.5).sin().abs() * 0.03

@@ -5,6 +5,7 @@
 
 use std::f32::consts::TAU;
 
+use rookery_core::orbital::simulation::REACTOR_CORE_Z;
 use rookery_core::orbital::{PAD_A_POS, PAD_B_POS, PAD_C_POS};
 
 use super::mesh_builder::{MeshBuilder, OrbitalVertex};
@@ -581,11 +582,11 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.9,
         );
     }
-    // Reactor containment collars (top & bottom around central plasma column)
+    // Reactor containment collars (top & bottom around central plasma column, shifted to Z = REACTOR_CORE_Z)
     op.push_cylinder(
-        [0.0, -14.4, 0.0],
-        3.8,
+        [0.0, -14.4, REACTOR_CORE_Z],
         3.4,
+        3.1,
         1.2,
         8,
         Tile::HazardStripe,
@@ -593,9 +594,9 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
     op.push_cylinder(
-        [0.0, -6.1, 0.0],
+        [0.0, -6.1, REACTOR_CORE_Z],
+        3.1,
         3.4,
-        3.8,
         1.2,
         8,
         Tile::HazardStripe,
@@ -623,30 +624,198 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     }
 
     // =========================================================================
-    // 4. EXTERNAL LANDING PADS B (PORT) & C (STARBOARD) + TRUSSES
+    // 4. EXTERNAL LANDING PADS B (PORT) & C (STARBOARD), SLOPED ACCESS HALLWAYS & AIRLOCKS
     // =========================================================================
     for (pad_pos, side) in [(PAD_B_POS, -1.0f32), (PAD_C_POS, 1.0f32)] {
         let px = pad_pos[0];
         let py = pad_pos[1] - 0.8;
         let pz = pad_pos[2];
 
-        // Cantilevered horizontal main steel truss connecting central core to pad
-        op.push_box(
-            [side * 22.0, -2.2, 0.0],
-            [18.0, 3.2, 6.5],
+        // 4A. Enclosed Sloped Windowed Access Hallway (`|X| = 12.2..23.2`, `Y = -3.85..-1.42`, `Z = -2.4..+2.4`)
+        let ramp_dx = 11.0f32;
+        let ramp_dy = 2.43f32;
+        let ramp_len = (ramp_dx * ramp_dx + ramp_dy * ramp_dy).sqrt();
+        let cos_a = ramp_dx / ramp_len;
+        let sin_a = ramp_dy / ramp_len;
+        let ramp_origin = [side * 17.7, (-3.85 - 1.42) * 0.5, 0.0];
+        // Strictly right-handed basis: cross(r_vec, u_vec) == +Z (f_vec)
+        let r_vec = [cos_a, sin_a * side, 0.0];
+        let u_vec = [-sin_a * side, cos_a, 0.0];
+        let f_vec = [0.0, 0.0, 1.0];
+
+        // Sloped grated walkway floor & underside cantilevered structural truss beam
+        op.push_oriented_box(
+            ramp_origin,
+            r_vec,
+            u_vec,
+            f_vec,
+            [0.0, -0.32, 0.0],
+            [ramp_len + 0.35, 0.64, 5.2],
+            Tile::FloorGrate,
+            hull,
+            0.0,
+        );
+        op.push_oriented_box(
+            ramp_origin,
+            r_vec,
+            u_vec,
+            f_vec,
+            [0.0, -1.25, 0.0],
+            [ramp_len + 0.5, 1.22, 4.4],
             Tile::DarkSteelRib,
-            4.0,
+            rib,
+            0.0,
+        );
+        // Sloped ceiling slab & glowing fluorescent corridor strip
+        op.push_oriented_box(
+            ramp_origin,
+            r_vec,
+            u_vec,
+            f_vec,
+            [0.0, 4.45, 0.0],
+            [ramp_len + 0.35, 0.65, 5.4],
+            Tile::HullPanel,
+            dark_hull,
+            0.0,
+        );
+        op.push_oriented_box(
+            ramp_origin,
+            r_vec,
+            u_vec,
+            f_vec,
+            [0.0, 4.05, 0.0],
+            [ramp_len - 1.2, 0.14, 1.0],
+            Tile::CeilingLight,
+            bright_white,
+            0.95,
+        );
+        // Panoramic armored side walls (sills, headers & vertical mullions) looking out to space & pads
+        for z_wall in [-2.45f32, 2.45f32] {
+            op.push_oriented_box(
+                ramp_origin,
+                r_vec,
+                u_vec,
+                f_vec,
+                [0.0, 0.65, z_wall],
+                [ramp_len + 0.25, 1.30, 0.45],
+                Tile::CorridorWall,
+                corr,
+                0.0,
+            );
+            op.push_oriented_box(
+                ramp_origin,
+                r_vec,
+                u_vec,
+                f_vec,
+                [0.0, 3.62, z_wall],
+                [ramp_len + 0.25, 1.00, 0.45],
+                Tile::DarkSteelRib,
+                rib,
+                0.0,
+            );
+            for lx in [-3.4f32, 0.0, 3.4] {
+                op.push_oriented_box(
+                    ramp_origin,
+                    r_vec,
+                    u_vec,
+                    f_vec,
+                    [lx, 2.21, z_wall],
+                    [0.55, 1.82, 0.54],
+                    Tile::DarkSteelRib,
+                    rib,
+                    0.0,
+                );
+            }
+        }
+        // Exterior structural steel rib collars arching over the hallway roof
+        for lx in [-3.4f32, 0.0, 3.4] {
+            op.push_oriented_box(
+                ramp_origin,
+                r_vec,
+                u_vec,
+                f_vec,
+                [lx, 4.92, 0.0],
+                [0.72, 0.34, 5.8],
+                Tile::DarkSteelRib,
+                rib,
+                0.0,
+            );
+        }
+
+        // 4B. Pressurized 2-Door Airlock Chamber (`|X| = 23.2..28.6`, level at `Y = -1.42`)
+        let al_cx = side * 25.9;
+        op.push_box(
+            [al_cx, -1.74, 0.0],
+            [5.6, 0.64, 5.6],
+            Tile::FloorGrate,
+            2.5,
+            hull,
+            0.0,
+        );
+        op.push_box(
+            [al_cx, -2.66, 0.0],
+            [5.6, 1.2, 4.8],
+            Tile::DarkSteelRib,
+            3.5,
             rib,
             0.0,
         );
         op.push_box(
-            [side * 22.0, -0.3, 0.0],
-            [18.0, 0.6, 4.2],
-            Tile::FloorGrate,
-            3.0,
-            hull,
+            [al_cx, 3.05, 0.0],
+            [5.8, 0.65, 5.8],
+            Tile::HullPanel,
+            4.0,
+            dark_hull,
             0.0,
         );
+        op.push_box(
+            [al_cx, 2.66, 0.0],
+            [3.4, 0.14, 1.1],
+            Tile::CeilingLight,
+            2.5,
+            bright_white,
+            0.90,
+        );
+        // Airlock side walls with armored observation slits
+        for z_wall in [-2.55f32, 2.55f32] {
+            op.push_box(
+                [al_cx, -0.71, z_wall],
+                [5.4, 1.42, 0.50],
+                Tile::CorridorWall,
+                3.0,
+                corr,
+                0.0,
+            );
+            op.push_box(
+                [al_cx, 2.16, z_wall],
+                [5.4, 1.12, 0.50],
+                Tile::DarkSteelRib,
+                3.0,
+                rib,
+                0.0,
+            );
+            for x_j in [side * 23.35, side * 28.45] {
+                op.push_box(
+                    [x_j, 0.80, z_wall],
+                    [0.55, 1.60, 0.56],
+                    Tile::DarkSteelRib,
+                    3.0,
+                    rib,
+                    0.0,
+                );
+            }
+        }
+        // Hazard-striped inner & outer airlock bulkhead doorway lintels (`|X| = 23.2` and `|X| = 28.6`)
+        for x_frame in [side * 23.2, side * 28.6] {
+            op.push_box(
+                [x_frame, 2.52, 0.0],
+                [0.65, 0.42, 4.9],
+                Tile::HazardStripe,
+                2.0,
+                bright_white,
+                0.0,
+            );
+        }
 
         // Octagonal-profile cantilevered Landing Pad platform
         op.push_cylinder(
@@ -685,13 +854,29 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.0,
         );
 
-        // Blast deflector shield on inner edge
+        // Blast deflector shield on inner edge split cleanly around the outer Airlock portal (`Z = -2.6..+2.6`)
         op.push_box(
-            [px - side * 9.5, py + 2.6, pz],
-            [1.4, 4.4, 11.0],
+            [px - side * 9.5, py + 2.6, pz - 4.05],
+            [1.4, 4.4, 2.9],
             Tile::BlastDoor,
             4.5,
             hull,
+            0.0,
+        );
+        op.push_box(
+            [px - side * 9.5, py + 2.6, pz + 4.05],
+            [1.4, 4.4, 2.9],
+            Tile::BlastDoor,
+            4.5,
+            hull,
+            0.0,
+        );
+        op.push_box(
+            [px - side * 9.5, py + 5.15, pz],
+            [1.4, 0.9, 11.0],
+            Tile::DarkSteelRib,
+            4.0,
+            rib,
             0.0,
         );
 
@@ -764,14 +949,31 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         hull,
         0.0,
     );
-    // Atrium Port & Starboard windowed walls (`X = ±11.7`) looking out toward Pads B & C!
+    // Atrium Port & Starboard windowed walls (`X = ±11.7`) split cleanly at `Z = -2.4..+2.4`
+    // for the enclosed Pad B & Pad C Access Hallway portals!
     for x_side in [-11.7f32, 11.7f32] {
         op.push_box(
-            [x_side, -1.7, -1.8],
-            [1.0, 4.4, 25.4],
+            [x_side, -1.7, -8.45],
+            [1.0, 4.4, 12.1],
             Tile::CorridorWall,
             4.5,
             corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, -1.7, 6.65],
+            [1.0, 4.4, 8.5],
+            Tile::CorridorWall,
+            4.5,
+            corr,
+            0.0,
+        );
+        op.push_box(
+            [x_side, 0.72, 0.0],
+            [1.16, 0.45, 5.2],
+            Tile::HazardStripe,
+            2.0,
+            bright_white,
             0.0,
         );
         op.push_box(
@@ -783,7 +985,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.0,
         );
         // Vertical armored window mullions between sill (Y=0.5) and upper wall (Y=6.4)
-        for z_m in [-13.8, -7.5, -1.5, 4.5, 10.3] {
+        for z_m in [-13.8, -8.2, -2.55, 2.55, 10.3] {
             op.push_box(
                 [x_side, 3.45, z_m],
                 [1.15, 5.9, 1.3],

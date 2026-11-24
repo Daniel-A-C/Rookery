@@ -11,6 +11,57 @@ use super::{
 const DIRECTOR_INTERVAL_SECS: f32 = 24.0;
 const STATIC_GLITCH_DURATION: f32 = 0.18;
 
+/// Z-coordinate of the Deck 1 Reactor Core center (shifted forward from `0.0` to `+1.5`
+/// so a clean lobby separates the 3-deck elevator shaft from the reactor containment collar).
+pub const REACTOR_CORE_Z: f32 = 1.5;
+
+/// Route indices exported for deterministic unit tests.
+#[cfg(test)]
+pub(crate) const ROUTE_IDX_OPS_VIEWPORT: usize = 12;
+#[cfg(test)]
+pub(crate) const ROUTE_IDX_SOLAR_PIPE_RETURN: usize = 59;
+
+/// Enforce an AABB exclusion zone around the 3-deck glass elevator shaft (`X: -2.65..2.65`,
+/// `Z: -8.65..-3.35`) expanded by `margin` so rolling robots never clip through the shaft walls.
+fn clamp_outside_elevator_shaft(x: f32, z: f32, margin: f32) -> (f32, f32) {
+    let min_x = -2.65 - margin;
+    let max_x = 2.65 + margin;
+    let min_z = -8.65 - margin;
+    let max_z = -3.35 + margin;
+    if x > min_x && x < max_x && z > min_z && z < max_z {
+        let dx_left = (x - min_x).abs();
+        let dx_right = (max_x - x).abs();
+        let dz_back = (z - min_z).abs();
+        let dz_front = (max_z - z).abs();
+        let m = dx_left.min(dx_right).min(dz_back).min(dz_front);
+        if m == dx_left {
+            (min_x, z)
+        } else if m == dx_right {
+            (max_x, z)
+        } else if m == dz_back {
+            (x, min_z)
+        } else {
+            (x, max_z)
+        }
+    } else {
+        (x, z)
+    }
+}
+
+/// Smooth floor elevation along the Deck-2 Atrium (`|X| <= 12.2`, `Y = -3.85`), sloped
+/// Pad Access Hallways (`|X| = 12.2..23.2`), and level Airlocks / External Pads (`|X| >= 23.2`, `Y = -1.42`).
+fn hallway_floor_y(x: f32) -> f32 {
+    let ax = x.abs();
+    if ax <= 12.2 {
+        -3.85
+    } else if ax >= 23.2 {
+        -1.42
+    } else {
+        let t = (ax - 12.2) / 11.0;
+        -3.85 + 2.43 * t
+    }
+}
+
 const CALLSIGN_PREFIXES: [&str; 6] = ["USV", "TRN", "SEC", "TUG", "CORP", "VBN"];
 const CALLSIGN_NAMES: [&str; 10] = [
     "ICARUS",
@@ -188,12 +239,48 @@ impl OrbitalHavenState {
         }
     }
 
+    /// Returns `true` when `pad` has no ship descending, docked, lifting off, or on late approach,
+    /// and all pad service hardware is retracted.
+    pub fn is_pad_clear(&self, pad: LandingPadId) -> bool {
+        if !self.pad_services[pad.index()].hardware_retracted() {
+            return false;
+        }
+        !self.ships.iter().any(|s| {
+            s.assigned_pad == pad
+                && match s.phase {
+                    ShipFlightPhase::FinalDescent
+                    | ShipFlightPhase::Docked
+                    | ShipFlightPhase::Liftoff => true,
+                    ShipFlightPhase::InboundApproach => s.leg_progress >= 0.65,
+                    ShipFlightPhase::OutboundBurn | ShipFlightPhase::PerimeterPatrol => false,
+                }
+        })
+    }
+
+    /// Returns `true` while BOT-01 is physically out on `pad`'s landing zone (or exiting onto it).
+    pub fn is_walker_on_pad(&self, pad: LandingPadId) -> bool {
+        let wp = self.walker.pos;
+        if wp[1] < -9.0 || wp[1] > 5.0 {
+            return false;
+        }
+        match pad {
+            LandingPadId::PadAHangar => wp[0].abs() <= 7.5 && wp[2] >= 17.8,
+            LandingPadId::PadBPort => wp[0] <= -27.5,
+            LandingPadId::PadCStarboard => wp[0] >= 27.5,
+        }
+    }
+
     fn step_ships(&mut self, dt: f32) {
         let mut serviced_delta = 0u32;
         let mut need_replacement_pads: Vec<LandingPadId> = Vec::new();
         let mut remove_ids: Vec<u32> = Vec::new();
         let mut newly_docked: Vec<(LandingPadId, u32, ShipClass)> = Vec::new();
         let mut departed_pads: Vec<(LandingPadId, u32)> = Vec::new();
+        let walker_on_pad = [
+            self.is_walker_on_pad(LandingPadId::PadAHangar),
+            self.is_walker_on_pad(LandingPadId::PadBPort),
+            self.is_walker_on_pad(LandingPadId::PadCStarboard),
+        ];
 
         for ship in &mut self.ships {
             let turn_rate = match ship.class {
@@ -228,7 +315,13 @@ impl OrbitalHavenState {
                     ship.gear_deploy = ease_scalar(ship.gear_deploy, 0.0, 3.0, dt);
                 }
                 ShipFlightPhase::InboundApproach => {
-                    ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    let pad_held_by_bot = walker_on_pad[ship.assigned_pad.index()];
+                    if pad_held_by_bot && ship.leg_progress >= 0.96 {
+                        // ATC hold: hover at the approach gate until BOT-01 clears the landing pad
+                        ship.leg_progress = 0.96;
+                    } else {
+                        ship.leg_progress += dt / ship.leg_duration.max(1.0);
+                    }
                     let t = smoothstep(ship.leg_progress);
                     let prev = ship.pos;
 
@@ -280,7 +373,7 @@ impl OrbitalHavenState {
                         dt,
                     );
 
-                    if ship.leg_progress >= 1.0 {
+                    if !pad_held_by_bot && ship.leg_progress >= 1.0 {
                         ship.phase = ShipFlightPhase::FinalDescent;
                         ship.leg_start = ship.pos;
                         ship.leg_end = pad_touchdown_pos(ship.assigned_pad);
@@ -812,6 +905,9 @@ impl OrbitalHavenState {
         }
 
         // Snapshot all mobile robot positions + radii (including BOT-01 as ID 0) for collision avoidance
+        let walker_holding = self.walker.dwell_timer > 0.0
+            || self.walker.current_room.contains("HOLD")
+            || self.walker.current_room.contains("BOARDING");
         let mut all_bodies: Vec<(u32, [f32; 3], f32)> = Vec::with_capacity(self.agents.len() + 1);
         all_bodies.push((0, self.walker.pos, 0.85));
         for a in &self.agents {
@@ -1096,7 +1192,8 @@ impl OrbitalHavenState {
                     let forward_dot = (ox * dir_x + oz * dir_z) / d;
                     if forward_dot > 0.35 {
                         // A bot already inside the single-lane Pipe Tunnel must finish exiting rather than freezing in the doorway!
-                        if other_id < id && !in_pipe_now {
+                        // Also steer smoothly around BOT-01 when it is parked/holding instead of freezing behind it.
+                        if other_id < id && !in_pipe_now && !(other_id == 0 && walker_holding) {
                             must_yield = true;
                             break;
                         } else if !next_node.is_pipe_tunnel && kind != AgentKind::CargoForklift {
@@ -1195,7 +1292,7 @@ impl OrbitalHavenState {
                             new_z = other_pos[2] + (rz / rd) * hard_r;
                         }
                     }
-                    // Keep clear of central deck obstacles (Ops Holotable & Reactor Core) even while dodging
+                    // Keep clear of central deck obstacles (Ops Holotable, Reactor Core & Elevator Shaft)
                     if (target_pos[1] - 12.05).abs() < 0.5 {
                         let hx = new_x;
                         let hz = new_z - 1.0;
@@ -1204,12 +1301,24 @@ impl OrbitalHavenState {
                             new_x = (hx / hd) * 2.95;
                             new_z = 1.0 + (hz / hd) * 2.95;
                         }
+                        let (ex, ez) = clamp_outside_elevator_shaft(new_x, new_z, my_r + 0.08);
+                        new_x = ex;
+                        new_z = ez;
                     } else if (target_pos[1] - (-14.95)).abs() < 0.5 {
-                        let hd = (new_x * new_x + new_z * new_z).sqrt();
-                        if hd < 3.85 && hd > 1e-4 {
-                            new_x = (new_x / hd) * 3.85;
-                            new_z = (new_z / hd) * 3.85;
+                        let rx = new_x;
+                        let rz = new_z - REACTOR_CORE_Z;
+                        let hd = (rx * rx + rz * rz).sqrt();
+                        if hd < 3.65 && hd > 1e-4 {
+                            new_x = (rx / hd) * 3.65;
+                            new_z = REACTOR_CORE_Z + (rz / hd) * 3.65;
                         }
+                        let (ex, ez) = clamp_outside_elevator_shaft(new_x, new_z, my_r + 0.08);
+                        new_x = ex;
+                        new_z = ez;
+                    } else if (target_pos[1] - (-3.88)).abs() < 0.5 {
+                        let (ex, ez) = clamp_outside_elevator_shaft(new_x, new_z, my_r + 0.08);
+                        new_x = ex;
+                        new_z = ez;
                     }
                 }
                 let a = &mut self.agents[idx];
@@ -1258,6 +1367,17 @@ impl OrbitalHavenState {
                 look_yaw: Option<f32>,
                 room: &'static str,
             },
+            WaitPadClear {
+                pad: LandingPadId,
+                look_yaw: f32,
+                room: &'static str,
+            },
+            CycleAirlock {
+                airlock_idx: usize,
+                depressurize: bool,
+                pad_check: Option<LandingPadId>,
+                room: &'static str,
+            },
             WaitElevator {
                 deck: ElevatorDeck,
                 room: &'static str,
@@ -1271,31 +1391,48 @@ impl OrbitalHavenState {
         const D1: f32 = -14.95; // Deck 1: Concourse & Reactor
         const D2: f32 = -3.85; // Deck 2: Hangar, Central Atrium, Pipe Tunnel, Solar Bay
         const D3: f32 = 12.05; // Deck 3: Ops & Command Spire
+        const PAD: f32 = -1.42; // External Landing Pads B & C & Airlock Chambers
 
         const ROUTE: &[WalkerLeg] = &[
-            // 1. Start in Main Hangar Bay behind Pad A safety line, inspect docked ship & forcefield!
+            // 0..=4: Main Hangar Bay & Pad A inspection (waits behind safety line until Pad A is clear!)
             WalkerLeg::Walk {
-                target: [0.0, D2, 15.8],
+                target: [0.0, D2, 17.5],
+                dwell: 1.6,
+                look_yaw: Some(0.0), // face +Z toward Pad A & cyan forcefield
+                room: "MAIN HANGAR BAY",
+            },
+            WalkerLeg::WaitPadClear {
+                pad: LandingPadId::PadAHangar,
+                look_yaw: 0.0,
+                room: "PAD-A HOLD // TRAFFIC",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, 25.5],
                 dwell: 2.2,
-                look_yaw: Some(0.0), // face +Z toward Pad A ship & cyan forcefield
+                look_yaw: Some(0.0), // inspect Pad A deck & open containment forcefield
+                room: "PAD-A DECK INSPECTION",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D2, 17.5],
+                dwell: 0.0,
+                look_yaw: None,
                 room: "MAIN HANGAR BAY",
             },
             WalkerLeg::Walk {
                 target: [0.0, D2, 13.6],
-                dwell: 0.4,
+                dwell: 0.3,
                 look_yaw: None,
                 room: "HANGAR AIRLOCK",
             },
-            // 2. Enter 2-story Central Core Atrium
+            // 5..=9: Central Core Atrium -> Ride 3-deck glass Elevator UP to Deck 3 (Ops Command Spire)
             WalkerLeg::Walk {
                 target: [0.0, D2, 3.8],
-                dwell: 1.8,
+                dwell: 1.4,
                 look_yaw: Some(PI - 0.35),
                 room: "CENTRAL CORE ATRIUM",
             },
-            // 3. Call & board 3-deck glass Elevator at Deck 2 -> Ride UP to Deck 3 (Ops Command Spire)
             WalkerLeg::Walk {
-                target: [0.0, D2, -1.6],
+                target: [0.0, D2, -1.5],
                 dwell: 0.0,
                 look_yaw: Some(PI),
                 room: "DECK-2 ELEVATOR LOBBY",
@@ -1314,7 +1451,7 @@ impl OrbitalHavenState {
                 target_deck: ElevatorDeck::Deck3Ops,
                 room: "ELEVATOR -> DECK-3 OPS",
             },
-            // 4. Patrol Ops Command Deck (wide perimeter loop well clear of Central Holotable at (0, 1.0) R=2.3!)
+            // 10..=18: Patrol Ops Command Deck (wide perimeter loop clear of Central Holotable) -> Ride DOWN to Deck 1
             WalkerLeg::Walk {
                 target: [0.0, D3, -2.2],
                 dwell: 0.0,
@@ -1329,13 +1466,13 @@ impl OrbitalHavenState {
             },
             WalkerLeg::Walk {
                 target: [-5.2, D3, 4.8],
-                dwell: 2.4,
+                dwell: 2.2,
                 look_yaw: Some(0.22), // look out +Z armored viewports at ships & space!
                 room: "OPS DECK VIEWPORT",
             },
             WalkerLeg::Walk {
                 target: [5.2, D3, 4.8],
-                dwell: 1.8,
+                dwell: 1.6,
                 look_yaw: Some(-0.25),
                 room: "OPS COMMAND DECK",
             },
@@ -1361,50 +1498,55 @@ impl OrbitalHavenState {
                 look_yaw: Some(0.0),
                 room: "ELEVATOR CAR",
             },
-            // 5. Ride Elevator all the way DOWN to Deck 1 (Concourse & Reactor Core)
             WalkerLeg::RideElevator {
                 target_deck: ElevatorDeck::Deck1Reactor,
                 room: "ELEVATOR -> DECK-1 REACTOR",
             },
-            // Clean perimeter loop around Reactor Core at (0, 0) R=3.2!
+            // 19..=29: Deck 1 Reactor Room — orthogonal exit cleanly clear of Elevator Shaft & shifted Reactor Core (Z=+1.5)
             WalkerLeg::Walk {
-                target: [0.0, D1, -3.5],
+                target: [0.0, D1, -2.30],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CHAMBER",
             },
             WalkerLeg::Walk {
-                target: [5.6, D1, -4.6],
+                target: [4.8, D1, -2.30],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CATWALK",
             },
             WalkerLeg::Walk {
-                target: [5.6, D1, 0.5],
+                target: [5.6, D1, 1.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CATWALK",
             },
             WalkerLeg::Walk {
                 target: [5.6, D1, 5.4],
-                dwell: 2.2,
+                dwell: 2.0,
                 look_yaw: Some(-0.7), // look back across pulsing plasma core & space window
                 room: "CONCOURSE & REACTOR",
             },
             WalkerLeg::Walk {
                 target: [-5.6, D1, 5.4],
-                dwell: 1.6,
+                dwell: 1.4,
                 look_yaw: Some(0.55),
                 room: "DECK-1 CONCOURSE",
             },
             WalkerLeg::Walk {
-                target: [-5.6, D1, -4.6],
+                target: [-5.6, D1, 1.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CATWALK",
             },
             WalkerLeg::Walk {
-                target: [0.0, D1, -3.5],
+                target: [-4.8, D1, -2.30],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "REACTOR CATWALK",
+            },
+            WalkerLeg::Walk {
+                target: [0.0, D1, -2.30],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "DECK-1 ELEVATOR LOBBY",
@@ -1419,37 +1561,169 @@ impl OrbitalHavenState {
                 look_yaw: Some(0.0),
                 room: "ELEVATOR CAR",
             },
-            // 6. Ride Elevator UP to Deck 2 (Atrium) & detour around elevator shaft toward Aft Pipe Tunnel
             WalkerLeg::RideElevator {
                 target_deck: ElevatorDeck::Deck2Atrium,
                 room: "ELEVATOR -> DECK-2 ATRIUM",
             },
+            // 30..=41: Exit Elevator -> Port Pad B Sloped Hallway & Pressurized Airlock -> Inspect Pad B -> Return
             WalkerLeg::Walk {
-                target: [0.0, D2, -1.6],
+                target: [0.0, D2, -1.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "CENTRAL CORE ATRIUM",
             },
             WalkerLeg::Walk {
-                target: [5.2, D2, -6.0],
+                target: [-4.8, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "ATRIUM PORT ACCESS",
+            },
+            WalkerLeg::Walk {
+                target: [-12.2, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "PORT PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [-21.2, PAD, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "PORT PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [-25.9, PAD, 0.0],
+                dwell: 0.2,
+                look_yaw: Some(-FRAC_PI_2),
+                room: "PORT AIRLOCK",
+            },
+            WalkerLeg::CycleAirlock {
+                airlock_idx: 0,
+                depressurize: true,
+                pad_check: Some(LandingPadId::PadBPort),
+                room: "PORT AIRLOCK",
+            },
+            WalkerLeg::Walk {
+                target: [-35.8, PAD, 0.0],
+                dwell: 2.4,
+                look_yaw: Some(-FRAC_PI_2), // inspect Port Freight Deck & deep space!
+                room: "PAD-B PORT INSPECTION",
+            },
+            WalkerLeg::Walk {
+                target: [-25.9, PAD, 0.0],
+                dwell: 0.2,
+                look_yaw: Some(FRAC_PI_2),
+                room: "PORT AIRLOCK",
+            },
+            WalkerLeg::CycleAirlock {
+                airlock_idx: 0,
+                depressurize: false,
+                pad_check: None,
+                room: "PORT AIRLOCK",
+            },
+            WalkerLeg::Walk {
+                target: [-21.2, PAD, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "PORT PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [-12.2, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "PORT PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [-4.8, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            // 42..=52: Starboard Pad C Sloped Hallway & Pressurized Airlock -> Inspect Pad C -> Return
+            WalkerLeg::Walk {
+                target: [4.8, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "ATRIUM STBD ACCESS",
+            },
+            WalkerLeg::Walk {
+                target: [12.2, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "STBD PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [21.2, PAD, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "STBD PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [25.9, PAD, 0.0],
+                dwell: 0.2,
+                look_yaw: Some(FRAC_PI_2),
+                room: "STBD AIRLOCK",
+            },
+            WalkerLeg::CycleAirlock {
+                airlock_idx: 1,
+                depressurize: true,
+                pad_check: Some(LandingPadId::PadCStarboard),
+                room: "STBD AIRLOCK",
+            },
+            WalkerLeg::Walk {
+                target: [35.8, PAD, 0.0],
+                dwell: 2.4,
+                look_yaw: Some(FRAC_PI_2), // inspect Starboard Utility Deck & orbit!
+                room: "PAD-C STBD INSPECTION",
+            },
+            WalkerLeg::Walk {
+                target: [25.9, PAD, 0.0],
+                dwell: 0.2,
+                look_yaw: Some(-FRAC_PI_2),
+                room: "STBD AIRLOCK",
+            },
+            WalkerLeg::CycleAirlock {
+                airlock_idx: 1,
+                depressurize: false,
+                pad_check: None,
+                room: "STBD AIRLOCK",
+            },
+            WalkerLeg::Walk {
+                target: [21.2, PAD, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "STBD PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [12.2, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "STBD PAD CORRIDOR",
+            },
+            WalkerLeg::Walk {
+                target: [4.8, D2, 0.0],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            // 53..=58: Orthogonal route around Atrium Elevator Shaft -> Axial Pipe Tunnel -> Solar Bay
+            WalkerLeg::Walk {
+                target: [4.8, D2, -11.2],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "CENTRAL CORE ATRIUM",
             },
             WalkerLeg::Walk {
-                target: [0.0, D2, -11.5],
+                target: [0.0, D2, -11.2],
                 dwell: 0.3,
                 look_yaw: None,
                 room: "AFT AXIAL AIRLOCK",
             },
-            // 7. Walk through Axial Pipe Tunnel inside the rotating ring core!
             WalkerLeg::Walk {
                 target: [0.0, D2, -20.0],
-                dwell: 2.4,
-                look_yaw: Some(FRAC_PI_2), // look right out the side porthole at rotating ring spokes!
+                dwell: 2.2,
+                look_yaw: Some(FRAC_PI_2), // look right out side porthole at rotating ring spokes!
                 room: "AXIAL PIPE TUNNEL",
             },
-            // 8. Enter Aft Solar & Power Engineering Bay and admire the Solar Collector Wings!
             WalkerLeg::Walk {
                 target: [0.0, D2, -28.0],
                 dwell: 0.0,
@@ -1458,25 +1732,31 @@ impl OrbitalHavenState {
             },
             WalkerLeg::Walk {
                 target: [0.0, D2, -37.0],
-                dwell: 2.6,
+                dwell: 2.4,
                 look_yaw: Some(-FRAC_PI_2), // look out huge viewport at glowing solar wings!
                 room: "SOLAR ENGINEERING BAY",
             },
-            // 9. Return back through Pipe Tunnel & Atrium into Hangar Bay to restart loop
             WalkerLeg::Walk {
                 target: [0.0, D2, -28.0],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "SOLAR ENGINEERING BAY",
             },
+            // 59..=63: Return through Pipe Tunnel & West Atrium Corridor (orthogonal around Elevator Shaft) to Hangar
             WalkerLeg::Walk {
-                target: [0.0, D2, -11.5],
+                target: [0.0, D2, -11.2],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "AXIAL PIPE TUNNEL",
             },
             WalkerLeg::Walk {
-                target: [-5.2, D2, -6.0],
+                target: [-4.8, D2, -11.2],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "CENTRAL CORE ATRIUM",
+            },
+            WalkerLeg::Walk {
+                target: [-4.8, D2, -1.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "CENTRAL CORE ATRIUM",
@@ -1506,6 +1786,10 @@ impl OrbitalHavenState {
         let idx = self.walker.route_index % ROUTE.len();
         let leg = ROUTE[idx];
         let mut want_elev_door_open = false;
+        let mut want_airlock_inner = [false; 2];
+        let mut want_airlock_outer = [false; 2];
+        let mut airlock_cycling = [false; 2];
+        let mut target_pitch = 0.0f32;
 
         match leg {
             WalkerLeg::Walk {
@@ -1517,9 +1801,28 @@ impl OrbitalHavenState {
                 self.walker.riding_elevator = false;
                 self.walker.current_room = room.to_string();
 
+                let using_elevator_shaft = (target[0].abs() < 2.4
+                    && (target[2] - (-6.0)).abs() < 2.8)
+                    || (self.walker.pos[0].abs() < 2.5
+                        && (self.walker.pos[2] - (-6.0)).abs() < 2.8);
+
                 // Keep elevator doors open while stepping in or out of the shaft
-                if (self.walker.pos[2] - (-6.0)).abs() < 4.8 && self.walker.pos[0].abs() < 2.4 {
+                if using_elevator_shaft
+                    || ((self.walker.pos[2] - (-6.0)).abs() < 4.8 && self.walker.pos[0].abs() < 2.4)
+                {
                     want_elev_door_open = true;
+                }
+
+                // Proximity triggers for Port (`[0]`) and Starboard (`[1]`) Pad Airlock doors
+                let on_deck2_or_pad = self.walker.pos[1] > -9.0 && self.walker.pos[1] < 5.0;
+                if on_deck2_or_pad && self.walker.pos[2].abs() < 3.0 {
+                    let ax = self.walker.pos[0].abs();
+                    let air_idx = if self.walker.pos[0] < 0.0 { 0 } else { 1 };
+                    if (18.5..=24.8).contains(&ax) {
+                        want_airlock_inner[air_idx] = true;
+                    } else if (26.6..=32.5).contains(&ax) {
+                        want_airlock_outer[air_idx] = true;
+                    }
                 }
 
                 let walker_in_pipe = (self.walker.pos[1] - D2).abs() < 1.0
@@ -1528,8 +1831,6 @@ impl OrbitalHavenState {
                     && ((-25.6..=-14.2).contains(&target[2])
                         || (self.walker.pos[2] < -25.6 && target[2] > -14.2)
                         || (self.walker.pos[2] > -14.2 && target[2] < -25.6));
-                // Respect the single-lane Axial Pipe Tunnel mutex: wait politely ONLY if another bot is
-                // actually physically inside the tunnel; otherwise BOT-01 (priority 0) takes the tunnel!
                 let other_physically_in_pipe = self.agents.iter().any(|a| {
                     a.kind != AgentKind::HullWelder
                         && (a.pos[1] - D2).abs() < 1.2
@@ -1539,7 +1840,6 @@ impl OrbitalHavenState {
                     heading_into_pipe && !walker_in_pipe && other_physically_in_pipe;
                 if waiting_for_pipe {
                     self.walker.current_room = "AFT AIRLOCK (YIELDING)".to_string();
-                    // Step slightly off-center (X -> +2.1) so the exiting bot has a clear lane out!
                     self.walker.pos[0] = ease_scalar(self.walker.pos[0], 2.1, 3.2, dt);
                 } else if heading_into_pipe {
                     self.pipe_tunnel_owner = Some(0);
@@ -1549,8 +1849,11 @@ impl OrbitalHavenState {
                 let dz = target[2] - self.walker.pos[2];
                 let dist = (dx * dx + dz * dz).sqrt();
                 let walk_speed = if waiting_for_pipe { 0.0 } else { 3.8 };
-                let in_confined_shaft = (self.walker.pos[2] - (-6.0)).abs() < 2.4
-                    && self.walker.pos[0].abs() < 2.4
+                let in_pad_corridor = on_deck2_or_pad
+                    && self.walker.pos[0].abs() > 10.5
+                    && self.walker.pos[2].abs() < 3.0;
+                let in_confined_shaft = using_elevator_shaft
+                    || in_pad_corridor
                     || ((self.walker.pos[1] - D2).abs() < 1.0
                         && (-25.6..=-14.2).contains(&self.walker.pos[2]));
                 let target_occupied = !in_confined_shaft
@@ -1567,7 +1870,7 @@ impl OrbitalHavenState {
                 } else if dwell > 0.0 {
                     0.45
                 } else {
-                    0.95
+                    0.65
                 };
 
                 if !waiting_for_pipe && dist > arrive_r {
@@ -1640,7 +1943,7 @@ impl OrbitalHavenState {
                                 new_z = a.pos[2] + (rz / rd) * hard_r;
                             }
                         }
-                        // Keep BOT-01 strictly clear of central Ops Holotable & Reactor Core even when dodging
+                        // Keep BOT-01 strictly clear of Ops Holotable, shifted Reactor Core & 3-Deck Elevator Shaft
                         if (target[1] - D3).abs() < 0.5 {
                             let hx = new_x;
                             let hz = new_z - 1.0;
@@ -1650,16 +1953,36 @@ impl OrbitalHavenState {
                                 new_z = 1.0 + (hz / hd) * 2.95;
                             }
                         } else if (target[1] - D1).abs() < 0.5 {
-                            let hd = (new_x * new_x + new_z * new_z).sqrt();
-                            if hd < 3.85 && hd > 1e-4 {
-                                new_x = (new_x / hd) * 3.85;
-                                new_z = (new_z / hd) * 3.85;
+                            let rx = new_x;
+                            let rz = new_z - REACTOR_CORE_Z;
+                            let hd = (rx * rx + rz * rz).sqrt();
+                            if hd < 3.65 && hd > 1e-4 {
+                                new_x = (rx / hd) * 3.65;
+                                new_z = REACTOR_CORE_Z + (rz / hd) * 3.65;
                             }
                         }
+                        let (ex, ez) = clamp_outside_elevator_shaft(new_x, new_z, 0.85);
+                        new_x = ex;
+                        new_z = ez;
                     }
                     self.walker.pos[0] = new_x;
                     self.walker.pos[2] = new_z;
-                    self.walker.pos[1] = target[1];
+                    self.walker.pos[1] = if target[1] > -9.0 && target[1] < 5.0 {
+                        hallway_floor_y(new_x)
+                    } else {
+                        target[1]
+                    };
+                    if target[1] > -9.0
+                        && target[1] < 5.0
+                        && new_x.abs() > 12.2
+                        && new_x.abs() < 23.2
+                    {
+                        target_pitch = if new_x.signum() * move_x > 0.0 {
+                            0.217
+                        } else {
+                            -0.217
+                        };
+                    }
                     self.walker.walk_phase = (self.walker.walk_phase + dt * 7.2) % TAU;
                     let travel_yaw = move_x.atan2(move_z);
                     self.walker.yaw = turn_yaw(self.walker.yaw, travel_yaw, 5.0, dt);
@@ -1668,7 +1991,11 @@ impl OrbitalHavenState {
                     if in_confined_shaft {
                         self.walker.pos = target;
                     } else {
-                        self.walker.pos[1] = target[1];
+                        self.walker.pos[1] = if target[1] > -9.0 && target[1] < 5.0 {
+                            hallway_floor_y(self.walker.pos[0])
+                        } else {
+                            target[1]
+                        };
                     }
                     if let Some(ly) = look_yaw {
                         self.walker.yaw = turn_yaw(self.walker.yaw, ly, 3.2, dt);
@@ -1678,6 +2005,81 @@ impl OrbitalHavenState {
                     } else {
                         self.walker.leg_timer = 0.0;
                         self.walker.route_index = (idx + 1) % ROUTE.len();
+                    }
+                }
+            }
+            WalkerLeg::WaitPadClear {
+                pad,
+                look_yaw,
+                room,
+            } => {
+                self.walker.riding_elevator = false;
+                self.walker.yaw = turn_yaw(self.walker.yaw, look_yaw, 3.2, dt);
+                self.walker.leg_timer = 0.0;
+                if self.is_pad_clear(pad) {
+                    self.walker.current_room = format!("{} CLEAR", pad.label());
+                    self.walker.route_index = (idx + 1) % ROUTE.len();
+                } else {
+                    self.walker.current_room = room.to_string();
+                }
+            }
+            WalkerLeg::CycleAirlock {
+                airlock_idx,
+                depressurize,
+                pad_check,
+                room,
+            } => {
+                self.walker.riding_elevator = false;
+                self.walker.leg_timer = 0.0;
+                let side = if airlock_idx == 0 { -1.0f32 } else { 1.0f32 };
+                let look = if depressurize {
+                    side * FRAC_PI_2
+                } else {
+                    -side * FRAC_PI_2
+                };
+                self.walker.yaw = turn_yaw(self.walker.yaw, look, 3.5, dt);
+
+                let pad_ready = pad_check.is_none_or(|p| self.is_pad_clear(p));
+                let al = &mut self.pad_airlocks[airlock_idx];
+                airlock_cycling[airlock_idx] = true;
+
+                if depressurize {
+                    // 1. Close inner door first
+                    want_airlock_inner[airlock_idx] = false;
+                    if al.inner_door > 0.06 {
+                        self.walker.current_room = format!("{room} // SEALING");
+                    } else if !pad_ready {
+                        // Hold inside sealed airlock looking out at the busy landing pad
+                        let pad_lbl = pad_check.map(|p| p.label()).unwrap_or("PAD");
+                        self.walker.current_room = format!("{room} // {pad_lbl} BUSY");
+                    } else if al.pressure > 0.02 {
+                        // 2. Vent chamber atmosphere to vacuum
+                        al.pressure = (al.pressure - dt * 0.85).max(0.0);
+                        self.walker.current_room = format!("{room} // VENTING");
+                    } else {
+                        // 3. Open outer door onto the clear landing pad
+                        al.pressure = 0.0;
+                        want_airlock_outer[airlock_idx] = true;
+                        self.walker.current_room = format!("{room} // EXITING");
+                        if al.outer_door > 0.88 {
+                            self.walker.route_index = (idx + 1) % ROUTE.len();
+                        }
+                    }
+                } else {
+                    // Returning from vacuum pad into pressurized station
+                    want_airlock_outer[airlock_idx] = false;
+                    if al.outer_door > 0.06 {
+                        self.walker.current_room = format!("{room} // SEALING");
+                    } else if al.pressure < 0.98 {
+                        al.pressure = (al.pressure + dt * 0.85).min(1.0);
+                        self.walker.current_room = format!("{room} // PRESSURIZING");
+                    } else {
+                        al.pressure = 1.0;
+                        want_airlock_inner[airlock_idx] = true;
+                        self.walker.current_room = format!("{room} // ENTERING");
+                        if al.inner_door > 0.88 {
+                            self.walker.route_index = (idx + 1) % ROUTE.len();
+                        }
                     }
                 }
             }
@@ -1730,9 +2132,31 @@ impl OrbitalHavenState {
             }
         }
 
+        // Smoothly pitch BOT-01 along sloped Pad Access Hallways
+        self.walker.pitch = ease_scalar(self.walker.pitch, target_pitch, 6.0, dt);
+
         // Smoothly animate elevator doors
         let elev_door_target = if want_elev_door_open { 1.0 } else { 0.0 };
         self.elevator.door_open = ease_scalar(self.elevator.door_open, elev_door_target, 5.0, dt);
+
+        // Smoothly animate Port & Starboard Pad Airlocks with strict mechanical interlock:
+        // inner and outer doors can NEVER be open simultaneously!
+        for i in 0..2 {
+            let al = &mut self.pad_airlocks[i];
+            al.cycling = airlock_cycling[i];
+            let inner_tgt = if want_airlock_inner[i] && al.outer_door < 0.04 && al.pressure > 0.92 {
+                1.0
+            } else {
+                0.0
+            };
+            let outer_tgt = if want_airlock_outer[i] && al.inner_door < 0.04 && al.pressure < 0.08 {
+                1.0
+            } else {
+                0.0
+            };
+            al.inner_door = ease_scalar(al.inner_door, inner_tgt, 5.5, dt);
+            al.outer_door = ease_scalar(al.outer_door, outer_tgt, 5.5, dt);
+        }
 
         // Proximity-triggered sliding blast doors on Deck 2 (`Z = 11.6`, `Z = -14.6`, `Z = -25.0`)
         // Opens smoothly for BOT-01 AND any Deck-2 rolling robot (CourierRunner, FloorScrubber, etc.)!
