@@ -264,11 +264,12 @@ impl MeshBuilder {
 
             let am = (a0 + a1) * 0.5;
             let n = [am.cos(), 0.0, am.sin()];
+            // Outward CCW winding when viewed from outside the cylinder
             self.push_quad(
-                p00,
                 p10,
-                p11,
+                p00,
                 p01,
+                p11,
                 n,
                 [1.0, (height / 4.0).max(0.5)],
                 tile,
@@ -279,8 +280,8 @@ impl MeshBuilder {
             if radius_top > 0.01 {
                 self.push_tri(
                     [cx, y1, cz],
-                    p01,
                     p11,
+                    p01,
                     [0.0, 1.0, 0.0],
                     tile,
                     color,
@@ -290,8 +291,8 @@ impl MeshBuilder {
             if radius_bottom > 0.01 {
                 self.push_tri(
                     [cx, y0, cz],
-                    p10,
                     p00,
+                    p10,
                     [0.0, -1.0, 0.0],
                     tile,
                     color,
@@ -315,6 +316,19 @@ impl MeshBuilder {
         color: [f32; 4],
         emissive: f32,
     ) {
+        // Ensure local basis is strictly right-handed so triangle winding is always outward CCW
+        let cx_u = [
+            right[1] * up[2] - right[2] * up[1],
+            right[2] * up[0] - right[0] * up[2],
+            right[0] * up[1] - right[1] * up[0],
+        ];
+        let det = cx_u[0] * forward[0] + cx_u[1] * forward[1] + cx_u[2] * forward[2];
+        let right = if det < 0.0 {
+            [-right[0], -right[1], -right[2]]
+        } else {
+            right
+        };
+
         let xform = |lx: f32, ly: f32, lz: f32| -> [f32; 3] {
             let x = local_center[0] + lx;
             let y = local_center[1] + ly;
@@ -453,7 +467,7 @@ impl MeshBuilder {
                 let pm = ((phi0 + phi1) * 0.5).cos();
                 let tm = (th0 + th1) * 0.5;
                 let n = [pm * tm.cos(), ((phi0 + phi1) * 0.5).sin(), pm * tm.sin()];
-                self.push_quad(p00, p10, p11, p01, n, [1.0, 1.0], tile, col, emissive);
+                self.push_quad(p10, p00, p01, p11, n, [1.0, 1.0], tile, col, emissive);
             }
         }
     }

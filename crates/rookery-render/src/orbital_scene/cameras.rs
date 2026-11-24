@@ -53,7 +53,8 @@ pub fn normalize3(v: [f32; 3]) -> [f32; 3] {
     }
 }
 
-/// Build an orthonormal `(right, up, forward)` basis from a forward vector.
+/// Build a strictly right-handed orthonormal `(right, up, forward)` basis from a forward vector
+/// such that `cross(right, up) == forward`.
 pub fn basis_from_forward(forward: [f32; 3]) -> ([f32; 3], [f32; 3], [f32; 3]) {
     let f = normalize3(forward);
     let world_up = if f[1].abs() > 0.96 {
@@ -61,8 +62,8 @@ pub fn basis_from_forward(forward: [f32; 3]) -> ([f32; 3], [f32; 3], [f32; 3]) {
     } else {
         [0.0, 1.0, 0.0]
     };
-    let r = normalize3(cross3(f, world_up));
-    let u = normalize3(cross3(r, f));
+    let r = normalize3(cross3(world_up, f));
+    let u = normalize3(cross3(f, r));
     (r, u, f)
 }
 

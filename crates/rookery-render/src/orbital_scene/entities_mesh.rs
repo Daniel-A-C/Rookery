@@ -41,51 +41,84 @@ pub fn build_dynamic_entities(
     let dark_steel = [0.45, 0.50, 0.56, 1.0];
 
     // =========================================================================
-    // 1. ROTATING HABITATION COUNTERWEIGHT RING (aft around Z = -18)
+    // 1. ROTATING HABITATION COUNTERWEIGHT RING (seated in bearing collar at Z = -20)
     // =========================================================================
     let ring_segs = 12;
     let ring_r = 25.0;
-    let ring_z = -18.0;
+    let ring_z = -20.0;
+    // Rotating central bearing drum seated between the static fore/aft hazard collar flanges
+    let ba = state.hab_ring_angle;
+    let b_rad = [ba.cos(), ba.sin(), 0.0];
+    let b_tan = [-ba.sin(), ba.cos(), 0.0];
+    let fwd = [0.0, 0.0, 1.0];
+    op.push_oriented_box(
+        [0.0, 0.0, ring_z],
+        b_rad,
+        b_tan,
+        fwd,
+        [0.0, 0.0, 0.0],
+        [13.4, 13.4, 5.4],
+        Tile::DarkSteelRib,
+        theme.rib_tint,
+        0.0,
+    );
+
     for i in 0..ring_segs {
         let a = state.hab_ring_angle + (i as f32 / ring_segs as f32) * TAU;
         let cx = a.cos() * ring_r;
         let cy = a.sin() * ring_r;
-        let fwd = [0.0, 0.0, 1.0];
+        // Strictly right-handed basis: cross(radial, tangent) == +Z (fwd)
         let radial = [a.cos(), a.sin(), 0.0];
         let tangent = [-a.sin(), a.cos(), 0.0];
 
+        // Outer habitation module room (radial = 3.4 thick, tangent = 11.6 wide, Z = 5.0 deep)
         op.push_oriented_box(
             [cx, cy, ring_z],
-            tangent,
             radial,
+            tangent,
             fwd,
             [0.0, 0.0, 0.0],
-            [11.5, 3.4, 5.2],
+            [3.4, 11.6, 5.0],
             Tile::HullPanel,
             theme.hull_tint,
+            0.0,
+        );
+        // Continuous inner structural steel track girder uniting all 12 sectors
+        let track_r = ring_r - 2.3;
+        op.push_oriented_box(
+            [a.cos() * track_r, a.sin() * track_r, ring_z],
+            radial,
+            tangent,
+            fwd,
+            [0.0, 0.0, 0.0],
+            [1.2, 13.2, 3.2],
+            Tile::DarkSteelRib,
+            theme.rib_tint,
             0.0,
         );
         // Warm glowing crew viewport strip facing forward (+Z)
         op.push_oriented_box(
             [cx, cy, ring_z],
-            tangent,
             radial,
+            tangent,
             fwd,
-            [0.0, 0.0, 2.68],
-            [7.5, 1.0, 0.15],
+            [0.0, 0.0, 2.58],
+            [1.05, 7.6, 0.16],
             Tile::CeilingLight,
             sec,
             0.95,
         );
-        // Radial spoke every 3rd sector
+        // Heavy radial tension spoke anchored cleanly into the rotating central bearing drum
         if i % 3 == 0 {
+            let spoke_mid_r = (6.4 + track_r) * 0.5;
+            let spoke_len = (track_r - 6.4).max(4.0);
             op.push_oriented_box(
-                [cx * 0.5, cy * 0.5, ring_z],
-                tangent,
+                [a.cos() * spoke_mid_r, a.sin() * spoke_mid_r, ring_z],
                 radial,
+                tangent,
                 fwd,
                 [0.0, 0.0, 0.0],
-                [1.6, ring_r - 5.0, 1.8],
+                [spoke_len, 2.0, 2.4],
                 Tile::DarkSteelRib,
                 theme.rib_tint,
                 0.0,

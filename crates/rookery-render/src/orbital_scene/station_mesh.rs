@@ -368,22 +368,22 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         );
     }
 
-    // Central Holographic Tactical Table Pedestal
+    // Central Holographic Tactical Table Pedestal (lifted cleanly above floor Y=12.0 to prevent Z-fighting)
     op.push_cylinder(
-        [0.0, 12.8, 1.0],
+        [0.0, 12.82, 1.0],
         2.9,
         2.5,
-        1.6,
+        1.56,
         8,
         Tile::DarkSteelRib,
         rib,
         0.0,
     );
     op.push_cylinder(
-        [0.0, 13.68, 1.0],
+        [0.0, 13.70, 1.0],
         2.2,
         2.2,
-        0.14,
+        0.16,
         8,
         Tile::CrtConsole,
         accent_em,
@@ -672,18 +672,46 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         hull,
         0.0,
     );
-    // Aft engineering block (Z = -15..-32)
+    // Aft Rotating-Ring Bearing Hub & Recessed Collar Track (Z = -15..-26, ring spins at Z = -20)
+    // Heavy central axle core passing through the ring bearing
     op.push_box(
-        [0.0, 1.0, -24.0],
-        [18.0, 14.0, 18.0],
+        [0.0, 0.0, -20.0],
+        [11.5, 11.5, 11.0],
+        Tile::DarkSteelRib,
+        4.0,
+        rib,
+        0.0,
+    );
+    // Fore & aft armored collar flanges framing the rotating ring's track slot (Z = -16.4 and -23.6)
+    op.push_box(
+        [0.0, 0.0, -16.4],
+        [14.8, 14.8, 1.4],
+        Tile::HazardStripe,
+        3.2,
+        bright_white,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 0.0, -23.6],
+        [14.8, 14.8, 1.4],
+        Tile::HazardStripe,
+        3.2,
+        bright_white,
+        0.0,
+    );
+
+    // Aft Engineering & Solar Spine Block (Z = -25..-43 — completely clear behind the rotating ring!)
+    op.push_box(
+        [0.0, 0.5, -34.0],
+        [14.0, 12.0, 18.0],
         Tile::HullPanel,
         6.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [0.0, 8.4, -24.0],
-        [14.0, 1.2, 14.0],
+        [0.0, 7.0, -34.0],
+        [11.0, 1.2, 15.0],
         Tile::DarkSteelRib,
         4.0,
         rib,
@@ -743,31 +771,31 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
 
-    // Massive Articulated Solar Collector Wings extending aft-port and aft-starboard
+    // Massive Articulated Solar Collector Wings mounted far aft at Z = -38 (clear of the Z = -20 ring!)
     for side in [-1.0f32, 1.0f32] {
         op.push_box(
-            [side * 24.0, 4.0, -24.0],
-            [28.0, 1.2, 1.6],
+            [side * 24.0, 2.5, -38.0],
+            [32.0, 1.4, 1.8],
             Tile::DarkSteelRib,
             4.0,
             rib,
             0.0,
         );
         for wing_i in 0..2 {
-            let wx = side * (18.0 + wing_i as f32 * 13.0);
+            let wx = side * (18.5 + wing_i as f32 * 13.5);
             op.push_box(
-                [wx, 4.0, -24.0],
-                [10.0, 0.35, 22.0],
+                [wx, 2.5, -38.0],
+                [10.5, 0.35, 16.0],
                 Tile::SolarCells,
                 4.5,
                 bright_white,
                 0.0,
             );
         }
-        // Glowing Thermal Radiator Fin Arrays
+        // Glowing Thermal Radiator Fin Arrays mounted aft at Z = -34 (clear of the ring!)
         op.push_box(
-            [side * 12.0, -9.0, -24.0],
-            [10.0, 0.3, 12.0],
+            [side * 12.0, -7.5, -34.0],
+            [10.5, 0.35, 10.0],
             Tile::RadiatorLouvers,
             4.0,
             sec_em,
