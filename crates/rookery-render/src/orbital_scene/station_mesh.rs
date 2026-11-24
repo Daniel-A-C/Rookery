@@ -61,9 +61,9 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         bright_white,
         0.0,
     );
-    // Hazard border strips along Pad A edges
+    // Hazard border strips along Pad A edges (offset cleanly from deck edge at ±6.75)
     op.push_box(
-        [-7.3, -3.80, 26.0],
+        [-7.35, -3.78, 26.0],
         [1.1, 0.24, 17.5],
         Tile::HazardStripe,
         2.0,
@@ -71,7 +71,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
     op.push_box(
-        [7.3, -3.80, 26.0],
+        [7.35, -3.78, 26.0],
         [1.1, 0.24, 17.5],
         Tile::HazardStripe,
         2.0,
@@ -79,8 +79,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
     op.push_box(
-        [0.0, -3.80, 41.2],
-        [22.0, 0.26, 1.4],
+        [0.0, -3.77, 41.0],
+        [21.6, 0.26, 1.4],
         Tile::HazardStripe,
         2.2,
         bright_white,
@@ -160,19 +160,19 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.8,
     );
 
-    // Heavy Y2K structural bulkhead ribs arching over the Hangar Bay
-    for z_rib in [15.0, 21.5, 28.0, 34.5, 41.0] {
+    // Heavy Y2K structural bulkhead ribs arching over the Hangar Bay (side ribs terminate cleanly under top rib)
+    for z_rib in [15.0, 21.5, 28.0, 34.5, 40.6] {
         op.push_box(
-            [-11.2, 3.0, z_rib],
-            [1.4, 13.8, 1.5],
+            [-11.2, 2.35, z_rib],
+            [1.4, 12.5, 1.44],
             Tile::DarkSteelRib,
             3.0,
             rib,
             0.0,
         );
         op.push_box(
-            [11.2, 3.0, z_rib],
-            [1.4, 13.8, 1.5],
+            [11.2, 2.35, z_rib],
+            [1.4, 12.5, 1.44],
             Tile::DarkSteelRib,
             3.0,
             rib,
@@ -180,7 +180,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         );
         op.push_box(
             [0.0, 9.3, z_rib],
-            [23.6, 1.4, 1.5],
+            [23.8, 1.4, 1.5],
             Tile::DarkSteelRib,
             3.0,
             rib,
@@ -296,10 +296,10 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     }
 
     // Open Armored Viewports on +Z (front), -X (port), and +X (starboard) looking out to space & pads!
-    // Lower sill walls (Y = 12.0..13.8) + upper header fascia (Y = 19.3..20.8) + corner & mullion pillars
+    // Side sills/headers trimmed cleanly between front (+10.1) and rear (-10.2) to prevent corner Z-fighting
     op.push_box(
         [0.0, 12.9, 10.6],
-        [21.6, 1.8, 1.0],
+        [22.2, 1.8, 1.0],
         Tile::CorridorWall,
         4.0,
         corr,
@@ -307,46 +307,46 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     );
     op.push_box(
         [0.0, 20.0, 10.6],
-        [21.6, 1.5, 1.0],
+        [22.2, 1.5, 1.0],
         Tile::DarkSteelRib,
         4.0,
         rib,
         0.0,
     );
     op.push_box(
-        [-10.6, 12.9, 0.0],
-        [1.0, 1.8, 21.6],
+        [-10.6, 12.9, -0.05],
+        [1.0, 1.8, 20.1],
         Tile::CorridorWall,
         4.0,
         corr,
         0.0,
     );
     op.push_box(
-        [-10.6, 20.0, 0.0],
-        [1.0, 1.5, 21.6],
+        [-10.6, 20.0, -0.05],
+        [1.0, 1.5, 20.1],
         Tile::DarkSteelRib,
         4.0,
         rib,
         0.0,
     );
     op.push_box(
-        [10.6, 12.9, 0.0],
-        [1.0, 1.8, 21.6],
+        [10.6, 12.9, -0.05],
+        [1.0, 1.8, 20.1],
         Tile::CorridorWall,
         4.0,
         corr,
         0.0,
     );
     op.push_box(
-        [10.6, 20.0, 0.0],
-        [1.0, 1.5, 21.6],
+        [10.6, 20.0, -0.05],
+        [1.0, 1.5, 20.1],
         Tile::DarkSteelRib,
         4.0,
         rib,
         0.0,
     );
 
-    // Chunky vertical window mullions around Ops Deck (leaving wide open glass sightlines!)
+    // Chunky vertical window mullions seated cleanly between lower sill (Y=13.8) and upper header (Y=19.25)
     let mullions = [
         [-10.6, 10.6],
         [-3.6, 10.6],
@@ -359,8 +359,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     ];
     for [mx, mz] in mullions {
         op.push_box(
-            [mx, 16.5, mz],
-            [1.2, 8.8, 1.2],
+            [mx, 16.525, mz],
+            [1.24, 5.45, 1.24],
             Tile::DarkSteelRib,
             3.0,
             rib,
@@ -469,7 +469,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     for z_side in [-9.8f32, 9.8f32] {
         op.push_box(
             [0.0, -14.1, z_side],
-            [37.0, 1.8, 0.9],
+            [36.2, 1.8, 0.9],
             Tile::CorridorWall,
             4.0,
             corr,
@@ -477,16 +477,17 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         );
         op.push_box(
             [0.0, -6.2, z_side],
-            [37.0, 1.6, 0.9],
+            [36.2, 1.6, 0.9],
             Tile::DarkSteelRib,
             4.0,
             rib,
             0.0,
         );
-        for x_col in [-18.0, -12.0, -6.0, 0.0, 6.0, 12.0, 18.0] {
+        // Vertical mullions seated cleanly between sill (Y=-13.2) and header (Y=-7.0)
+        for x_col in [-17.5, -12.0, -6.0, 0.0, 6.0, 12.0, 17.5] {
             op.push_box(
-                [x_col, -10.2, z_side],
-                [1.1, 9.4, 1.1],
+                [x_col, -10.1, z_side],
+                [1.1, 6.2, 1.14],
                 Tile::DarkSteelRib,
                 3.0,
                 rib,
@@ -628,20 +629,20 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.0,
         );
 
-        // Twin sodium floodlight pylons at outer pad corners
+        // Twin sodium floodlight pylons at outer pad corners (poles terminate cleanly under lamp heads)
         for z_off in [-8.2f32, 8.2f32] {
             let tx = px + side * 8.2;
             op.push_box(
-                [tx, py + 4.5, pz + z_off],
-                [1.1, 8.5, 1.1],
+                [tx, py + 4.2, pz + z_off],
+                [1.1, 7.7, 1.1],
                 Tile::DarkSteelRib,
                 3.0,
                 rib,
                 0.0,
             );
             op.push_box(
-                [tx - side * 0.5, py + 8.6, pz + z_off],
-                [1.4, 1.1, 1.8],
+                [tx - side * 0.45, py + 8.6, pz + z_off],
+                [1.5, 1.1, 1.8],
                 Tile::CeilingLight,
                 1.5,
                 sec_em,
@@ -663,20 +664,20 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     // =========================================================================
     // 5. EXTERIOR SUPERSTRUCTURE, COMMS SPIRE, SOLAR WINGS & RADIATORS
     // =========================================================================
-    // Central core hull casing between Concourse and Ops Deck (around X:-12..12, Y:-4..11, Z:-14..12)
+    // Central core hull casing between Concourse and Ops Deck (Z:-15.0..+10.8, clear of Hangar rear bulkhead)
     op.push_box(
-        [0.0, 3.5, -2.0],
-        [24.0, 15.0, 26.0],
+        [0.0, 3.5, -2.1],
+        [24.0, 15.0, 25.8],
         Tile::HullPanel,
         6.0,
         hull,
         0.0,
     );
-    // Aft Rotating-Ring Bearing Hub & Recessed Collar Track (Z = -15..-26, ring spins at Z = -20)
+    // Aft Rotating-Ring Bearing Hub & Recessed Collar Track (Z = -15..-25, ring spins at Z = -20)
     // Heavy central axle core passing through the ring bearing
     op.push_box(
         [0.0, 0.0, -20.0],
-        [11.5, 11.5, 11.0],
+        [11.5, 11.5, 10.0],
         Tile::DarkSteelRib,
         4.0,
         rib,
@@ -803,18 +804,18 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         );
     }
 
-    // Exterior Hangar Mouth armored collar & glowing docking guide rails
+    // Exterior Hangar Mouth armored collar (side pillars seated cleanly between bottom sill Y=-3.6 and top lintel Y=+9.9)
     op.push_box(
-        [-13.2, 3.0, 42.2],
-        [2.2, 15.8, 2.2],
+        [-13.2, 3.15, 42.2],
+        [2.2, 13.5, 2.2],
         Tile::DarkSteelRib,
         3.5,
         rib,
         0.0,
     );
     op.push_box(
-        [13.2, 3.0, 42.2],
-        [2.2, 15.8, 2.2],
+        [13.2, 3.15, 42.2],
+        [2.2, 13.5, 2.2],
         Tile::DarkSteelRib,
         3.5,
         rib,
@@ -822,7 +823,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     );
     op.push_box(
         [0.0, 11.0, 42.2],
-        [28.6, 2.2, 2.4],
+        [28.8, 2.2, 2.5],
         Tile::HazardStripe,
         3.0,
         bright_white,
@@ -830,7 +831,7 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     );
     op.push_box(
         [0.0, -4.6, 42.2],
-        [28.6, 2.0, 2.4],
+        [28.8, 2.0, 2.5],
         Tile::DarkSteelRib,
         3.5,
         rib,
