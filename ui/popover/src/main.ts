@@ -741,6 +741,8 @@ const btnKoiRain = el<HTMLButtonElement>("btn-koi-rain");
 const btnKoiLanterns = el<HTMLButtonElement>("btn-koi-lanterns");
 const btnKoiSpout = el<HTMLButtonElement>("btn-koi-spout");
 const btnKoiTheme = el<HTMLButtonElement>("btn-koi-theme");
+const sliderKoiColorSpeed = el<HTMLInputElement>("slider-koi-pond-color_speed");
+const valKoiColorSpeed = el<HTMLElement>("val-koi-pond-color_speed");
 
 // Cosmic Nebula Stats & Controls
 const statNebulaStars = el<HTMLSpanElement>("stat-nebula-stars");
@@ -753,6 +755,10 @@ const btnNebulaComet = el<HTMLButtonElement>("btn-nebula-comet");
 const btnNebulaMeteors = el<HTMLButtonElement>("btn-nebula-meteors");
 const btnNebulaChart = el<HTMLButtonElement>("btn-nebula-chart");
 const btnNebulaPalette = el<HTMLButtonElement>("btn-nebula-palette");
+const sliderNebulaColorSpeed = el<HTMLInputElement>(
+  "slider-cosmic-nebula-color_speed",
+);
+const valNebulaColorSpeed = el<HTMLElement>("val-cosmic-nebula-color_speed");
 
 // Orbital Haven Stats & Controls
 const statOrbitalModules = el<HTMLSpanElement>("stat-orbital-modules");
@@ -1958,6 +1964,28 @@ btnKoiTheme.addEventListener("click", () => {
   );
 });
 
+const sendKoiColorSpeed = createCoalescedCaller(async (val: number) => {
+  try {
+    const s = await api.executeAppAction("koi-pond", "color_speed", {
+      value: val,
+    });
+    renderStatus(s);
+  } catch (e) {
+    console.error("koi color_speed slider error:", e);
+  }
+});
+
+sliderKoiColorSpeed.addEventListener("input", () => {
+  const label = `${sliderKoiColorSpeed.value}x`;
+  valKoiColorSpeed.textContent = label;
+  sliderKoiColorSpeed.setAttribute("aria-valuetext", label);
+  sendKoiColorSpeed(Number(sliderKoiColorSpeed.value));
+});
+
+sliderKoiColorSpeed.addEventListener("change", () => {
+  sendKoiColorSpeed(Number(sliderKoiColorSpeed.value));
+});
+
 // Cosmic Nebula Action Handlers
 btnNebulaIgnite.addEventListener("click", () => {
   runActionWithFeedback(
@@ -2011,6 +2039,28 @@ btnNebulaPalette.addEventListener("click", () => {
     "Shifted cosmic nebula region!",
     () => api.executeAppAction("cosmic-nebula", "cycle_palette", {}),
   );
+});
+
+const sendNebulaColorSpeed = createCoalescedCaller(async (val: number) => {
+  try {
+    const s = await api.executeAppAction("cosmic-nebula", "color_speed", {
+      value: val,
+    });
+    renderStatus(s);
+  } catch (e) {
+    console.error("nebula color_speed slider error:", e);
+  }
+});
+
+sliderNebulaColorSpeed.addEventListener("input", () => {
+  const label = `${sliderNebulaColorSpeed.value}x`;
+  valNebulaColorSpeed.textContent = label;
+  sliderNebulaColorSpeed.setAttribute("aria-valuetext", label);
+  sendNebulaColorSpeed(Number(sliderNebulaColorSpeed.value));
+});
+
+sliderNebulaColorSpeed.addEventListener("change", () => {
+  sendNebulaColorSpeed(Number(sliderNebulaColorSpeed.value));
 });
 
 // Orbital Haven Action Handlers

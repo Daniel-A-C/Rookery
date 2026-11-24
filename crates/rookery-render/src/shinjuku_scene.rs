@@ -31,7 +31,9 @@ struct BgUniforms {
     lightning: f32,
     signs_lit: f32,
     wind: f32,
-    _pad: f32,
+    prev_palette_id: f32,
+    palette_blend: f32,
+    _pad: [f32; 3],
 }
 
 #[derive(Clone, Copy)]
@@ -111,6 +113,41 @@ fn palette_colors(palette: ShinjukuPalette) -> PaletteColors {
     }
 }
 
+#[inline]
+fn lerp4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ]
+}
+
+fn lerp_palette_colors(a: PaletteColors, b: PaletteColors, t: f32) -> PaletteColors {
+    let s = t.clamp(0.0, 1.0);
+    if s <= 0.0 {
+        return a;
+    }
+    if s >= 1.0 {
+        return b;
+    }
+    let smooth = s * s * (3.0 - 2.0 * s);
+    PaletteColors {
+        skyline: lerp4(a.skyline, b.skyline, smooth),
+        window_warm: lerp4(a.window_warm, b.window_warm, smooth),
+        window_cool: lerp4(a.window_cool, b.window_cool, smooth),
+        neon_a: lerp4(a.neon_a, b.neon_a, smooth),
+        neon_b: lerp4(a.neon_b, b.neon_b, smooth),
+        neon_c: lerp4(a.neon_c, b.neon_c, smooth),
+        rain_far: lerp4(a.rain_far, b.rain_far, smooth),
+        rain_mid: lerp4(a.rain_mid, b.rain_mid, smooth),
+        rain_near: lerp4(a.rain_near, b.rain_near, smooth),
+        splash: lerp4(a.splash, b.splash, smooth),
+        steel: lerp4(a.steel, b.steel, smooth),
+        wood: lerp4(a.wood, b.wood, smooth),
+    }
+}
+
 /// GPU scene for *Shinjuku Rain*.
 pub struct ShinjukuRainScene {
     state: Arc<Mutex<ShinjukuRainState>>,
@@ -147,7 +184,9 @@ impl ShinjukuRainScene {
             lightning: 0.0,
             signs_lit: 1.0,
             wind: 0.25,
-            _pad: 0.0,
+            prev_palette_id: 0.0,
+            palette_blend: 1.0,
+            _pad: [0.0; 3],
         };
         let bg_uniforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("shinjuku-bg-uniforms"),
@@ -225,7 +264,11 @@ impl ShinjukuRainScene {
         let (cols, rows) = self.grid_dims();
         let ground_row = ((rows as f32) * 0.76).round() as i32;
         let viaduct_row = ((rows as f32) * 0.30).round() as i32;
-        let pal = palette_colors(snapshot.palette);
+        let pal = lerp_palette_colors(
+            palette_colors(snapshot.prev_palette),
+            palette_colors(snapshot.palette),
+            snapshot.palette_blend,
+        );
         let t = snapshot.time as f32;
 
         // 1. Far Tokyo Skyline silhouettes & windows
@@ -602,7 +645,9 @@ impl Scene for ShinjukuRainScene {
             lightning: snapshot.lightning_flash,
             signs_lit: if snapshot.signs_lit { 1.0 } else { 0.0 },
             wind: snapshot.wind_gust,
-            _pad: 0.0,
+            prev_palette_id: snapshot.prev_palette as u8 as f32,
+            palette_blend: snapshot.palette_blend,
+            _pad: [0.0; 3],
         };
         gpu.queue
             .write_buffer(&self.bg_uniforms, 0, bytemuck::bytes_of(&bg_u));

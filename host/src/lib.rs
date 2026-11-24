@@ -146,6 +146,35 @@ pub fn run() {
                 .with_controls(settings.app_controls.clone());
             *catalog_state.rookery.lock().unwrap() = world;
             *catalog_state.orbital.lock().unwrap() = orbital;
+
+            // Restore persisted color shift rates for built-in scenes
+            if let Some(rate) = settings
+                .app_controls
+                .get("koi-pond")
+                .and_then(|m| m.get("color_speed"))
+                .and_then(|v| v.parse::<f32>().ok())
+                && let Ok(mut k) = catalog_state.koi.lock()
+            {
+                k.set_color_shift_rate(rate);
+            }
+            if let Some(rate) = settings
+                .app_controls
+                .get("cosmic-nebula")
+                .and_then(|m| m.get("color_speed"))
+                .and_then(|v| v.parse::<f32>().ok())
+                && let Ok(mut n) = catalog_state.nebula.lock()
+            {
+                n.set_color_shift_rate(rate);
+            }
+            if let Some(rate) = settings
+                .app_controls
+                .get("shinjuku-rain")
+                .and_then(|m| m.get("color_speed"))
+                .and_then(|v| v.parse::<f32>().ok())
+                && let Ok(mut s) = catalog_state.shinjuku.lock()
+            {
+                s.set_color_shift_rate(rate);
+            }
             let world_arc = catalog_state.rookery.clone();
 
             // Milestone 2 & 4 Offline Time-Delta Engine: catch up progression across all apps

@@ -119,6 +119,9 @@ pub struct KoiPondState {
     pub prev_theme: PondTheme,
     /// `1.0` = fully settled on `theme`, `0.0..1.0` = smoothly cross-fading from `prev_theme`.
     pub theme_blend: f32,
+    /// Continuous theme color shift rate (`0.0` = manual/off, up to `3.0`x).
+    #[serde(default)]
+    pub color_shift_rate: f32,
 
     pub rain_enabled: bool,
     pub rain_intensity: f32,
@@ -204,6 +207,7 @@ impl KoiPondState {
             theme,
             prev_theme: theme,
             theme_blend: 1.0,
+            color_shift_rate: 0.0,
             rain_enabled: false,
             rain_intensity: 0.0,
             rain_spawn_accum: 0.0,
@@ -381,6 +385,11 @@ impl KoiPondState {
         next
     }
 
+    /// Set the continuous theme color shift rate (`0.0` = manual/off, up to `3.0`x).
+    pub fn set_color_shift_rate(&mut self, rate: f32) {
+        self.color_shift_rate = rate.clamp(0.0, 3.0);
+    }
+
     /// Drain queued simulation sound cues.
     pub fn take_pending_sfx(&mut self) -> Vec<KoiSoundCue> {
         std::mem::take(&mut self.pending_sfx)
@@ -418,8 +427,21 @@ impl KoiPondState {
         self.time += dt;
         self.stats.pond_age_secs = self.age_secs;
 
-        // Smooth theme cross-fade
-        if self.theme_blend < 1.0 {
+        // Smooth theme cross-fade & continuous color shift cycling
+        if self.color_shift_rate > 0.0 {
+            if self.theme_blend >= 1.0 {
+                self.prev_theme = self.theme;
+                self.theme = self.theme.next();
+                self.theme_blend = 0.0;
+            }
+            let rate = 0.05 * self.color_shift_rate.clamp(0.0, 3.0);
+            self.theme_blend += dt * rate;
+            while self.theme_blend >= 1.0 {
+                self.theme_blend -= 1.0;
+                self.prev_theme = self.theme;
+                self.theme = self.theme.next();
+            }
+        } else if self.theme_blend < 1.0 {
             self.theme_blend = (self.theme_blend + dt * 0.72).min(1.0);
         }
 
@@ -644,5 +666,35 @@ mod tests {
         let mut pond = KoiPondState::new(42);
         pond.on_wake(3600.0);
         assert!(pond.age_secs >= 3600.0);
+    }
+
+    #[test]
+    fn koi_pond_color_shift_rate_cycles_smoothly() {
+        let mut pond = KoiPondState::new(42);
+        assert_eq!(pond.color_shift_rate, 0.0);
+        assert_eq!(pond.theme, PondTheme::SunlitJade);
+
+        // At 0.0x, theme stays settled.
+        for _ in 0..20 {
+            pond.update(0.1, false, None);
+        }
+        assert_eq!(pond.theme, PondTheme::SunlitJade);
+        assert!((pond.theme_blend - 1.0).abs() < 1e-4);
+
+        // At 2.0x (rate = 0.10/s), 5s advances halfway through the next theme transition.
+        pond.set_color_shift_rate(2.0);
+        for _ in 0..50 {
+            pond.update(0.1, false, None);
+        }
+        assert_eq!(pond.prev_theme, PondTheme::SunlitJade);
+        assert_eq!(pond.theme, PondTheme::AutumnMapleDusk);
+        assert!((pond.theme_blend - 0.5).abs() < 1e-3);
+
+        // Returning to 0.0x finishes settling onto the target theme.
+        pond.set_color_shift_rate(0.0);
+        for _ in 0..20 {
+            pond.update(0.1, false, None);
+        }
+        assert!((pond.theme_blend - 1.0).abs() < 1e-4);
     }
 }

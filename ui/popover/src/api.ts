@@ -81,6 +81,7 @@ export interface KoiStatus {
   rain_enabled?: boolean;
   lanterns_enabled?: boolean;
   dragonflies?: number;
+  color_shift_rate?: number;
 }
 
 export interface NebulaStatus {
@@ -95,6 +96,7 @@ export interface NebulaStatus {
   palette_idx: number;
   palette_name: string;
   palette: string;
+  color_shift_rate?: number;
 }
 
 export interface OrbitalStatus {

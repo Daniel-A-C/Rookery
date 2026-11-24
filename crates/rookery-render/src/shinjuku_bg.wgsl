@@ -9,7 +9,67 @@ struct Uniforms {
     lightning: f32,
     signs_lit: f32,
     wind: f32,
-    _pad: f32,
+    prev_palette_id: f32,
+    palette_blend: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+}
+
+struct BgPalette {
+    zenith: vec3<f32>,
+    horizon: vec3<f32>,
+    street_base: vec3<f32>,
+    neon_a: vec3<f32>,
+    neon_b: vec3<f32>,
+    neon_c: vec3<f32>,
+    grid_glow: vec3<f32>,
+}
+
+fn palette_at(idx: i32) -> BgPalette {
+    var p: BgPalette;
+    p.zenith = vec3<f32>(0.016, 0.014, 0.042);
+    p.horizon = vec3<f32>(0.055, 0.032, 0.095);
+    p.street_base = vec3<f32>(0.018, 0.020, 0.034);
+    p.neon_a = vec3<f32>(0.95, 0.18, 0.52); // Magenta / Rose
+    p.neon_b = vec3<f32>(0.12, 0.82, 0.96); // Electric Cyan
+    p.neon_c = vec3<f32>(0.98, 0.62, 0.16); // Warm Ramen Amber
+    p.grid_glow = vec3<f32>(0.016, 0.014, 0.030);
+
+    switch idx {
+        case 1: {
+            // Kyoto Gion: deep indigo rain, vermilion lanterns, warm stone
+            p.zenith = vec3<f32>(0.012, 0.016, 0.034);
+            p.horizon = vec3<f32>(0.045, 0.036, 0.058);
+            p.street_base = vec3<f32>(0.020, 0.022, 0.030);
+            p.neon_a = vec3<f32>(0.96, 0.28, 0.18);
+            p.neon_b = vec3<f32>(0.24, 0.68, 0.62);
+            p.neon_c = vec3<f32>(0.98, 0.74, 0.24);
+            p.grid_glow = vec3<f32>(0.014, 0.016, 0.024);
+        }
+        case 2: {
+            // Midnight Downpour: cool steel slate, silver rain, sodium vapor
+            p.zenith = vec3<f32>(0.012, 0.018, 0.028);
+            p.horizon = vec3<f32>(0.036, 0.050, 0.072);
+            p.street_base = vec3<f32>(0.016, 0.022, 0.032);
+            p.neon_a = vec3<f32>(0.55, 0.76, 0.98);
+            p.neon_b = vec3<f32>(0.78, 0.86, 0.96);
+            p.neon_c = vec3<f32>(0.94, 0.72, 0.34);
+            p.grid_glow = vec3<f32>(0.012, 0.016, 0.024);
+        }
+        case 3: {
+            // Cyber Terminal: CRT phosphor emerald & amber
+            p.zenith = vec3<f32>(0.004, 0.016, 0.008);
+            p.horizon = vec3<f32>(0.012, 0.042, 0.020);
+            p.street_base = vec3<f32>(0.006, 0.020, 0.010);
+            p.neon_a = vec3<f32>(0.18, 0.96, 0.42);
+            p.neon_b = vec3<f32>(0.96, 0.72, 0.16);
+            p.neon_c = vec3<f32>(0.36, 0.98, 0.58);
+            p.grid_glow = vec3<f32>(0.006, 0.024, 0.012);
+        }
+        default: {}
+    }
+    return p;
 }
 
 @group(0) @binding(0)
@@ -71,49 +131,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let gy = fract(px.y / cell_h);
     let is_grid_line = (gx < (1.0 / cell_w)) || (gy < (1.0 / cell_h));
 
-    let palette = i32(round(u.palette_id)) % 4;
+    let curr_idx = i32(round(u.palette_id)) % 4;
+    let prev_idx = i32(round(u.prev_palette_id)) % 4;
+    let s = clamp(u.palette_blend, 0.0, 1.0);
+    let blend = s * s * (3.0 - 2.0 * s);
 
-    var zenith = vec3<f32>(0.016, 0.014, 0.042);
-    var horizon = vec3<f32>(0.055, 0.032, 0.095);
-    var street_base = vec3<f32>(0.018, 0.020, 0.034);
-    var neon_a = vec3<f32>(0.95, 0.18, 0.52); // Magenta / Rose
-    var neon_b = vec3<f32>(0.12, 0.82, 0.96); // Electric Cyan
-    var neon_c = vec3<f32>(0.98, 0.62, 0.16); // Warm Ramen Amber
-    var grid_glow = vec3<f32>(0.016, 0.014, 0.030);
+    let pa = palette_at(prev_idx);
+    let pb = palette_at(curr_idx);
 
-    switch palette {
-        case 1: {
-            // Kyoto Gion: deep indigo rain, vermilion lanterns, warm stone
-            zenith = vec3<f32>(0.012, 0.016, 0.034);
-            horizon = vec3<f32>(0.045, 0.036, 0.058);
-            street_base = vec3<f32>(0.020, 0.022, 0.030);
-            neon_a = vec3<f32>(0.96, 0.28, 0.18);
-            neon_b = vec3<f32>(0.24, 0.68, 0.62);
-            neon_c = vec3<f32>(0.98, 0.74, 0.24);
-            grid_glow = vec3<f32>(0.014, 0.016, 0.024);
-        }
-        case 2: {
-            // Midnight Downpour: cool steel slate, silver rain, sodium vapor
-            zenith = vec3<f32>(0.012, 0.018, 0.028);
-            horizon = vec3<f32>(0.036, 0.050, 0.072);
-            street_base = vec3<f32>(0.016, 0.022, 0.032);
-            neon_a = vec3<f32>(0.55, 0.76, 0.98);
-            neon_b = vec3<f32>(0.78, 0.86, 0.96);
-            neon_c = vec3<f32>(0.94, 0.72, 0.34);
-            grid_glow = vec3<f32>(0.012, 0.016, 0.024);
-        }
-        case 3: {
-            // Cyber Terminal: CRT phosphor emerald & amber
-            zenith = vec3<f32>(0.004, 0.016, 0.008);
-            horizon = vec3<f32>(0.012, 0.042, 0.020);
-            street_base = vec3<f32>(0.006, 0.020, 0.010);
-            neon_a = vec3<f32>(0.18, 0.96, 0.42);
-            neon_b = vec3<f32>(0.96, 0.72, 0.16);
-            neon_c = vec3<f32>(0.36, 0.98, 0.58);
-            grid_glow = vec3<f32>(0.006, 0.024, 0.012);
-        }
-        default: {}
-    }
+    let zenith = mix(pa.zenith, pb.zenith, blend);
+    let horizon = mix(pa.horizon, pb.horizon, blend);
+    let street_base = mix(pa.street_base, pb.street_base, blend);
+    let neon_a = mix(pa.neon_a, pb.neon_a, blend);
+    let neon_b = mix(pa.neon_b, pb.neon_b, blend);
+    let neon_c = mix(pa.neon_c, pb.neon_c, blend);
+    let grid_glow = mix(pa.grid_glow, pb.grid_glow, blend);
 
     let curb_y = 0.76;
     var col = vec3<f32>(0.0);

@@ -222,6 +222,9 @@ pub struct CosmicNebulaState {
     pub palette: NebulaPalette,
     pub prev_palette: NebulaPalette,
     pub palette_blend: f32,
+    /// Continuous palette color shift rate (`0.0` = manual/off, up to `3.0`x).
+    #[serde(default)]
+    pub color_shift_rate: f32,
 
     pub star_chart_enabled: bool,
     pub star_chart_alpha: f32,
@@ -347,6 +350,7 @@ impl CosmicNebulaState {
             palette: NebulaPalette::CarinaCliffs,
             prev_palette: NebulaPalette::CarinaCliffs,
             palette_blend: 1.0,
+            color_shift_rate: 0.0,
             star_chart_enabled: false,
             star_chart_alpha: 0.0,
             stars,
@@ -400,6 +404,11 @@ impl CosmicNebulaState {
         self.pending_sounds.push(NebulaSoundCue::PaletteCycle);
     }
 
+    /// Set the continuous palette color shift rate (`0.0` = manual/off, up to `3.0`x).
+    pub fn set_color_shift_rate(&mut self, rate: f32) {
+        self.color_shift_rate = rate.clamp(0.0, 3.0);
+    }
+
     /// Toggle the delicate Astral Cartography constellation overlay.
     pub fn toggle_star_chart(&mut self) -> bool {
         self.star_chart_enabled = !self.star_chart_enabled;
@@ -447,8 +456,21 @@ impl CosmicNebulaState {
         let dt = dt_secs.min(0.15);
         self.age_secs += dt as f64;
 
-        // Smooth palette crossfade (~1.4s)
-        if self.palette_blend < 1.0 {
+        // Smooth palette crossfade (~1.4s manual, or continuous drift when color_shift_rate > 0)
+        if self.color_shift_rate > 0.0 {
+            if self.palette_blend >= 1.0 {
+                self.prev_palette = self.palette;
+                self.palette = self.palette.next();
+                self.palette_blend = 0.0;
+            }
+            let rate = 0.05 * self.color_shift_rate.clamp(0.0, 3.0);
+            self.palette_blend += dt * rate;
+            while self.palette_blend >= 1.0 {
+                self.palette_blend -= 1.0;
+                self.prev_palette = self.palette;
+                self.palette = self.palette.next();
+            }
+        } else if self.palette_blend < 1.0 {
             self.palette_blend = (self.palette_blend + dt * 0.72).min(1.0);
         }
 
@@ -571,5 +593,28 @@ mod tests {
             let p = state.cycle_palette();
             assert_eq!(p.index() as usize, expected % NEBULA_PALETTE_COUNT);
         }
+    }
+
+    #[test]
+    fn nebula_color_shift_rate_cycles_smoothly() {
+        let mut state = CosmicNebulaState::new(42);
+        assert_eq!(state.color_shift_rate, 0.0);
+        assert_eq!(state.palette, NebulaPalette::CarinaCliffs);
+
+        // At 0.0x, palette does not drift.
+        for _ in 0..20 {
+            state.update(0.1, false, None);
+        }
+        assert_eq!(state.palette, NebulaPalette::CarinaCliffs);
+        assert!((state.palette_blend - 1.0).abs() < 1e-4);
+
+        // At 2.0x (rate = 0.10/s), 5s advances halfway through the transition to PillarsOfCreation.
+        state.set_color_shift_rate(2.0);
+        for _ in 0..50 {
+            state.update(0.1, false, None);
+        }
+        assert_eq!(state.prev_palette, NebulaPalette::CarinaCliffs);
+        assert_eq!(state.palette, NebulaPalette::PillarsOfCreation);
+        assert!((state.palette_blend - 0.5).abs() < 1e-3);
     }
 }

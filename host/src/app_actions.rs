@@ -7,6 +7,36 @@ use tauri::AppHandle;
 use crate::commands::open_directory_in_os;
 use crate::state::HostState;
 
+fn parse_f32_payload(payload: &Option<serde_json::Value>) -> Option<f32> {
+    let val = payload.as_ref()?.get("value")?;
+    match val {
+        serde_json::Value::Number(n) => n.as_f64().map(|v| v as f32),
+        serde_json::Value::String(s) => s.trim().parse::<f32>().ok(),
+        _ => None,
+    }
+}
+
+fn format_rate(v: f32) -> String {
+    let rounded = (v * 100.0).round() / 100.0;
+    let s = format!("{rounded:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn persist_control_value(state: &HostState, app_id: &str, control_id: &str, val_str: String) {
+    state
+        .catalog_state
+        .set_control_value(app_id, control_id, val_str.clone(), None);
+    if let Ok(mut inner) = state.inner.lock() {
+        inner
+            .settings
+            .app_controls
+            .entry(app_id.to_string())
+            .or_default()
+            .insert(control_id.to_string(), val_str);
+    }
+    state.mark_settings_dirty();
+}
+
 pub(crate) fn dispatch_app_action(
     app: &AppHandle,
     state: &HostState,
@@ -323,6 +353,21 @@ pub(crate) fn dispatch_app_action(
                         state.audio.play_sfx(SoundEffect::LotusChime);
                     }
                 }
+                "color_speed" | "color_shift_rate" => {
+                    if let Some(rate) = parse_f32_payload(&payload) {
+                        k.set_color_shift_rate(rate);
+                        let clamped = k.color_shift_rate;
+                        drop(k);
+                        persist_control_value(
+                            state,
+                            "koi-pond",
+                            "color_speed",
+                            format_rate(clamped),
+                        );
+                        state.with_renderer(|r| r.trigger_action());
+                        return Ok(());
+                    }
+                }
                 other => return Err(format!("Unknown koi action '{other}'")),
             }
             drop(k);
@@ -387,6 +432,21 @@ pub(crate) fn dispatch_app_action(
                     } else {
                         n.cycle_palette();
                         state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    }
+                }
+                "color_speed" | "color_shift_rate" => {
+                    if let Some(rate) = parse_f32_payload(&payload) {
+                        n.set_color_shift_rate(rate);
+                        let clamped = n.color_shift_rate;
+                        drop(n);
+                        persist_control_value(
+                            state,
+                            "cosmic-nebula",
+                            "color_speed",
+                            format_rate(clamped),
+                        );
+                        state.with_renderer(|r| r.trigger_action());
+                        return Ok(());
                     }
                 }
                 other => return Err(format!("Unknown nebula action '{other}'")),
@@ -499,6 +559,21 @@ pub(crate) fn dispatch_app_action(
                     } else {
                         s.cycle_palette();
                         state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    }
+                }
+                "color_speed" | "color_shift_rate" => {
+                    if let Some(rate) = parse_f32_payload(&payload) {
+                        s.set_color_shift_rate(rate);
+                        let clamped = s.color_shift_rate;
+                        drop(s);
+                        persist_control_value(
+                            state,
+                            "shinjuku-rain",
+                            "color_speed",
+                            format_rate(clamped),
+                        );
+                        state.with_renderer(|r| r.trigger_action());
+                        return Ok(());
                     }
                 }
                 other => return Err(format!("Unknown shinjuku-rain action '{other}'")),

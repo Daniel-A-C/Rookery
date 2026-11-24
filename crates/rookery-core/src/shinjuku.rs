@@ -177,6 +177,10 @@ pub struct ShinjukuStats {
     pub signs_lit: bool,
 }
 
+fn default_palette_blend() -> f32 {
+    1.0
+}
+
 /// Complete simulation state for *Shinjuku Rain*.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ShinjukuRainState {
@@ -191,6 +195,14 @@ pub struct ShinjukuRainState {
     pub lightning_flash: f32,
     pub next_lightning_secs: f32,
     pub palette: ShinjukuPalette,
+    #[serde(default)]
+    pub prev_palette: ShinjukuPalette,
+    /// `1.0` = settled on `palette`, `0.0..1.0` = smoothly cross-fading from `prev_palette`.
+    #[serde(default = "default_palette_blend")]
+    pub palette_blend: f32,
+    /// Continuous palette color shift rate (`0.0` = manual/off, up to `3.0`x).
+    #[serde(default)]
+    pub color_shift_rate: f32,
     pub raindrops: Vec<Raindrop>,
     pub splashes: Vec<PuddleSplash>,
     pub pedestrians: Vec<Pedestrian>,
@@ -289,6 +301,9 @@ impl ShinjukuRainState {
             lightning_flash: 0.0,
             next_lightning_secs: 14.0,
             palette: ShinjukuPalette::ShinjukuNeon,
+            prev_palette: ShinjukuPalette::ShinjukuNeon,
+            palette_blend: 1.0,
+            color_shift_rate: 0.0,
             raindrops,
             splashes: Vec::with_capacity(64),
             pedestrians,
@@ -310,6 +325,24 @@ impl ShinjukuRainState {
     pub fn update(&mut self, dt: f32, _interactive: bool, _pointer: Option<[f32; 2]>) -> Activity {
         let dt = dt.clamp(0.0, 0.1);
         self.time += dt as f64;
+
+        // Smooth palette crossfade & continuous color shift cycling
+        if self.color_shift_rate > 0.0 {
+            if self.palette_blend >= 1.0 {
+                self.prev_palette = self.palette;
+                self.palette = self.palette.next();
+                self.palette_blend = 0.0;
+            }
+            let rate = 0.05 * self.color_shift_rate.clamp(0.0, 3.0);
+            self.palette_blend += dt * rate;
+            while self.palette_blend >= 1.0 {
+                self.palette_blend -= 1.0;
+                self.prev_palette = self.palette;
+                self.palette = self.palette.next();
+            }
+        } else if self.palette_blend < 1.0 {
+            self.palette_blend = (self.palette_blend + dt * 0.72).min(1.0);
+        }
 
         // Smooth wind gust modulation
         self.gust_timer -= dt;
@@ -528,12 +561,23 @@ impl ShinjukuRainState {
 
     /// Cycle to the next curated ANSI palette.
     pub fn cycle_palette(&mut self) {
-        self.palette = self.palette.next();
+        let next = self.palette.next();
+        self.set_palette(next);
     }
 
-    /// Set a specific ANSI palette.
+    /// Set a specific ANSI palette with a smooth crossfade.
     pub fn set_palette(&mut self, palette: ShinjukuPalette) {
+        if palette == self.palette {
+            return;
+        }
+        self.prev_palette = self.palette;
         self.palette = palette;
+        self.palette_blend = 0.0;
+    }
+
+    /// Set the continuous palette color shift rate (`0.0` = manual/off, up to `3.0`x).
+    pub fn set_color_shift_rate(&mut self, rate: f32) {
+        self.color_shift_rate = rate.clamp(0.0, 3.0);
     }
 
     /// Deterministic catch-up when resuming from sleep or offline time.
@@ -601,5 +645,28 @@ mod tests {
         let t0 = s.time;
         s.on_wake(10.0);
         assert!(s.time > t0);
+    }
+
+    #[test]
+    fn shinjuku_color_shift_rate_cycles_smoothly() {
+        let mut s = ShinjukuRainState::new(42);
+        assert_eq!(s.color_shift_rate, 0.0);
+        assert_eq!(s.palette, ShinjukuPalette::ShinjukuNeon);
+
+        // At 0.0x, palette stays settled.
+        for _ in 0..20 {
+            s.update(0.1, false, None);
+        }
+        assert_eq!(s.palette, ShinjukuPalette::ShinjukuNeon);
+        assert!((s.palette_blend - 1.0).abs() < 1e-4);
+
+        // At 2.0x (rate = 0.10/s), 5s advances halfway through KyotoGion transition.
+        s.set_color_shift_rate(2.0);
+        for _ in 0..50 {
+            s.update(0.1, false, None);
+        }
+        assert_eq!(s.prev_palette, ShinjukuPalette::ShinjukuNeon);
+        assert_eq!(s.palette, ShinjukuPalette::KyotoGion);
+        assert!((s.palette_blend - 0.5).abs() < 1e-3);
     }
 }

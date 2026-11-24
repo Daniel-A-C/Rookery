@@ -472,6 +472,15 @@ impl AppCatalog {
                         icon: Some("palette".into()),
                         tooltip: Some("Cycle through Sakura Morning, Sunlit Jade, Autumn Maple Dusk, and Moonlit Lantern Night".into()),
                     },
+                    AppControl::Slider {
+                        id: "color_speed".into(),
+                        label: "Color Shift Rate".into(),
+                        min: 0.0,
+                        max: 3.0,
+                        step: 0.05,
+                        default_val: 0.0,
+                        unit: Some("x".into()),
+                    },
                 ],
                 budgets: AppBudgets {
                     target_fps: 30,
@@ -571,6 +580,15 @@ impl AppCatalog {
                         label: "Next Region".into(),
                         icon: Some("palette".into()),
                         tooltip: Some("Shift smoothly across Carina Cliffs, Pillars of Creation, Horsehead Crimson, Helix Violet, and Veil Aurora".into()),
+                    },
+                    AppControl::Slider {
+                        id: "color_speed".into(),
+                        label: "Color Shift Rate".into(),
+                        min: 0.0,
+                        max: 3.0,
+                        step: 0.05,
+                        default_val: 0.0,
+                        unit: Some("x".into()),
                     },
                 ],
                 budgets: AppBudgets {
@@ -755,6 +773,15 @@ impl AppCatalog {
                         label: "Next Palette".into(),
                         icon: Some("palette".into()),
                         tooltip: Some("Cycle through the 4 curated rainy city palettes".into()),
+                    },
+                    AppControl::Slider {
+                        id: "color_speed".into(),
+                        label: "Color Shift Rate".into(),
+                        min: 0.0,
+                        max: 3.0,
+                        step: 0.05,
+                        default_val: 0.0,
+                        unit: Some("x".into()),
                     },
                 ],
                 budgets: AppBudgets {

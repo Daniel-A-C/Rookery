@@ -120,6 +120,7 @@ pub struct KoiStatus {
     pub rain_enabled: bool,
     pub lanterns_enabled: bool,
     pub dragonflies: u32,
+    pub color_shift_rate: f32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -135,6 +136,7 @@ pub struct NebulaStatus {
     pub palette_idx: u8,
     pub palette_name: String,
     pub palette: String,
+    pub color_shift_rate: f32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -395,26 +397,39 @@ impl HostState {
                 });
             }
             "koi-pond" => {
-                koi = self.catalog_state.koi.lock().ok().map(|k| KoiStatus {
-                    seed: k.seed,
-                    total_koi: k.stats.total_fish,
-                    total_fish: k.stats.total_fish,
-                    total_lilies: k.stats.total_lilies,
-                    blooming_lotuses: k.lilies.iter().filter(|l| l.has_flower).count() as u32,
-                    ripples_active: k.ripples.len() as u32,
-                    pellets_active: k.pellets.len() as u32,
-                    pellets_eaten: k.stats.pellets_eaten,
-                    ripples_created: k.stats.ripples_created,
-                    theme: k.theme.index(),
-                    theme_name: k.theme.name().to_string(),
-                    rain_enabled: k.rain_enabled,
-                    lanterns_enabled: k.lanterns_enabled,
-                    dragonflies: k.dragonflies.len() as u32,
+                koi = self.catalog_state.koi.lock().ok().map(|k| {
+                    let rate_str = format_rate_clean(k.color_shift_rate);
+                    self.catalog_state
+                        .set_control_value("koi-pond", "color_speed", rate_str, None);
+                    KoiStatus {
+                        seed: k.seed,
+                        total_koi: k.stats.total_fish,
+                        total_fish: k.stats.total_fish,
+                        total_lilies: k.stats.total_lilies,
+                        blooming_lotuses: k.lilies.iter().filter(|l| l.has_flower).count() as u32,
+                        ripples_active: k.ripples.len() as u32,
+                        pellets_active: k.pellets.len() as u32,
+                        pellets_eaten: k.stats.pellets_eaten,
+                        ripples_created: k.stats.ripples_created,
+                        theme: k.theme.index(),
+                        theme_name: k.theme.name().to_string(),
+                        rain_enabled: k.rain_enabled,
+                        lanterns_enabled: k.lanterns_enabled,
+                        dragonflies: k.dragonflies.len() as u32,
+                        color_shift_rate: k.color_shift_rate,
+                    }
                 });
             }
             "cosmic-nebula" => {
                 nebula = self.catalog_state.nebula.lock().ok().map(|n| {
                     let palette_name = n.palette.name().to_string();
+                    let rate_str = format_rate_clean(n.color_shift_rate);
+                    self.catalog_state.set_control_value(
+                        "cosmic-nebula",
+                        "color_speed",
+                        rate_str,
+                        None,
+                    );
                     NebulaStatus {
                         seed: n.seed,
                         stars_active: n.stats.stars_active,
@@ -427,6 +442,7 @@ impl HostState {
                         palette_idx: n.palette.index(),
                         palette_name: palette_name.clone(),
                         palette: palette_name,
+                        color_shift_rate: n.color_shift_rate,
                     }
                 });
             }
@@ -466,8 +482,20 @@ impl HostState {
                     );
                     map.insert("pedestrians".to_string(), st.pedestrian_count.to_string());
                     map.insert("trains".to_string(), st.trains_passed.to_string());
-                    map.insert("palette".to_string(), st.palette_name);
+                    map.insert("palette".to_string(), st.palette_name.clone());
                     self.catalog_state.set_stats("shinjuku-rain", map);
+                    self.catalog_state.set_control_value(
+                        "shinjuku-rain",
+                        "color_speed",
+                        format_rate_clean(s.color_shift_rate),
+                        None,
+                    );
+                    self.catalog_state.set_control_value(
+                        "shinjuku-rain",
+                        "color_palette",
+                        format!("{}: {}", s.palette as u8, st.palette_name),
+                        None,
+                    );
                 }
             }
             "gothic-metropolis" => {
@@ -683,4 +711,10 @@ impl HostState {
 
 pub fn initial_budget() -> FrameBudget {
     FrameBudget::Paused(PauseReason::Occluded)
+}
+
+fn format_rate_clean(v: f32) -> String {
+    let rounded = (v * 100.0).round() / 100.0;
+    let s = format!("{rounded:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
