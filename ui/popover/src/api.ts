@@ -104,9 +104,14 @@ export interface OrbitalStatus {
   station_age_hours: number;
   active_feed_code: string;
   active_feed_label: string;
+  primary_feed_slug: string;
+  pip_feed_slugs: [string, string];
+  grid_feed_slugs: [string, string, string, string];
   layout: string;
+  layout_slug: "single" | "pip" | "grid2x2";
   auto_director: boolean;
   palette: string;
+  palette_slug: string;
   station_event: string;
   active_ships: number;
   docked_ships: number;

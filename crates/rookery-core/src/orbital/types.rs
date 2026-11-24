@@ -42,6 +42,23 @@ impl CameraLayout {
             Self::Grid2x2 => Self::Single,
         }
     }
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Pip => "pip",
+            Self::Grid2x2 => "grid2x2",
+        }
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "single" => Some(Self::Single),
+            "pip" => Some(Self::Pip),
+            "grid2x2" | "grid" => Some(Self::Grid2x2),
+            _ => None,
+        }
+    }
 }
 
 /// Named camera feeds available on Station HELIOS-09's surveillance & uplink network.
@@ -158,6 +175,22 @@ impl CameraFeedId {
         ALL_CAMERA_FEEDS[(idx + 1) % ALL_CAMERA_FEEDS.len()]
     }
 
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::DroneAlphaWide => "drone_alpha",
+            Self::DroneBetaPatrol => "drone_beta",
+            Self::ExtHangarApproach => "hangar_approach",
+            Self::PadAHangarInterior => "pad_a",
+            Self::PadBPortDeck => "pad_b",
+            Self::PadCStarboardDeck => "pad_c",
+            Self::IntOpsDeck => "ops_deck",
+            Self::IntConcourseWalk => "concourse",
+            Self::IntReactorCore => "reactor",
+            Self::ShipNoseUplink => "ship_nose",
+            Self::ShipDorsalUplink => "ship_dorsal",
+        }
+    }
+
     pub fn from_slug(slug: &str) -> Option<Self> {
         match slug {
             "drone_alpha" | "cam_01" => Some(Self::DroneAlphaWide),
@@ -228,6 +261,25 @@ impl OrbitalPalette {
 
     pub fn next(self) -> Self {
         Self::from_index(self.index() + 1)
+    }
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::UnatcoCobalt => "unatco",
+            Self::VonBraunIndustrial => "von_braun",
+            Self::VersaLifeGold => "versalife",
+            Self::ShodanCyber => "shodan",
+        }
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "unatco" | "unatco_cobalt" => Some(Self::UnatcoCobalt),
+            "von_braun" | "von_braun_industrial" => Some(Self::VonBraunIndustrial),
+            "versalife" | "versalife_gold" => Some(Self::VersaLifeGold),
+            "shodan" | "shodan_cyber" => Some(Self::ShodanCyber),
+            _ => None,
+        }
     }
 }
 

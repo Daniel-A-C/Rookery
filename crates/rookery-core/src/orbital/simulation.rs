@@ -836,6 +836,22 @@ impl OrbitalHavenState {
         }
     }
 
+    /// Assign a specific camera feed to a PiP mini-monitor slot (`0` or `1`).
+    pub fn set_pip_feed(&mut self, slot: usize, feed: CameraFeedId) {
+        if slot < 2 && self.camera_rig.pip_feeds[slot] != feed {
+            self.camera_rig.pip_feeds[slot] = feed;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+    }
+
+    /// Assign a specific camera feed to a 2x2 Grid quadrant (`0..=3`: TL, TR, BL, BR).
+    pub fn set_grid_feed(&mut self, slot: usize, feed: CameraFeedId) {
+        if slot < 4 && self.camera_rig.grid_feeds[slot] != feed {
+            self.camera_rig.grid_feeds[slot] = feed;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+    }
+
     pub fn cycle_layout(&mut self) {
         self.camera_rig.layout = self.camera_rig.layout.next();
         self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;

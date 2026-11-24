@@ -1,6 +1,6 @@
 //! Per-app action and control dispatch for built-in and external Rookery apps.
 
-use rookery_core::orbital::CameraFeedId;
+use rookery_core::orbital::{CameraFeedId, CameraLayout, OrbitalPalette};
 use rookery_render::SoundEffect;
 use tauri::AppHandle;
 
@@ -494,6 +494,30 @@ pub(crate) fn dispatch_app_action(
                         && let Some(feed) = CameraFeedId::from_slug(slug)
                     {
                         o.select_feed(feed);
+                        state.audio.play_sfx(SoundEffect::CameraSwitch);
+                    } else if let Some(slug) = other.strip_prefix("set_layout:")
+                        && let Some(layout) = CameraLayout::from_slug(slug)
+                    {
+                        o.set_layout(layout);
+                        state.audio.play_sfx(SoundEffect::CameraSwitch);
+                    } else if let Some(slug) = other.strip_prefix("set_palette:")
+                        && let Some(palette) = OrbitalPalette::from_slug(slug)
+                    {
+                        o.set_palette(palette);
+                        state.audio.play_sfx(SoundEffect::PaletteCycle);
+                    } else if let Some(rest) = other.strip_prefix("set_pip:")
+                        && let Some((idx_s, slug)) = rest.split_once(':')
+                        && let Ok(slot) = idx_s.parse::<usize>()
+                        && let Some(feed) = CameraFeedId::from_slug(slug)
+                    {
+                        o.set_pip_feed(slot, feed);
+                        state.audio.play_sfx(SoundEffect::CameraSwitch);
+                    } else if let Some(rest) = other.strip_prefix("set_grid:")
+                        && let Some((idx_s, slug)) = rest.split_once(':')
+                        && let Ok(slot) = idx_s.parse::<usize>()
+                        && let Some(feed) = CameraFeedId::from_slug(slug)
+                    {
+                        o.set_grid_feed(slot, feed);
                         state.audio.play_sfx(SoundEffect::CameraSwitch);
                     } else {
                         return Err(format!("Unknown orbital action '{other}'"));

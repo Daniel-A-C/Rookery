@@ -726,7 +726,11 @@ const btnPanRight = el<HTMLButtonElement>("btn-pan-right");
 const selectRookeryStyle = el<HTMLSelectElement>("select-rookery-style");
 const btnStylePrev = el<HTMLButtonElement>("btn-style-prev");
 const btnStyleNext = el<HTMLButtonElement>("btn-style-next");
-const seedNotification = el<HTMLDivElement>("seed-notification");
+
+// Unified Top-Layer Toast Notification
+const toastNotification = el<HTMLDivElement>("toast-notification");
+const toastMessage = el<HTMLSpanElement>("toast-message");
+const btnToastDismiss = el<HTMLButtonElement>("btn-toast-dismiss");
 
 // Koi Pond Stats & Controls
 const statKoiCount = el<HTMLSpanElement>("stat-koi-count");
@@ -765,11 +769,55 @@ const statOrbitalModules = el<HTMLSpanElement>("stat-orbital-modules");
 const statOrbitalSolar = el<HTMLSpanElement>("stat-orbital-solar");
 const statOrbitalRings = el<HTMLSpanElement>("stat-orbital-rings");
 const statOrbitalShuttles = el<HTMLSpanElement>("stat-orbital-shuttles");
-const btnOrbitalModule = el<HTMLButtonElement>("btn-orbital-module");
+const btnOrbitalLayoutSingle = el<HTMLButtonElement>("btn-orbital-layout-single");
+const btnOrbitalLayoutPip = el<HTMLButtonElement>("btn-orbital-layout-pip");
+const btnOrbitalLayoutGrid = el<HTMLButtonElement>("btn-orbital-layout-grid");
+const orbitalFeedsSinglePip = el<HTMLDivElement>("orbital-feeds-single-pip");
+const orbitalPipRow = el<HTMLDivElement>("orbital-pip-row");
+const orbitalFeedsGrid = el<HTMLDivElement>("orbital-feeds-grid");
+const selectOrbitalPrimary = el<HTMLSelectElement>("select-orbital-primary");
+const selectOrbitalPip0 = el<HTMLSelectElement>("select-orbital-pip0");
+const selectOrbitalPip1 = el<HTMLSelectElement>("select-orbital-pip1");
+const selectOrbitalGrid0 = el<HTMLSelectElement>("select-orbital-grid0");
+const selectOrbitalGrid1 = el<HTMLSelectElement>("select-orbital-grid1");
+const selectOrbitalGrid2 = el<HTMLSelectElement>("select-orbital-grid2");
+const selectOrbitalGrid3 = el<HTMLSelectElement>("select-orbital-grid3");
+const selectOrbitalPalette = el<HTMLSelectElement>("select-orbital-palette");
+const btnOrbitalDirector = el<HTMLButtonElement>("btn-orbital-director");
+const lblOrbitalDirector = el<HTMLSpanElement>("lbl-orbital-director");
 const btnOrbitalLaunch = el<HTMLButtonElement>("btn-orbital-launch");
-const btnOrbitalFocus = el<HTMLButtonElement>("btn-orbital-focus");
-const btnOrbitalPlanet = el<HTMLButtonElement>("btn-orbital-planet");
 const btnOrbitalScan = el<HTMLButtonElement>("btn-orbital-scan");
+
+const ORBITAL_CAMERA_OPTIONS: ReadonlyArray<{ slug: string; label: string }> = [
+  { slug: "drone_alpha", label: "CAM-01 · Drone Alpha (Wide)" },
+  { slug: "drone_beta", label: "CAM-02 · Drone Beta (Patrol)" },
+  { slug: "hangar_approach", label: "CAM-03 · Hangar Approach" },
+  { slug: "pad_a", label: "CAM-04 · Pad-A Hangar Bay" },
+  { slug: "pad_b", label: "CAM-05 · Pad-B Port Deck" },
+  { slug: "pad_c", label: "CAM-06 · Pad-C Stbd Deck" },
+  { slug: "ops_deck", label: "CAM-07 · Ops Command Deck" },
+  { slug: "concourse", label: "CAM-08 · Concourse Walk" },
+  { slug: "reactor", label: "CAM-09 · Reactor Chamber" },
+  { slug: "ship_nose", label: "UPLINK-1 · Live Ship Nose" },
+  { slug: "ship_dorsal", label: "UPLINK-2 · Live Ship Dorsal" },
+];
+
+for (const sel of [
+  selectOrbitalPrimary,
+  selectOrbitalPip0,
+  selectOrbitalPip1,
+  selectOrbitalGrid0,
+  selectOrbitalGrid1,
+  selectOrbitalGrid2,
+  selectOrbitalGrid3,
+]) {
+  for (const opt of ORBITAL_CAMERA_OPTIONS) {
+    const o = document.createElement("option");
+    o.value = opt.slug;
+    o.textContent = opt.label;
+    sel.appendChild(o);
+  }
+}
 
 // Schedule Controls
 const selectScheduleMode = el<HTMLSelectElement>("select-schedule-mode");
@@ -826,7 +874,6 @@ const btnCopyState = el<HTMLButtonElement>("btn-copy-state");
 const formImportWorld = el<HTMLFormElement>("form-import-world");
 const inputImportWorld = el<HTMLInputElement>("input-import-world");
 const btnImportWorld = el<HTMLButtonElement>("btn-import-world");
-const shareNotification = el<HTMLDivElement>("share-notification");
 
 // Actions & Displays
 const btnInteractive = el<HTMLButtonElement>("btn-interactive");
@@ -912,7 +959,6 @@ const btnSpawnHedgehog = el<HTMLButtonElement>("btn-spawn-hedgehog");
 const btnSpawnRabbit = el<HTMLButtonElement>("btn-spawn-rabbit");
 const btnScatterSnacks = el<HTMLButtonElement>("btn-scatter-snacks");
 const btnDebugResetWorld = el<HTMLButtonElement>("btn-debug-reset-world");
-const debugMsgStatus = el<HTMLSpanElement>("debug-msg-status");
 
 type HotkeyTarget =
   | { kind: "interaction" }
@@ -1374,20 +1420,186 @@ function formatAge(secs: number): string {
   return `${days}d ${remHours}h`;
 }
 
+type DocumentWithAriaNotify = Document & {
+  ariaNotify?: (announcement: string) => void;
+};
+
+const HAS_NATIVE_POPOVER =
+  typeof HTMLElement !== "undefined" &&
+  Object.hasOwn(HTMLElement.prototype, "popover");
+const HAS_ARIA_NOTIFY =
+  typeof (document as DocumentWithAriaNotify).ariaNotify === "function";
+
+if (HAS_ARIA_NOTIFY) {
+  toastMessage.removeAttribute("aria-live");
+}
+
+let supportsDisplayTransition: boolean | undefined;
+function canTransitionDisplay(): boolean {
+  if (supportsDisplayTransition !== undefined) return supportsDisplayTransition;
+  if (!window.CSS?.supports?.("transition-behavior", "allow-discrete") || !document.body) {
+    return false;
+  }
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "transition: display 1s allow-discrete !important; display: block;";
+  document.body.appendChild(probe);
+  getComputedStyle(probe).display;
+  probe.style.display = "none";
+  supportsDisplayTransition = getComputedStyle(probe).display === "block";
+  probe.remove();
+  return supportsDisplayTransition;
+}
+
+function supportsTopLayerExit(): boolean {
+  return Boolean(window.CSS?.supports?.("overlay", "auto") && canTransitionDisplay());
+}
+
+function isToastOpen(): boolean {
+  if (HAS_NATIVE_POPOVER) {
+    return toastNotification.matches(":popover-open");
+  }
+  return toastNotification.classList.contains(":popover-open");
+}
+
 let notificationTimer: number | null = null;
-function showNotification(iconName: IconName | string, msg: string): void {
-  iconLabel(seedNotification, iconName, msg);
-  seedNotification.hidden = false;
-  iconLabel(debugMsgStatus, iconName, msg);
-  debugMsgStatus.hidden = false;
+let toastTriggerEl: HTMLElement | null = null;
+let toastPendingDismissAfterBlur = false;
+
+function restoreFocusAfterToastDismiss(): void {
+  const target = toastTriggerEl;
+  toastTriggerEl = null;
+  if (
+    target &&
+    target.isConnected &&
+    !target.closest("[hidden]") &&
+    typeof target.focus === "function"
+  ) {
+    target.focus();
+  }
+}
+
+async function closeTopLayerToast(restoreFocus: boolean): Promise<void> {
+  if (!isToastOpen()) return;
+  if (!supportsTopLayerExit()) {
+    toastNotification.setAttribute("data-closing", "");
+    const animations = toastNotification.getAnimations({ subtree: true });
+    if (animations.length > 0) {
+      await Promise.race([
+        Promise.allSettled(animations.map((a) => a.finished)),
+        new Promise((r) => window.setTimeout(r, 400)),
+      ]);
+    }
+    if (!toastNotification.hasAttribute("data-closing")) return;
+    toastNotification.removeAttribute("data-closing");
+  }
+
+  if (HAS_NATIVE_POPOVER) {
+    try {
+      toastNotification.hidePopover();
+    } catch {
+      // Already closed
+    }
+  } else {
+    toastNotification.classList.remove(":popover-open");
+  }
+
+  if (restoreFocus) {
+    restoreFocusAfterToastDismiss();
+  }
+}
+
+function scheduleToastDismiss(delayMs: number): void {
   if (notificationTimer !== null) {
     window.clearTimeout(notificationTimer);
   }
   notificationTimer = window.setTimeout(() => {
-    seedNotification.hidden = true;
-    debugMsgStatus.hidden = true;
     notificationTimer = null;
-  }, 2800);
+    if (toastNotification.contains(document.activeElement)) {
+      toastPendingDismissAfterBlur = true;
+      return;
+    }
+    void closeTopLayerToast(false);
+  }, delayMs);
+}
+
+toastNotification.addEventListener("focusout", (ev) => {
+  const next = ev.relatedTarget as Node | null;
+  if (toastPendingDismissAfterBlur && (!next || !toastNotification.contains(next))) {
+    toastPendingDismissAfterBlur = false;
+    scheduleToastDismiss(1200);
+  }
+});
+
+btnToastDismiss.addEventListener("click", (ev) => {
+  if (notificationTimer !== null) {
+    window.clearTimeout(notificationTimer);
+    notificationTimer = null;
+  }
+  toastPendingDismissAfterBlur = false;
+  if (!HAS_NATIVE_POPOVER || !supportsTopLayerExit()) {
+    ev.preventDefault();
+    void closeTopLayerToast(true);
+  } else {
+    // Native popovertargetaction="hide" closes it; restore focus on the next frame
+    window.requestAnimationFrame(() => {
+      if (!isToastOpen()) {
+        restoreFocusAfterToastDismiss();
+      }
+    });
+  }
+});
+
+toastNotification.addEventListener("toggle", (ev) => {
+  const toggleEv = ev as ToggleEvent;
+  if (toggleEv.newState === "closed") {
+    toastNotification.removeAttribute("data-closing");
+    toastPendingDismissAfterBlur = false;
+    if (notificationTimer !== null) {
+      window.clearTimeout(notificationTimer);
+      notificationTimer = null;
+    }
+  }
+});
+
+function showNotification(
+  iconName: IconName | string,
+  msg: string,
+  options?: { isError?: boolean; durationMs?: number },
+): void {
+  const isError = options?.isError ?? false;
+  const durationMs = options?.durationMs ?? 2800;
+
+  if (
+    document.activeElement instanceof HTMLElement &&
+    !toastNotification.contains(document.activeElement)
+  ) {
+    toastTriggerEl = document.activeElement;
+  }
+
+  toastNotification.removeAttribute("data-closing");
+  toastPendingDismissAfterBlur = false;
+  if (isError) {
+    toastNotification.dataset.variant = "error";
+  } else {
+    delete toastNotification.dataset.variant;
+  }
+
+  iconLabel(toastMessage, isError ? "warning" : iconName, msg);
+
+  if (HAS_NATIVE_POPOVER) {
+    if (!toastNotification.matches(":popover-open")) {
+      toastNotification.showPopover();
+    }
+  } else {
+    toastNotification.classList.add(":popover-open");
+  }
+
+  if (HAS_ARIA_NOTIFY) {
+    (document as DocumentWithAriaNotify).ariaNotify?.(msg);
+  }
+
+  scheduleToastDismiss(durationMs);
 }
 
 function formatSimSpeed(speed: number): string {
@@ -1397,18 +1609,8 @@ function formatSimSpeed(speed: number): string {
   return `${speed.toFixed(1)}x`;
 }
 
-let shareNotificationTimer: number | null = null;
 function showShareNotification(iconName: IconName, msg: string, isError = false): void {
-  iconLabel(shareNotification, isError ? "warning" : iconName, msg);
-  shareNotification.style.color = isError ? "var(--danger)" : "var(--ok)";
-  shareNotification.hidden = false;
-  if (shareNotificationTimer !== null) {
-    window.clearTimeout(shareNotificationTimer);
-  }
-  shareNotificationTimer = window.setTimeout(() => {
-    shareNotification.hidden = true;
-    shareNotificationTimer = null;
-  }, 3500);
+  showNotification(iconName, msg, { isError, durationMs: 3500 });
 }
 
 function renderStatus(s: HostStatus): void {
@@ -1571,13 +1773,42 @@ function renderStatus(s: HostStatus): void {
     btnNebulaChart.classList.toggle("active", Boolean(s.nebula.star_chart_enabled));
   }
 
-  // Orbital Haven Stats
+  // Orbital Haven Stats & Direct Camera/Layout/Theme Sync
   if (s.orbital) {
-    statOrbitalModules.textContent = `${s.orbital.active_feed_code} · ${s.orbital.active_feed_label}`;
-    const dirLabel = s.orbital.auto_director ? "AUTO" : "LOCKED";
-    statOrbitalSolar.textContent = `${s.orbital.layout} · ${dirLabel}`;
-    statOrbitalRings.textContent = `${s.orbital.station_event} · ${s.orbital.palette}`;
-    statOrbitalShuttles.textContent = `${s.orbital.active_ships} Ships · ${s.orbital.uplink_callsign}`;
+    const o = s.orbital;
+    statOrbitalModules.textContent = `${o.active_feed_code} · ${o.active_feed_label}`;
+    const dirLabel = o.auto_director ? "AUTO" : "LOCKED";
+    statOrbitalSolar.textContent = `${o.layout} · ${dirLabel}`;
+    statOrbitalRings.textContent = `${o.station_event} · ${o.palette}`;
+    statOrbitalShuttles.textContent = `${o.active_ships} Ships · ${o.uplink_callsign}`;
+
+    btnOrbitalLayoutSingle.classList.toggle("active", o.layout_slug === "single");
+    btnOrbitalLayoutPip.classList.toggle("active", o.layout_slug === "pip");
+    btnOrbitalLayoutGrid.classList.toggle("active", o.layout_slug === "grid2x2");
+
+    const isGrid = o.layout_slug === "grid2x2";
+    orbitalFeedsGrid.hidden = !isGrid;
+    orbitalFeedsSinglePip.hidden = isGrid;
+    orbitalPipRow.hidden = o.layout_slug !== "pip";
+
+    const syncSelect = (sel: HTMLSelectElement, val: string) => {
+      if (document.activeElement !== sel && sel.value !== val) {
+        sel.value = val;
+      }
+    };
+    syncSelect(selectOrbitalPrimary, o.primary_feed_slug);
+    syncSelect(selectOrbitalPip0, o.pip_feed_slugs[0]);
+    syncSelect(selectOrbitalPip1, o.pip_feed_slugs[1]);
+    syncSelect(selectOrbitalGrid0, o.grid_feed_slugs[0]);
+    syncSelect(selectOrbitalGrid1, o.grid_feed_slugs[1]);
+    syncSelect(selectOrbitalGrid2, o.grid_feed_slugs[2]);
+    syncSelect(selectOrbitalGrid3, o.grid_feed_slugs[3]);
+    syncSelect(selectOrbitalPalette, o.palette_slug);
+
+    btnOrbitalDirector.classList.toggle("active", o.auto_director);
+    lblOrbitalDirector.textContent = o.auto_director
+      ? "Auto-Director: ON"
+      : "Auto-Director: OFF";
   }
 
   // Dynamic SDK App Stats & Controls
@@ -2059,15 +2290,57 @@ sliderNebulaColorSpeed.addEventListener("change", () => {
   sendNebulaColorSpeed(Number(sliderNebulaColorSpeed.value));
 });
 
-// Orbital Haven Action Handlers
-btnOrbitalModule.addEventListener("click", () => {
+// Orbital Haven Direct Controls & Action Handlers
+for (const btn of [btnOrbitalLayoutSingle, btnOrbitalLayoutPip, btnOrbitalLayoutGrid]) {
+  btn.addEventListener("click", () => {
+    const layoutSlug = btn.dataset.layout || "pip";
+    runActionWithFeedback(
+      btn,
+      "hexagon",
+      "Switching monitor layout…",
+      () => api.executeAppAction("orbital-haven", `set_layout:${layoutSlug}`),
+      (s) => `Monitor layout: ${s.orbital?.layout || layoutSlug}`,
+    );
+  });
+}
+
+const bindOrbitalSelect = (
+  sel: HTMLSelectElement,
+  actionPrefix: string,
+  feedbackPrefix: string,
+) => {
+  sel.addEventListener("change", () => {
+    const val = sel.value;
+    void api
+      .executeAppAction("orbital-haven", `${actionPrefix}${val}`)
+      .then((s) => {
+        renderStatus(s);
+        const label = sel.selectedOptions[0]?.textContent || val;
+        showNotification("satellite", `${feedbackPrefix}: ${label}`);
+      })
+      .catch((err) => showNotification("warning", String(err)));
+  });
+};
+
+bindOrbitalSelect(selectOrbitalPrimary, "select_camera:", "Primary feed");
+bindOrbitalSelect(selectOrbitalPip0, "set_pip:0:", "PiP Top");
+bindOrbitalSelect(selectOrbitalPip1, "set_pip:1:", "PiP Bottom");
+bindOrbitalSelect(selectOrbitalGrid0, "set_grid:0:", "Top-Left quadrant");
+bindOrbitalSelect(selectOrbitalGrid1, "set_grid:1:", "Top-Right quadrant");
+bindOrbitalSelect(selectOrbitalGrid2, "set_grid:2:", "Bottom-Left quadrant");
+bindOrbitalSelect(selectOrbitalGrid3, "set_grid:3:", "Bottom-Right quadrant");
+bindOrbitalSelect(selectOrbitalPalette, "set_palette:", "Visual theme");
+
+btnOrbitalDirector.addEventListener("click", () => {
   runActionWithFeedback(
-    btnOrbitalModule,
+    btnOrbitalDirector,
     "satellite",
-    "Switching CCTV surveillance feed…",
-    () => api.executeAppAction("orbital-haven", "cycle_camera"),
+    "Toggling Auto-Director…",
+    () => api.executeAppAction("orbital-haven", "toggle_director"),
     (s) =>
-      `Feed: ${s.orbital?.active_feed_code || "CAM"} · ${s.orbital?.active_feed_label || "Switched"}`,
+      s.orbital?.auto_director
+        ? "Auto-Director enabled"
+        : "Auto-Director locked on current feed",
   );
 });
 
@@ -2077,26 +2350,6 @@ btnOrbitalLaunch.addEventListener("click", () => {
     "rocket-launch",
     "Inbound spacecraft cleared for HELIOS-09 approach!",
     () => api.executeAppAction("orbital-haven", "dispatch_ship"),
-  );
-});
-
-btnOrbitalFocus.addEventListener("click", () => {
-  runActionWithFeedback(
-    btnOrbitalFocus,
-    "hexagon",
-    "Switching monitor layout…",
-    () => api.executeAppAction("orbital-haven", "cycle_layout"),
-    (s) => `Monitor layout: ${s.orbital?.layout || "Updated"}`,
-  );
-});
-
-btnOrbitalPlanet.addEventListener("click", () => {
-  runActionWithFeedback(
-    btnOrbitalPlanet,
-    "palette",
-    "Switching Y2K visual theme…",
-    () => api.executeAppAction("orbital-haven", "cycle_palette"),
-    (s) => `Theme: ${s.orbital?.palette || "Updated"}`,
   );
 });
 
@@ -2134,7 +2387,7 @@ btnQuickSnapshot.addEventListener("click", async () => {
     const path = await api.captureSnapshot();
     showNotification("camera", `Snapshot saved: ${path}`);
   } catch (err) {
-    showNotification("warning", `Snapshot failed: ${err}`);
+    showNotification("warning", `Snapshot failed: ${err}`, { isError: true });
   } finally {
     btnQuickSnapshot.disabled = false;
   }

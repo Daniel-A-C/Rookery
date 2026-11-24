@@ -382,22 +382,80 @@
                 <span id="stat-orbital-shuttles" class="stat-value">4 Ships · USV-ICARUS</span>
               </div>
             </div>
+
+            <!-- Direct Layout Mode Selector -->
+            <div class="orbital-control-group">
+              <span class="orbital-group-label">Monitor Layout</span>
+              <div class="orbital-segmented" role="group" aria-label="Monitor Layout">
+                <button id="btn-orbital-layout-single" class="btn small orbital-seg-btn" type="button" data-layout="single">Single</button>
+                <button id="btn-orbital-layout-pip" class="btn small orbital-seg-btn active" type="button" data-layout="pip">Main + PiP</button>
+                <button id="btn-orbital-layout-grid" class="btn small orbital-seg-btn" type="button" data-layout="grid2x2">2×2 Grid</button>
+              </div>
+            </div>
+
+            <!-- Single / Main+PiP Direct Camera Selectors -->
+            <div id="orbital-feeds-single-pip" class="orbital-control-group">
+              <label class="orbital-select-row" for="select-orbital-primary">
+                <span>Primary Feed</span>
+                <select id="select-orbital-primary" class="select-input orbital-cam-select"></select>
+              </label>
+              <div id="orbital-pip-row" class="orbital-quad-grid">
+                <label class="orbital-quad-cell" for="select-orbital-pip0">
+                  <span>PiP Top</span>
+                  <select id="select-orbital-pip0" class="select-input orbital-cam-select"></select>
+                </label>
+                <label class="orbital-quad-cell" for="select-orbital-pip1">
+                  <span>PiP Bottom</span>
+                  <select id="select-orbital-pip1" class="select-input orbital-cam-select"></select>
+                </label>
+              </div>
+            </div>
+
+            <!-- 2x2 Quadrant Camera Assignment Matrix -->
+            <div id="orbital-feeds-grid" class="orbital-control-group" hidden>
+              <span class="orbital-group-label">2×2 Quadrant Cameras</span>
+              <div class="orbital-quad-grid">
+                <label class="orbital-quad-cell" for="select-orbital-grid0">
+                  <span>Top-Left</span>
+                  <select id="select-orbital-grid0" class="select-input orbital-cam-select"></select>
+                </label>
+                <label class="orbital-quad-cell" for="select-orbital-grid1">
+                  <span>Top-Right</span>
+                  <select id="select-orbital-grid1" class="select-input orbital-cam-select"></select>
+                </label>
+                <label class="orbital-quad-cell" for="select-orbital-grid2">
+                  <span>Bottom-Left</span>
+                  <select id="select-orbital-grid2" class="select-input orbital-cam-select"></select>
+                </label>
+                <label class="orbital-quad-cell" for="select-orbital-grid3">
+                  <span>Bottom-Right</span>
+                  <select id="select-orbital-grid3" class="select-input orbital-cam-select"></select>
+                </label>
+              </div>
+            </div>
+
+            <!-- Direct Y2K Visual Theme Selector -->
+            <div class="orbital-control-group">
+              <label class="orbital-select-row" for="select-orbital-palette">
+                <span>Visual Theme</span>
+                <select id="select-orbital-palette" class="select-input">
+                  <option value="unatco">UNATCO Cobalt</option>
+                  <option value="von_braun">Von Braun Industrial</option>
+                  <option value="versalife">VersaLife Gold</option>
+                  <option value="shodan">SHODAN Cyber</option>
+                </select>
+              </label>
+            </div>
+
+            <!-- Quick Station Actions -->
             <div class="rookery-actions">
               <button
-                id="btn-orbital-module"
+                id="btn-orbital-director"
                 class="btn game-cmd-btn small"
                 type="button"
-                title="Cycle primary CCTV feed (drones, pads, interiors, and live ship uplinks)"
+                title="Toggle automatic camera director switching"
               >
-                <rk-icon name="satellite"></rk-icon><span>Next Camera</span>
-              </button>
-              <button
-                id="btn-orbital-focus"
-                class="btn game-cmd-btn small"
-                type="button"
-                title="Switch viewport layout (Single Feed, Main + 2 PiP, 2x2 CCTV Wall)"
-              >
-                <rk-icon name="hexagon"></rk-icon><span>Cycle Layout</span>
+                <rk-icon name="satellite"></rk-icon><span id="lbl-orbital-director">Auto-Director: ON</span>
               </button>
               <button
                 id="btn-orbital-launch"
@@ -406,14 +464,6 @@
                 title="Dispatch an inbound spacecraft to the least busy landing pad"
               >
                 <rk-icon name="rocket-launch"></rk-icon><span>Dispatch Ship</span>
-              </button>
-              <button
-                id="btn-orbital-planet"
-                class="btn game-cmd-btn small"
-                type="button"
-                title="Switch Y2K visual palette (UNATCO Cobalt, Von Braun, VersaLife Gold, SHODAN)"
-              >
-                <rk-icon name="palette"></rk-icon><span>Visual Theme</span>
               </button>
               <button
                 id="btn-orbital-scan"
@@ -426,8 +476,6 @@
             </div>
           </section>
         </div>
-
-        <div id="seed-notification" class="notification-text" role="status" aria-live="polite" hidden></div>
 
         <!-- Primary Bottom Command Strip -->
         <section class="actions-row">
@@ -829,7 +877,6 @@
                 Import
               </button>
             </form>
-            <div id="share-notification" class="notification-text" role="status" aria-live="polite" hidden></div>
           </section>
 
           <!-- In-App Auto-Updater Card -->
@@ -1166,7 +1213,6 @@
               <button id="btn-debug-reset-world" class="btn small danger game-cmd-btn" type="button" title="Reset forest world to initial state">
                 <rk-icon name="arrow-clockwise"></rk-icon><span>Reset World to Default</span>
               </button>
-              <span id="debug-msg-status" class="notification-text" role="status" aria-live="polite" hidden></span>
             </div>
           </section>
         </div>
@@ -1177,6 +1223,24 @@
             <rk-icon name="power"></rk-icon><span>Quit Rookery</span>
           </button>
         </footer>
+      </div>
+
+      <!-- Unified Top-Layer Toast Region (never shifts layout) -->
+      <div id="toast-region" class="toast-region" role="region" aria-label="Notifications">
+        <div id="toast-notification" class="toast-notification" popover="manual">
+          <span id="toast-message" class="toast-message" role="status" aria-live="polite"></span>
+          <button
+            id="btn-toast-dismiss"
+            class="toast-dismiss-btn"
+            type="button"
+            popovertarget="toast-notification"
+            popovertargetaction="hide"
+            aria-label="Dismiss notification"
+            title="Dismiss"
+          >
+            <rk-icon name="x"></rk-icon>
+          </button>
+        </div>
       </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
