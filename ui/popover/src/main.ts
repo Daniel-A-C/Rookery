@@ -6,6 +6,7 @@ import {
   HostStatus,
   ScheduleMode,
   Settings,
+  SettingsPatch,
 } from "./api";
 import { updater } from "./updater";
 import { icon, iconLabel, setIcon, type IconName } from "./icons/icon";
@@ -42,25 +43,91 @@ const libraryGrid = el<HTMLUListElement>("library-grid");
 const filterPills = libraryFilterBar.querySelectorAll<HTMLButtonElement>(".filter-pill");
 
 // Settings Sub-Tabs
-const settingsPanels: Record<string, HTMLElement> = {
+type SettingsTab = "general" | "controls" | "share" | "debug";
+const settingsSubnav = document.querySelector<HTMLElement>(".settings-subnav");
+const settingsPanels: Record<SettingsTab, HTMLElement> = {
   general: el<HTMLElement>("settings-panel-general"),
   controls: el<HTMLElement>("settings-panel-controls"),
   share: el<HTMLElement>("settings-panel-share"),
   debug: el<HTMLElement>("settings-panel-debug"),
 };
-const settingsNavBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav-btn");
+const settingsNavBtns = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".settings-nav-btn"),
+);
+const debugSettingsNavBtn = el<HTMLButtonElement>("tab-settings-debug");
+let activeSettingsTab: SettingsTab = "general";
+
+function setActiveSettingsTab(tab: SettingsTab, focusTab = false): void {
+  cancelRecordingHotkey();
+  clearResetConfirm();
+  const resolvedTab: SettingsTab =
+    tab === "debug" && debugSettingsNavBtn.hidden ? "general" : tab;
+  activeSettingsTab = resolvedTab;
+
+  for (const btn of settingsNavBtns) {
+    const isSelected = btn.getAttribute("data-settings-tab") === resolvedTab;
+    btn.setAttribute("aria-selected", String(isSelected));
+    btn.tabIndex = isSelected ? 0 : -1;
+    if (isSelected) {
+      btn.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (focusTab) btn.focus();
+    }
+  }
+  for (const [key, panel] of Object.entries(settingsPanels)) {
+    panel.hidden = key !== resolvedTab;
+  }
+  viewSettings.scrollTop = 0;
+}
 
 for (const navBtn of settingsNavBtns) {
   navBtn.addEventListener("click", () => {
-    cancelRecordingHotkey();
-    const targetTab = navBtn.getAttribute("data-settings-tab") || "general";
-    for (const b of settingsNavBtns) {
-      b.classList.toggle("active", b === navBtn);
-    }
-    for (const [key, panel] of Object.entries(settingsPanels)) {
-      panel.hidden = key !== targetTab;
-    }
+    const targetTab = (navBtn.getAttribute("data-settings-tab") || "general") as SettingsTab;
+    setActiveSettingsTab(targetTab);
   });
+}
+
+settingsSubnav?.addEventListener("keydown", (ev) => {
+  const visibleTabs = settingsNavBtns.filter((btn) => !btn.hidden);
+  if (visibleTabs.length === 0) return;
+  const currentIdx = visibleTabs.indexOf(document.activeElement as HTMLButtonElement);
+  if (currentIdx === -1) return;
+
+  let nextIdx: number | null = null;
+  if (ev.key === "ArrowRight") {
+    nextIdx = (currentIdx + 1) % visibleTabs.length;
+  } else if (ev.key === "ArrowLeft") {
+    nextIdx = (currentIdx - 1 + visibleTabs.length) % visibleTabs.length;
+  } else if (ev.key === "Home") {
+    nextIdx = 0;
+  } else if (ev.key === "End") {
+    nextIdx = visibleTabs.length - 1;
+  }
+
+  if (nextIdx !== null) {
+    ev.preventDefault();
+    const nextTab = (visibleTabs[nextIdx].getAttribute("data-settings-tab") ||
+      "general") as SettingsTab;
+    setActiveSettingsTab(nextTab, true);
+  }
+});
+
+function syncSettingsForActiveApp(appId: string): void {
+  const isLivingRookery = appId === "living-rookery";
+  debugSettingsNavBtn.hidden = !isLivingRookery;
+  if (!isLivingRookery && activeSettingsTab === "debug") {
+    setActiveSettingsTab("general");
+  }
+
+  const supportsSeedExport =
+    appId === "living-rookery" || appId === "orbital-haven";
+  btnCopySeed.disabled = !supportsSeedExport;
+  btnCopyState.disabled = !supportsSeedExport;
+  btnCopySeed.title = supportsSeedExport
+    ? "Copy shareable World Seed URI"
+    : "World seed export is available for Living Rookery and Orbital Haven";
+  btnCopyState.title = supportsSeedExport
+    ? "Copy full World State snapshot"
+    : "World state export is available for Living Rookery and Orbital Haven";
 }
 
 const DEFAULT_HOTKEY = "CommandOrControl+Alt+Shift+P";
@@ -132,6 +199,9 @@ let favoriteHotkeys: string[] = defaultFavoriteHotkeys();
 
 function setActiveView(view: ActiveView): void {
   cancelRecordingHotkey();
+  if (view !== "settings") {
+    clearResetConfirm();
+  }
   activeView = view;
   const isLibrary = view === "library";
   const isSettings = view === "settings";
@@ -149,6 +219,7 @@ function setActiveView(view: ActiveView): void {
   if (isSettings) {
     setIcon(settingsToggleIcon, "caret-left");
     settingsToggleLabel.textContent = "Realm";
+    viewSettings.scrollTop = 0;
   } else {
     setIcon(settingsToggleIcon, "settings");
     settingsToggleLabel.textContent = "Settings";
@@ -615,6 +686,8 @@ function applyThemeForApp(appId: string, force = false): void {
   for (const [id, cardEl] of Object.entries(cards)) {
     cardEl.hidden = id !== appId;
   }
+
+  syncSettingsForActiveApp(appId);
 }
 
 async function selectRealm(appId: string): Promise<void> {
@@ -735,6 +808,7 @@ const btnRecordLoop = el<HTMLButtonElement>("btn-record-loop");
 const btnRecordVideo = el<HTMLButtonElement>("btn-record-video");
 const btnCopySeed = el<HTMLButtonElement>("btn-copy-seed");
 const btnCopyState = el<HTMLButtonElement>("btn-copy-state");
+const formImportWorld = el<HTMLFormElement>("form-import-world");
 const inputImportWorld = el<HTMLInputElement>("input-import-world");
 const btnImportWorld = el<HTMLButtonElement>("btn-import-world");
 const shareNotification = el<HTMLDivElement>("share-notification");
@@ -1357,7 +1431,7 @@ function renderStatus(s: HostStatus): void {
   }
 
   // Living Rookery Stats
-  if (s.rookery) {
+  if (s.rookery && activeApp === "living-rookery") {
     statAge.textContent = formatAge(s.rookery.total_age_secs);
     statBranches.textContent = String(s.rookery.total_branches);
     statFoliage.textContent = String(s.rookery.total_foliage);
@@ -1514,7 +1588,9 @@ function renderStatus(s: HostStatus): void {
   }
 
   // Schedule Mode
-  selectScheduleMode.value = s.schedule_mode;
+  if (document.activeElement !== selectScheduleMode) {
+    selectScheduleMode.value = s.schedule_mode;
+  }
   const isInterval = s.schedule_mode === "interval";
   intervalGroup.hidden = !isInterval;
   sliderInterval.hidden = !isInterval;
@@ -1583,10 +1659,27 @@ function renderStatus(s: HostStatus): void {
   if (s.audio) {
     chkAudioEnabled.checked = s.audio.enabled;
     audioControlsGroup.hidden = !s.audio.enabled;
-    const volPct = Math.round(s.audio.volume * 100);
-    sliderVolume.value = String(volPct);
-    valVolume.textContent = `${volPct}%`;
+    if (document.activeElement !== sliderVolume) {
+      const volPct = Math.round(s.audio.volume * 100);
+      sliderVolume.value = String(volPct);
+      sliderVolume.setAttribute("aria-valuetext", `${volPct}%`);
+      valVolume.textContent = `${volPct}%`;
+    }
     chkAudioDirectMode.checked = s.audio.direct_mode_only;
+  }
+}
+
+async function patchSettings(patch: SettingsPatch, label: string): Promise<boolean> {
+  try {
+    const st = await api.updateSettings(patch);
+    renderSettings(st);
+    return true;
+  } catch (err) {
+    console.error(`updateSettings (${label}) error:`, err);
+    if (currentSettings) {
+      renderSettings(currentSettings);
+    }
+    return false;
   }
 }
 
@@ -1616,13 +1709,16 @@ function renderSettings(st: Settings): void {
     audioControlsGroup.hidden = !st.audio.enabled;
     const volPct = Math.round(st.audio.volume * 100);
     sliderVolume.value = String(volPct);
+    sliderVolume.setAttribute("aria-valuetext", `${volPct}%`);
     valVolume.textContent = `${volPct}%`;
     chkAudioDirectMode.checked = st.audio.direct_mode_only;
   }
   sliderPassive.value = String(st.frame.passive_fps);
+  sliderPassive.setAttribute("aria-valuetext", `${st.frame.passive_fps} fps`);
   valPassive.textContent = `${st.frame.passive_fps} fps`;
 
   sliderLowPower.value = String(st.frame.low_power_fps);
+  sliderLowPower.setAttribute("aria-valuetext", `${st.frame.low_power_fps} fps`);
   valLowPower.textContent = `${st.frame.low_power_fps} fps`;
 
   chkBattery.checked = st.frame.pause_on_battery;
@@ -1649,6 +1745,7 @@ function renderSettings(st: Settings): void {
 
   selectScheduleMode.value = st.schedule_mode;
   sliderInterval.value = String(st.schedule_interval_mins);
+  sliderInterval.setAttribute("aria-valuetext", `${st.schedule_interval_mins} mins`);
   valInterval.textContent = `${st.schedule_interval_mins} mins`;
   const isInterval = st.schedule_mode === "interval";
   intervalGroup.hidden = !isInterval;
@@ -1857,28 +1954,20 @@ btnOrbitalScan.addEventListener("click", () => {
 });
 
 // Schedule Mode Selection
-selectScheduleMode.addEventListener("change", async () => {
+selectScheduleMode.addEventListener("change", () => {
   const mode = selectScheduleMode.value as ScheduleMode;
-  try {
-    const st = await api.updateSettings({ schedule_mode: mode });
-    renderSettings(st);
-  } catch (err) {
-    console.error("update schedule mode error:", err);
-  }
+  void patchSettings({ schedule_mode: mode }, "schedule_mode");
 });
 
 sliderInterval.addEventListener("input", () => {
-  valInterval.textContent = `${sliderInterval.value} mins`;
+  const label = `${sliderInterval.value} mins`;
+  sliderInterval.setAttribute("aria-valuetext", label);
+  valInterval.textContent = label;
 });
 
-sliderInterval.addEventListener("change", async () => {
+sliderInterval.addEventListener("change", () => {
   const mins = parseInt(sliderInterval.value, 10);
-  try {
-    const st = await api.updateSettings({ schedule_interval_mins: mins });
-    renderSettings(st);
-  } catch (err) {
-    console.error("update schedule interval error:", err);
-  }
+  void patchSettings({ schedule_interval_mins: mins }, "schedule_interval_mins");
 });
 
 // Share & Capture
@@ -1952,9 +2041,11 @@ btnCopyState.addEventListener("click", async () => {
   }
 });
 
-btnImportWorld.addEventListener("click", async () => {
+formImportWorld.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
   const text = inputImportWorld.value.trim();
   if (!text) return;
+  btnImportWorld.disabled = true;
   try {
     const s = await api.importWorldString(text);
     renderStatus(s);
@@ -1962,6 +2053,8 @@ btnImportWorld.addEventListener("click", async () => {
     showShareNotification("check-circle", "World imported successfully!");
   } catch (err) {
     showShareNotification("warning", `Import failed: ${err}`, true);
+  } finally {
+    btnImportWorld.disabled = false;
   }
 });
 
@@ -1998,42 +2091,25 @@ btnPause.addEventListener("click", async () => {
 
 // Settings & Hotkeys
 sliderPassive.addEventListener("input", () => {
-  valPassive.textContent = `${sliderPassive.value} fps`;
+  const label = `${sliderPassive.value} fps`;
+  sliderPassive.setAttribute("aria-valuetext", label);
+  valPassive.textContent = label;
 });
-sliderPassive.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      passive_fps: Number(sliderPassive.value),
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+sliderPassive.addEventListener("change", () => {
+  void patchSettings({ passive_fps: Number(sliderPassive.value) }, "passive_fps");
 });
 
 sliderLowPower.addEventListener("input", () => {
-  valLowPower.textContent = `${sliderLowPower.value} fps`;
+  const label = `${sliderLowPower.value} fps`;
+  sliderLowPower.setAttribute("aria-valuetext", label);
+  valLowPower.textContent = label;
 });
-sliderLowPower.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      low_power_fps: Number(sliderLowPower.value),
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+sliderLowPower.addEventListener("change", () => {
+  void patchSettings({ low_power_fps: Number(sliderLowPower.value) }, "low_power_fps");
 });
 
-chkBattery.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      pause_on_battery: chkBattery.checked,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+chkBattery.addEventListener("change", () => {
+  void patchSettings({ pause_on_battery: chkBattery.checked }, "pause_on_battery");
 });
 
 // Menu Appearance Listeners
@@ -2044,15 +2120,11 @@ sliderMenuOpacity.addEventListener("input", () => {
   valMenuOpacity.textContent = `${pct}%`;
 });
 
-sliderMenuOpacity.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      popover_opacity: Number(sliderMenuOpacity.value) / 100,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings opacity error:", err);
-  }
+sliderMenuOpacity.addEventListener("change", () => {
+  void patchSettings(
+    { popover_opacity: Number(sliderMenuOpacity.value) / 100 },
+    "popover_opacity",
+  );
 });
 
 const sendPopoverBlurCoalesced = createCoalescedCaller(async (blur: number) => {
@@ -2067,54 +2139,34 @@ sliderMenuBlur.addEventListener("input", () => {
   sendPopoverBlurCoalesced(blur);
 });
 
-sliderMenuBlur.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      popover_blur: Number(sliderMenuBlur.value),
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings blur error:", err);
-  }
+sliderMenuBlur.addEventListener("change", () => {
+  void patchSettings({ popover_blur: Number(sliderMenuBlur.value) }, "popover_blur");
 });
 
 // Audio Subsystem Listeners
-chkAudioEnabled.addEventListener("change", async () => {
+chkAudioEnabled.addEventListener("change", () => {
   audioControlsGroup.hidden = !chkAudioEnabled.checked;
-  try {
-    const st = await api.updateSettings({
-      audio_enabled: chkAudioEnabled.checked,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+  void patchSettings({ audio_enabled: chkAudioEnabled.checked }, "audio_enabled");
 });
 
 sliderVolume.addEventListener("input", () => {
-  valVolume.textContent = `${sliderVolume.value}%`;
+  const label = `${sliderVolume.value}%`;
+  sliderVolume.setAttribute("aria-valuetext", label);
+  valVolume.textContent = label;
 });
 
-sliderVolume.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      audio_volume: Number(sliderVolume.value) / 100,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+sliderVolume.addEventListener("change", () => {
+  void patchSettings(
+    { audio_volume: Number(sliderVolume.value) / 100 },
+    "audio_volume",
+  );
 });
 
-chkAudioDirectMode.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      audio_direct_mode_only: chkAudioDirectMode.checked,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+chkAudioDirectMode.addEventListener("change", () => {
+  void patchSettings(
+    { audio_direct_mode_only: chkAudioDirectMode.checked },
+    "audio_direct_mode_only",
+  );
 });
 
 function sameHotkeyTarget(a: HotkeyTarget | null, b: HotkeyTarget | null): boolean {
@@ -2435,26 +2487,18 @@ btnQuit.addEventListener("click", () => {
 });
 
 // Update Controls Listeners
-chkAutoCheckUpdates.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      update_auto_check: chkAutoCheckUpdates.checked,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+chkAutoCheckUpdates.addEventListener("change", () => {
+  void patchSettings(
+    { update_auto_check: chkAutoCheckUpdates.checked },
+    "update_auto_check",
+  );
 });
 
-chkAutoDownloadUpdates.addEventListener("change", async () => {
-  try {
-    const st = await api.updateSettings({
-      update_auto_download: chkAutoDownloadUpdates.checked,
-    });
-    renderSettings(st);
-  } catch (err) {
-    console.error("updateSettings error:", err);
-  }
+chkAutoDownloadUpdates.addEventListener("change", () => {
+  void patchSettings(
+    { update_auto_download: chkAutoDownloadUpdates.checked },
+    "update_auto_download",
+  );
 });
 
 btnCheckUpdates.addEventListener("click", async () => {
@@ -2559,18 +2603,12 @@ chkDebugMode.addEventListener("change", async () => {
   const enabled = chkDebugMode.checked;
   badgeDebugStatus.textContent = enabled ? "Active" : "Passive";
   badgeDebugStatus.classList.toggle("active", enabled);
-  try {
-    await api.updateSettings({ debug_mode: enabled });
-    const s = await api.executeAppAction("living-rookery", "set_debug_mode", {
-      enabled,
-    });
-    renderStatus(s);
+  const ok = await patchSettings({ debug_mode: enabled }, "debug_mode");
+  if (ok) {
     showNotification(
       "code",
       enabled ? "Debug Mode & in-scene telemetry active" : "Debug Mode disabled",
     );
-  } catch (err) {
-    console.error("set debug mode error:", err);
   }
 });
 

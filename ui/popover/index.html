@@ -329,7 +329,7 @@
           </section>
         </div>
 
-        <div id="seed-notification" class="notification-text" hidden></div>
+        <div id="seed-notification" class="notification-text" role="status" aria-live="polite" hidden></div>
 
         <!-- Primary Bottom Command Strip -->
         <section class="actions-row">
@@ -409,42 +409,63 @@
       <!-- ================================================================= -->
       <div id="view-settings" class="view-pane settings-pane" hidden>
         <!-- Categorized Sub-Tabs inside Settings -->
-        <nav class="settings-subnav" aria-label="Settings Categories">
+        <div class="settings-subnav" role="tablist" aria-label="Settings Categories">
           <button
+            id="tab-settings-general"
             type="button"
-            class="settings-nav-btn active"
+            role="tab"
+            class="settings-nav-btn"
             data-settings-tab="general"
+            aria-selected="true"
+            tabindex="0"
           >
             <rk-icon name="settings"></rk-icon><span>General</span>
           </button>
           <button
+            id="tab-settings-controls"
             type="button"
+            role="tab"
             class="settings-nav-btn"
             data-settings-tab="controls"
+            aria-selected="false"
+            tabindex="-1"
           >
             <rk-icon name="gauge"></rk-icon><span>Controls &amp; FPS</span>
           </button>
           <button
+            id="tab-settings-share"
             type="button"
+            role="tab"
             class="settings-nav-btn"
             data-settings-tab="share"
+            aria-selected="false"
+            tabindex="-1"
           >
             <rk-icon name="camera"></rk-icon><span>Capture &amp; Data</span>
           </button>
           <button
+            id="tab-settings-debug"
             type="button"
+            role="tab"
             class="settings-nav-btn"
             data-settings-tab="debug"
+            aria-selected="false"
+            tabindex="-1"
           >
             <rk-icon name="code"></rk-icon><span>Debug</span>
           </button>
-        </nav>
+        </div>
 
         <!-- Settings Tab 1: General (Appearance, Schedule, Audio, Displays) -->
-        <div id="settings-panel-general" class="settings-panel">
+        <div
+          id="settings-panel-general"
+          class="settings-panel"
+          role="tabpanel"
+          aria-labelledby="tab-settings-general"
+        >
           <!-- Menu Appearance Card -->
           <section id="card-appearance" class="card">
-            <div class="section-title">Menu Appearance</div>
+            <h2 class="section-title">Menu Appearance</h2>
 
             <label class="control-row" for="slider-menu-opacity">
               <span>Menu Opacity</span>
@@ -477,7 +498,7 @@
 
           <!-- Scheduler & Playlist Card -->
           <section id="card-scheduler" class="card">
-            <div class="section-title">Playlist &amp; Schedule</div>
+            <h2 class="section-title">Playlist &amp; Schedule</h2>
             <div class="schedule-row">
               <label for="select-schedule-mode">Rotation Mode:</label>
               <select id="select-schedule-mode" class="select-input">
@@ -486,10 +507,10 @@
                 <option value="day_night">Day / Night Cycle</option>
               </select>
             </div>
-            <div id="interval-group" class="control-row" hidden>
+            <label id="interval-group" class="control-row" for="slider-interval" hidden>
               <span>Cycle Interval</span>
               <strong id="val-interval">15 mins</strong>
-            </div>
+            </label>
             <input
               id="slider-interval"
               type="range"
@@ -497,15 +518,16 @@
               max="60"
               step="5"
               value="15"
+              aria-valuetext="15 mins"
               hidden
             />
           </section>
 
           <!-- Audio Subsystem Card -->
           <section id="card-audio" class="card">
-            <div class="section-title">Audio &amp; Soundscapes</div>
+            <h2 class="section-title">Audio &amp; Soundscapes</h2>
 
-            <label class="checkbox-row">
+            <label class="checkbox-row" for="chk-audio-enabled">
               <input id="chk-audio-enabled" type="checkbox" />
               <span>Enable Ambient Soundscapes &amp; SFX</span>
             </label>
@@ -522,9 +544,10 @@
                 max="100"
                 step="1"
                 value="50"
+                aria-valuetext="50%"
               />
 
-              <label class="checkbox-row">
+              <label class="checkbox-row" for="chk-audio-direct-mode">
                 <input id="chk-audio-direct-mode" type="checkbox" />
                 <span>Sound in Direct Mode Only</span>
               </label>
@@ -533,7 +556,7 @@
 
           <!-- Displays Card -->
           <section id="card-displays" class="card">
-            <div class="section-title">Active Displays</div>
+            <h2 class="section-title">Active Displays</h2>
             <ul id="displays-list" class="displays-list" role="list">
               <li class="empty">Detecting displays…</li>
             </ul>
@@ -541,9 +564,15 @@
         </div>
 
         <!-- Settings Tab 2: Performance & Hotkeys -->
-        <div id="settings-panel-controls" class="settings-panel" hidden>
+        <div
+          id="settings-panel-controls"
+          class="settings-panel"
+          role="tabpanel"
+          aria-labelledby="tab-settings-controls"
+          hidden
+        >
           <section class="card">
-            <div class="section-title">Frame Budgets &amp; Power</div>
+            <h2 class="section-title">Frame Budgets &amp; Power</h2>
 
             <label class="control-row" for="slider-passive">
               <span>Passive FPS Cap</span>
@@ -556,6 +585,7 @@
               max="30"
               step="1"
               value="24"
+              aria-valuetext="24 fps"
             />
 
             <label class="control-row" for="slider-lowpower">
@@ -569,9 +599,10 @@
               max="15"
               step="1"
               value="12"
+              aria-valuetext="12 fps"
             />
 
-            <label class="checkbox-row">
+            <label class="checkbox-row" for="chk-battery">
               <input id="chk-battery" type="checkbox" />
               <span>Pause simulation on battery power</span>
             </label>
@@ -579,7 +610,7 @@
 
           <section class="card">
             <div class="card-header-row hotkey-card-header">
-              <div class="section-title">Global Hotkeys</div>
+              <h2 class="section-title">Global Hotkeys</h2>
               <button
                 id="btn-reset-hotkeys"
                 class="btn small game-cmd-btn hotkey-reset-btn"
@@ -632,9 +663,15 @@
         </div>
 
         <!-- Settings Tab 3: Share, Capture & Updates -->
-        <div id="settings-panel-share" class="settings-panel" hidden>
+        <div
+          id="settings-panel-share"
+          class="settings-panel"
+          role="tabpanel"
+          aria-labelledby="tab-settings-share"
+          hidden
+        >
           <section class="card share-card">
-            <div class="section-title">Capture &amp; World Seed</div>
+            <h2 class="section-title">Capture &amp; World Seed</h2>
             <div class="share-actions">
               <button
                 id="btn-snapshot"
@@ -677,25 +714,29 @@
                 <rk-icon name="package"></rk-icon><span>Copy Full World State</span>
               </button>
             </div>
-            <div class="import-group">
+            <form id="form-import-world" class="import-group">
               <label for="input-import-world" class="visually-hidden">Seed or state URI</label>
               <input
                 id="input-import-world"
+                name="world_uri"
                 type="text"
                 class="import-input"
                 placeholder="Paste seed or state URI…"
                 spellcheck="false"
+                autocorrect="off"
+                autocapitalize="none"
+                enterkeyhint="go"
               />
-              <button id="btn-import-world" class="btn small primary game-cmd-btn" type="button">
+              <button id="btn-import-world" class="btn small primary game-cmd-btn" type="submit">
                 Import
               </button>
-            </div>
-            <div id="share-notification" class="notification-text" hidden></div>
+            </form>
+            <div id="share-notification" class="notification-text" role="status" aria-live="polite" hidden></div>
           </section>
 
           <!-- In-App Auto-Updater Card -->
           <section id="card-updates" class="card">
-            <div class="section-title">Software Updates</div>
+            <h2 class="section-title">Software Updates</h2>
 
             <div class="update-header-row">
               <div class="update-version-info">
@@ -728,12 +769,12 @@
               </div>
             </div>
 
-            <label class="checkbox-row">
+            <label class="checkbox-row" for="chk-auto-check-updates">
               <input id="chk-auto-check-updates" type="checkbox" checked />
               <span>Automatically check for updates</span>
             </label>
 
-            <label class="checkbox-row">
+            <label class="checkbox-row" for="chk-auto-download-updates">
               <input id="chk-auto-download-updates" type="checkbox" checked />
               <span>Auto-download updates in background</span>
             </label>
@@ -741,14 +782,20 @@
         </div>
 
         <!-- Settings Tab 4: Debug Mode & Living Rookery Tree Inspector -->
-        <div id="settings-panel-debug" class="settings-panel" hidden>
+        <div
+          id="settings-panel-debug"
+          class="settings-panel"
+          role="tabpanel"
+          aria-labelledby="tab-settings-debug"
+          hidden
+        >
           <!-- Master Debug Toggle -->
           <section class="card">
             <div class="card-header-row">
-              <div class="section-title">Debug Mode &amp; In-Scene Telemetry</div>
+              <h2 class="section-title">Debug Mode &amp; In-Scene Telemetry</h2>
               <span id="badge-debug-status" class="badge-pill">Passive</span>
             </div>
-            <label class="checkbox-row">
+            <label class="checkbox-row" for="chk-debug-mode">
               <input id="chk-debug-mode" type="checkbox" />
               <span>Enable Living Rookery Debug Mode &amp; On-Screen Diagnostics</span>
             </label>
@@ -759,7 +806,7 @@
 
           <!-- Mature Tree Generator & Variety Inspector -->
           <section class="card">
-            <div class="section-title">Mature Tree Generator &amp; Variety Explorer</div>
+            <h2 class="section-title">Mature Tree Generator &amp; Variety Explorer</h2>
             <p class="field-hint">
               Select any tree archetype to view its fully mature architectural design and explore procedural variety across different seeds.
             </p>
@@ -796,6 +843,7 @@
                     class="btn small icon-only"
                     type="button"
                     title="Reroll Seed"
+                    aria-label="Reroll variation seed"
                   >
                     <rk-icon name="arrow-clockwise"></rk-icon>
                   </button>
@@ -850,6 +898,7 @@
                   class="btn small icon-only"
                   type="button"
                   title="Focus Previous Tree"
+                  aria-label="Focus previous tree"
                 >
                   <rk-icon name="caret-left"></rk-icon>
                 </button>
@@ -861,6 +910,7 @@
                   class="btn small icon-only"
                   type="button"
                   title="Focus Next Tree"
+                  aria-label="Focus next tree"
                 >
                   <rk-icon name="caret-right"></rk-icon>
                 </button>
@@ -870,7 +920,7 @@
 
           <!-- Tree Telemetry & Diagnostics -->
           <section class="card">
-            <div class="section-title">Active Tree Telemetry</div>
+            <h2 class="section-title">Active Tree Telemetry</h2>
             <div class="telemetry-grid">
               <div class="telemetry-item">
                 <span class="telemetry-label">Active Specimen</span>
@@ -901,7 +951,7 @@
 
           <!-- Growth Scrubber & Sim Speed -->
           <section class="card">
-            <div class="section-title">Growth Progression &amp; Simulation Speed</div>
+            <h2 class="section-title">Growth Progression &amp; Simulation Speed</h2>
             <div class="growth-scrubber-row">
               <button
                 id="btn-debug-mature-active"
@@ -937,7 +987,7 @@
               </button>
             </div>
 
-            <div class="control-row" style="margin-top: 10px;">
+            <div class="control-row debug-subsection-gap">
               <span>Simulation Speed</span>
               <strong id="val-debug-speed">1.0x (Normal)</strong>
             </div>
@@ -952,7 +1002,7 @@
 
           <!-- Atmosphere, Bird Styles & Fauna Testing -->
           <section class="card">
-            <div class="section-title">Aesthetics &amp; Autonomous Fauna</div>
+            <h2 class="section-title">Aesthetics &amp; Autonomous Fauna</h2>
             <div class="control-row-grid">
               <div class="input-col">
                 <label for="select-debug-palette" class="control-label">Roguelike Palette</label>
@@ -976,7 +1026,7 @@
               </div>
             </div>
 
-            <label class="control-label" style="margin-top: 10px;">Spawn Rare Avians</label>
+            <h3 class="control-label debug-subsection-gap">Spawn Rare Avians</h3>
             <div class="bird-spawn-row">
               <button id="btn-spawn-raven" class="btn small game-cmd-btn" type="button" title="Spawn Celestial Raven">
                 <rk-icon name="bird"></rk-icon><span>Celestial Raven</span>
@@ -989,7 +1039,7 @@
               </button>
             </div>
 
-            <label class="control-label" style="margin-top: 10px;">Woodland Meadow Creatures</label>
+            <h3 class="control-label debug-subsection-gap">Woodland Meadow Creatures</h3>
             <div class="bird-spawn-row">
               <button id="btn-spawn-fox" class="btn small game-cmd-btn" type="button" title="Spawn Red Fox">
                 <rk-icon name="sparkle"></rk-icon><span>Fox</span>
@@ -1008,17 +1058,17 @@
               </button>
             </div>
 
-            <div style="margin-top: 8px;">
+            <div class="debug-snacks-row">
               <button id="btn-scatter-snacks" class="btn small game-cmd-btn" type="button" title="Scatter Sweet Berries & Acorns across Meadow">
                 <rk-icon name="grains"></rk-icon><span>Scatter Meadow Snacks</span>
               </button>
             </div>
 
-            <div class="world-reset-row" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <div class="world-reset-row">
               <button id="btn-debug-reset-world" class="btn small danger game-cmd-btn" type="button" title="Reset forest world to initial state">
                 <rk-icon name="arrow-clockwise"></rk-icon><span>Reset World to Default</span>
               </button>
-              <span id="debug-msg-status" class="notification-text" hidden></span>
+              <span id="debug-msg-status" class="notification-text" role="status" aria-live="polite" hidden></span>
             </div>
           </section>
         </div>
