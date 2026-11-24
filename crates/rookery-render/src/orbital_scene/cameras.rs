@@ -308,17 +308,18 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::PadAHangarInterior => {
-            let eye = [-10.4, 7.6, 14.2];
-            let tgt = [0.8, -0.8, 34.0];
+            // High rear-port corner inside Hangar Bay framing the rear airlock, Pad A, forklifts & forcefield
+            let eye = [-10.0, 8.0, 13.0];
+            let tgt = [1.0, -1.6, 27.5];
             let sub = state.pad_services[0]
                 .status_label()
                 .map(|s| format!("PAD-A · {s}"))
                 .unwrap_or_else(|| "ATMO FIELD 101.3 KPA · PAD-A".to_string());
             (
                 eye,
-                apply_pan(eye, tgt, servo_sweep * 0.65, 0.0),
+                apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
-                66.0,
+                78.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 sub,
             )
@@ -356,14 +357,15 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::IntCentralAtrium => {
-            // High corner inside the 2-story Central Core Atrium overlooking Hangar door, catwalks & glass Elevator!
-            let eye = [-9.8, 8.6, 8.4];
-            let tgt = [0.6, 0.2, -5.8];
+            // High bulkhead mount just inward of the port mezzanine rail so the catwalk never occludes the floor,
+            // framing the full 2-story Atrium, elevator shaft, corridor portals & aft pipe tunnel door.
+            let eye = [-6.2, 8.8, 10.2];
+            let tgt = [0.8, -1.2, -4.5];
             (
                 eye,
-                apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
+                apply_pan(eye, tgt, servo_sweep * 0.55, 0.0),
                 [0.0, 1.0, 0.0],
-                66.0,
+                80.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
                     "DECK-2 ATRIUM · ELEVATOR {}",
@@ -372,15 +374,15 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::IntOpsDeck => {
-            // Front-left viewport corner inside Ops Command Spire framing the Central Holotable,
-            // CRT consoles, roaming OpsHoloDroids, AND the 3-deck Glass Elevator at (0, 14, -6)!
-            let eye = [-8.6, 19.2, 8.8];
-            let tgt = [1.0, 14.2, -4.2];
+            // Deep front-port upper corner inside Ops Command Spire framing all CRT console desks,
+            // Central Holotable, roaming OpsHoloDroids, AND the 3-deck Glass Elevator at (0, 14, -6).
+            let eye = [-9.35, 19.5, 9.35];
+            let tgt = [0.5, 13.8, -1.8];
             (
                 eye,
-                apply_pan(eye, tgt, servo_sweep * 0.65, 0.0),
+                apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
-                70.0,
+                82.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
                     "HELIOS-09 COMMAND · ELEVATOR {}",
@@ -389,42 +391,139 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::IntReactorCore => {
-            // Elevated catwalk angle looking across the pulsing plasma core, concourse & Deck 1 elevator
-            let eye = [11.5, -7.2, 6.8];
-            let tgt = [-1.0, -11.8, -4.5];
+            // High front-starboard window corner clear of server racks, framing the pulsing plasma core,
+            // both concourse wings & the Deck 1 elevator lobby.
+            let eye = [13.8, -6.4, 8.5];
+            let tgt = [-1.5, -11.6, -1.2];
             (
                 eye,
-                apply_pan(eye, tgt, -servo_sweep * 0.6, 0.0),
+                apply_pan(eye, tgt, -servo_sweep * 0.45, 0.0),
                 [0.0, 1.0, 0.0],
-                66.0,
+                78.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 "CORE OUTPUT 480 MW · DECK-1".to_string(),
             )
         }
         CameraFeedId::IntSolarBay => {
-            // Interior corner inside the Aft Solar Engineering Bay looking across transformers out onto the Solar Wings!
-            let eye = [-5.4, 4.8, -26.4];
-            let tgt = [4.5, 0.5, -37.5];
+            // Deep front-port upper corner inside the Aft Solar Engineering Bay framing all 4 capacitor towers,
+            // rear Solar Grid CRT bank, roaming bots & side viewports out onto the Solar Wings.
+            let eye = [-5.75, 5.45, -26.05];
+            let tgt = [1.4, -1.1, -35.5];
             (
                 eye,
-                apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
+                apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
-                68.0,
+                80.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 "AFT SOLAR GRID · LIVE VIEWPORT".to_string(),
+            )
+        }
+        CameraFeedId::HiddenElevatorCam => {
+            // Hidden wide-angle security dome mounted in the upper rear-port corner of the glass elevator car.
+            let ey = state.elevator.current_y;
+            let eye = [-1.78, ey + 2.95, -7.75];
+            let tgt = [0.25, ey + 1.05, -4.4];
+            let status = if state.elevator.moving {
+                format!("IN TRANSIT -> {}", state.elevator.target_deck.label())
+            } else {
+                format!("DOCKED · {}", state.elevator.target_deck.label())
+            };
+            (
+                eye,
+                tgt,
+                [0.0, 1.0, 0.0],
+                82.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                status,
+            )
+        }
+        CameraFeedId::HiddenPortHallway => {
+            // Hidden corridor CCTV at the Atrium entrance looking up the sloped Port Pad B hallway.
+            let eye = [-12.5, -0.25, 1.75];
+            let tgt = [-23.0, 0.2, -0.2];
+            (
+                eye,
+                apply_pan(eye, tgt, servo_sweep * 0.25, 0.0),
+                [0.0, 1.0, 0.0],
+                78.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                "PORT ACCESS RAMP · PAD-B LINK".to_string(),
+            )
+        }
+        CameraFeedId::HiddenPortAirlock => {
+            // Hidden airlock chamber dome cam watching BOT-01 cycle the Port Pad B pressurized airlock.
+            let eye = [-23.85, 2.20, 1.82];
+            let tgt = [-26.2, -0.35, -0.3];
+            let kpa = state.pad_airlocks[0].pressure * 101.3;
+            (
+                eye,
+                tgt,
+                [0.0, 1.0, 0.0],
+                82.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                format!("PORT AIRLOCK · {kpa:.1} KPA"),
+            )
+        }
+        CameraFeedId::HiddenStbdHallway => {
+            // Hidden corridor CCTV at the Atrium entrance looking up the sloped Starboard Pad C hallway.
+            let eye = [12.5, -0.25, 1.75];
+            let tgt = [23.0, 0.2, -0.2];
+            (
+                eye,
+                apply_pan(eye, tgt, -servo_sweep * 0.25, 0.0),
+                [0.0, 1.0, 0.0],
+                78.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                "STBD ACCESS RAMP · PAD-C LINK".to_string(),
+            )
+        }
+        CameraFeedId::HiddenStbdAirlock => {
+            // Hidden airlock chamber dome cam watching BOT-01 cycle the Starboard Pad C pressurized airlock.
+            let eye = [23.85, 2.20, 1.82];
+            let tgt = [26.2, -0.35, -0.3];
+            let kpa = state.pad_airlocks[1].pressure * 101.3;
+            (
+                eye,
+                tgt,
+                [0.0, 1.0, 0.0],
+                82.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                format!("STBD AIRLOCK · {kpa:.1} KPA"),
+            )
+        }
+        CameraFeedId::HiddenPipeTunnel => {
+            // Hidden tunnel CCTV inside the Atrium end of the Axial Pipe Tunnel looking toward Solar Bay.
+            let eye = [-2.10, 1.35, -15.35];
+            let tgt = [0.35, -2.15, -24.5];
+            (
+                eye,
+                apply_pan(eye, tgt, servo_sweep * 0.2, 0.0),
+                [0.0, 1.0, 0.0],
+                80.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                "RING AXIAL CONDUIT · SINGLE-LANE".to_string(),
             )
         }
         CameraFeedId::WalkerBotCam => {
             // First-person patrolling camera mounted cleanly ahead of BOT-01's optical turret
             let wp = state.walker.pos;
             let (sy, cy) = state.walker.yaw.sin_cos();
+            let (sp, cp) = state.walker.pitch.sin_cos();
             let bob = if state.walker.riding_elevator || state.walker.dwell_timer > 0.0 {
                 0.0
             } else {
                 (state.walker.walk_phase * 2.0).sin() * 0.07
             };
-            let eye = [wp[0] + sy * 0.68, wp[1] + 1.92 + bob, wp[2] + cy * 0.68];
-            let tgt = [eye[0] + sy * 16.0, eye[1] - 0.65, eye[2] + cy * 16.0];
+            let eye = [
+                wp[0] + sy * cp * 0.68,
+                wp[1] + 1.92 + bob + sp * 0.68,
+                wp[2] + cy * cp * 0.68,
+            ];
+            let tgt = [
+                eye[0] + sy * cp * 16.0,
+                eye[1] - 0.65 + sp * 16.0,
+                eye[2] + cy * cp * 16.0,
+            ];
             (
                 eye,
                 tgt,

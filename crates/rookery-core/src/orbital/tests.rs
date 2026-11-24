@@ -226,21 +226,34 @@ fn cargo_loaders_stay_clear_of_crates_and_cycle_forks() {
 fn walker_bot_completes_full_three_deck_and_solar_loop() {
     let mut st = OrbitalHavenState::new(303);
     let mut visited_hangar = false;
+    let mut visited_pad_a = false;
+    let mut visited_pad_b = false;
+    let mut visited_pad_c = false;
     let mut visited_atrium = false;
     let mut visited_ops = false;
     let mut visited_reactor = false;
     let mut visited_pipe = false;
     let mut visited_solar = false;
     let mut opened_doors = [false; 3];
+    let mut cycled_airlocks = [false; 2];
 
-    // Simulate ~120 seconds of patrol at 10 Hz
-    for _ in 0..1200 {
+    // Simulate ~320 seconds of patrol at 10 Hz (covers full 3-deck + 3-pad + Solar Bay loop)
+    for step in 0..3200 {
         st.step(0.1);
         let p = st.walker.pos;
         if p[2] > 14.0 && (p[1] - (-3.85)).abs() < 0.5 {
             visited_hangar = true;
         }
-        if (-10.0..=8.0).contains(&p[2]) && (p[1] - (-3.85)).abs() < 0.5 {
+        if p[2] > 24.0 && (p[1] - (-3.85)).abs() < 0.5 {
+            visited_pad_a = true;
+        }
+        if p[0] < -34.0 && (p[1] - (-1.42)).abs() < 0.5 {
+            visited_pad_b = true;
+        }
+        if p[0] > 34.0 && (p[1] - (-1.42)).abs() < 0.5 {
+            visited_pad_c = true;
+        }
+        if (-10.0..=8.0).contains(&p[2]) && p[0].abs() < 10.0 && (p[1] - (-3.85)).abs() < 0.5 {
             visited_atrium = true;
         }
         if p[1] > 11.5 {
@@ -260,9 +273,30 @@ fn walker_bot_completes_full_three_deck_and_solar_loop() {
                 *opened = true;
             }
         }
+        for (i, al) in st.pad_airlocks.iter().enumerate() {
+            // Strict mechanical interlock: inner and outer airlock doors are NEVER open together!
+            assert!(
+                !(al.inner_door > 0.1 && al.outer_door > 0.1),
+                "step {step}: airlock {i} had both inner ({:.2}) and outer ({:.2}) doors open!",
+                al.inner_door,
+                al.outer_door
+            );
+            if al.outer_door > 0.7 {
+                cycled_airlocks[i] = true;
+            }
+        }
     }
 
     assert!(visited_hangar, "walker should visit Main Hangar Bay");
+    assert!(visited_pad_a, "walker should inspect Pad A when clear");
+    assert!(
+        visited_pad_b,
+        "walker should traverse Port Hallway & Airlock to inspect Pad B"
+    );
+    assert!(
+        visited_pad_c,
+        "walker should traverse Starboard Hallway & Airlock to inspect Pad C"
+    );
     assert!(visited_atrium, "walker should visit Central Core Atrium");
     assert!(visited_ops, "walker should ride elevator up to Ops Deck");
     assert!(
@@ -277,6 +311,10 @@ fn walker_bot_completes_full_three_deck_and_solar_loop() {
     assert!(
         opened_doors.iter().all(|&o| o),
         "all 3 sliding blast doors should open as walker traverses: {opened_doors:?}"
+    );
+    assert!(
+        cycled_airlocks.iter().all(|&c| c),
+        "both Port and Starboard pad airlocks should cycle and open: {cycled_airlocks:?}"
     );
 }
 
@@ -317,10 +355,11 @@ fn nav_graph_is_connected_and_clear_of_obstacles() {
                 node.pos
             );
         } else if (y - (-14.95)).abs() < 0.5 {
-            // Deck 1 Reactor: clear of central reactor core (0, 0) radius 3.8
-            let dist_core = (x * x + z * z).sqrt();
+            // Deck 1 Reactor: clear of central reactor core (0, REACTOR_CORE_Z) radius 3.6
+            let dz = z - simulation::REACTOR_CORE_Z;
+            let dist_core = (x * x + dz * dz).sqrt();
             assert!(
-                dist_core >= 3.8,
+                dist_core >= 3.6,
                 "Deck 1 NavNode {} at {:?} clips reactor core (dist={dist_core:.2})",
                 node.id,
                 node.pos
@@ -347,7 +386,7 @@ fn all_rolling_robots_navigate_without_collisions() {
     for step_idx in 0..1800 {
         st.step(0.1);
 
-        // 0. BOT-01 must stay clear of the Ops Command Deck Holotable (0, 1.0) and Reactor Core (0, 0)
+        // 0. BOT-01 must stay clear of Ops Holotable, shifted Reactor Core, and Elevator Shaft side walls
         let wp = st.walker.pos;
         if (wp[1] - 12.05).abs() < 0.5 {
             let d_holo = (wp[0] * wp[0] + (wp[2] - 1.0) * (wp[2] - 1.0)).sqrt();
@@ -357,10 +396,19 @@ fn all_rolling_robots_navigate_without_collisions() {
                 wp
             );
         } else if (wp[1] - (-14.95)).abs() < 0.5 && !st.walker.riding_elevator {
-            let d_core = (wp[0] * wp[0] + wp[2] * wp[2]).sqrt();
+            let dz = wp[2] - simulation::REACTOR_CORE_Z;
+            let d_core = (wp[0] * wp[0] + dz * dz).sqrt();
             assert!(
-                d_core >= 3.2,
+                d_core >= 3.4,
                 "step {step_idx}: BOT-01 clipped Reactor Core at {:?} (dist={d_core:.2})",
+                wp
+            );
+        }
+        // BOT-01 may only be inside the elevator shaft Z-span when centered at X ~ 0 (boarding/exiting/riding)
+        if !st.walker.riding_elevator && (-8.65..=-3.35).contains(&wp[2]) && wp[0].abs() < 2.65 {
+            assert!(
+                wp[0].abs() < 0.65,
+                "step {step_idx}: BOT-01 clipped Elevator Shaft side wall at {:?}",
                 wp
             );
         }
@@ -491,9 +539,9 @@ fn rotating_camera_feeds_cycle_and_stagger_slots() {
 fn walker_and_courier_never_deadlock_at_solar_pipe_exit() {
     let mut st = OrbitalHavenState::new(909);
 
-    // Place BOT-01 right at Solar Bay exit heading back into the Pipe Tunnel (target [0, D2, -11.5])
+    // Place BOT-01 right at Solar Bay exit heading back into the Pipe Tunnel (target [0, D2, -11.2])
     st.walker.pos = [0.0, -3.85, -28.0];
-    st.walker.route_index = 25; // return leg toward [0.0, D2, -11.5]
+    st.walker.route_index = simulation::ROUTE_IDX_SOLAR_PIPE_RETURN;
     st.walker.dwell_timer = 0.0;
     st.walker.riding_elevator = false;
 
@@ -552,6 +600,10 @@ fn follow_bot_room_tracks_walker_across_all_decks_and_rooms() {
         CameraFeedId::IntCentralAtrium
     );
     assert_eq!(
+        f.resolve_for_state(0.0, [0.0, 3.5, -6.0], 0),
+        CameraFeedId::HiddenElevatorCam
+    );
+    assert_eq!(
         f.resolve_for_state(0.0, [0.0, 12.05, 4.0], 0),
         CameraFeedId::IntOpsDeck
     );
@@ -561,11 +613,63 @@ fn follow_bot_room_tracks_walker_across_all_decks_and_rooms() {
     );
     assert_eq!(
         f.resolve_for_state(0.0, [0.0, -3.85, -20.0], 0),
-        CameraFeedId::WalkerBotCam
+        CameraFeedId::HiddenPipeTunnel
     );
     assert_eq!(
         f.resolve_for_state(0.0, [0.0, -3.85, -34.0], 0),
         CameraFeedId::IntSolarBay
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [-18.0, -2.6, 0.0], 0),
+        CameraFeedId::HiddenPortHallway
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [-25.9, -1.42, 0.0], 0),
+        CameraFeedId::HiddenPortAirlock
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [-35.8, -1.42, 0.0], 0),
+        CameraFeedId::PadBPortDeck
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [18.0, -2.6, 0.0], 0),
+        CameraFeedId::HiddenStbdHallway
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [25.9, -1.42, 0.0], 0),
+        CameraFeedId::HiddenStbdAirlock
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [35.8, -1.42, 0.0], 0),
+        CameraFeedId::PadCStarboardDeck
+    );
+
+    // Full 3-deck + 3-pad + Solar Bay patrol: FollowBotRoom must NEVER cut to WalkerBotCam,
+    // and must exercise every hidden elevator/hallway/airlock/tunnel camera.
+    let mut st = OrbitalHavenState::new(303);
+    let mut saw_hidden = [false; 6];
+    for step in 0..3200 {
+        st.step(0.1);
+        let resolved = f.resolve_for_state(st.total_age_secs, st.walker.pos, 0);
+        assert_ne!(
+            resolved,
+            CameraFeedId::WalkerBotCam,
+            "step {step}: FollowBotRoom cut to WalkerBotCam at {:?}",
+            st.walker.pos
+        );
+        match resolved {
+            CameraFeedId::HiddenElevatorCam => saw_hidden[0] = true,
+            CameraFeedId::HiddenPortHallway => saw_hidden[1] = true,
+            CameraFeedId::HiddenPortAirlock => saw_hidden[2] = true,
+            CameraFeedId::HiddenStbdHallway => saw_hidden[3] = true,
+            CameraFeedId::HiddenStbdAirlock => saw_hidden[4] = true,
+            CameraFeedId::HiddenPipeTunnel => saw_hidden[5] = true,
+            _ => {}
+        }
+    }
+    assert!(
+        saw_hidden.iter().all(|&s| s),
+        "expected FollowBotRoom to visit all 6 hidden tracking cameras: {saw_hidden:?}"
     );
 }
 
@@ -575,7 +679,7 @@ fn walker_never_wedges_between_ops_holotable_and_droid() {
 
     // Place BOT-01 on Deck 3 (Ops Command Spire) heading toward [-5.2, 12.05, 4.8]
     st.walker.pos = [-3.6, 12.05, 2.2];
-    st.walker.route_index = 9; // Ops viewport dwell leg at [-5.2, D3, 4.8]
+    st.walker.route_index = simulation::ROUTE_IDX_OPS_VIEWPORT;
     st.walker.dwell_timer = 0.0;
     st.walker.riding_elevator = false;
     st.elevator.current_y = 12.05;
@@ -667,18 +771,38 @@ fn docked_ships_complete_randomized_service_sequences_and_depart() {
 }
 
 #[test]
-fn walker_bot_never_enters_pad_a_landing_zone() {
+fn walker_bot_only_enters_pads_when_clear() {
     let mut st = OrbitalHavenState::new(303);
-    for step in 0..3000 {
+    let mut checked = [false; 3];
+    for step in 0..3600 {
         st.step(0.1);
-        let wp = st.walker.pos;
-        if (wp[1] - (-3.85)).abs() < 1.0 {
-            let in_pad_a = wp[0].abs() <= 6.8 && (17.5..=35.0).contains(&wp[2]);
-            assert!(
-                !in_pad_a,
-                "step {step}: BOT-01 entered Pad A ship landing zone at {:?}",
-                wp
-            );
+        for pad in [
+            LandingPadId::PadAHangar,
+            LandingPadId::PadBPort,
+            LandingPadId::PadCStarboard,
+        ] {
+            if st.is_walker_on_pad(pad) {
+                checked[pad.index()] = true;
+                let ship_occupying = st.ships.iter().any(|s| {
+                    s.assigned_pad == pad
+                        && matches!(
+                            s.phase,
+                            ShipFlightPhase::FinalDescent
+                                | ShipFlightPhase::Docked
+                                | ShipFlightPhase::Liftoff
+                        )
+                });
+                assert!(
+                    !ship_occupying,
+                    "step {step}: BOT-01 entered {} while a spacecraft occupied it (pos {:?})",
+                    pad.label(),
+                    st.walker.pos
+                );
+            }
         }
     }
+    assert!(
+        checked.iter().all(|&c| c),
+        "expected BOT-01 to inspect all 3 landing pads when clear: {checked:?}"
+    );
 }

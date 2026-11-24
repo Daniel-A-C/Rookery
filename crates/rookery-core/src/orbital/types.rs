@@ -101,6 +101,18 @@ pub enum CameraFeedId {
     AutoRotateExterior,
     /// Automatically switches to whichever room CCTV camera currently frames BOT-01.
     FollowBotRoom,
+    /// Hidden interior CCTV dome mounted inside the 3-deck glass elevator car (FollowBotRoom only).
+    HiddenElevatorCam,
+    /// Hidden interior CCTV overlooking the Port Pad B sloped access corridor (FollowBotRoom only).
+    HiddenPortHallway,
+    /// Hidden interior CCTV inside the Port Pad B pressurized airlock chamber (FollowBotRoom only).
+    HiddenPortAirlock,
+    /// Hidden interior CCTV overlooking the Starboard Pad C sloped access corridor (FollowBotRoom only).
+    HiddenStbdHallway,
+    /// Hidden interior CCTV inside the Starboard Pad C pressurized airlock chamber (FollowBotRoom only).
+    HiddenStbdAirlock,
+    /// Hidden interior CCTV looking down the Axial Pipe Connector Tunnel (FollowBotRoom only).
+    HiddenPipeTunnel,
 }
 
 pub const ALL_CAMERA_FEEDS: [CameraFeedId; 13] = [
@@ -161,6 +173,12 @@ impl CameraFeedId {
             Self::AutoRotateInterior => "AUTO-INT",
             Self::AutoRotateExterior => "AUTO-EXT",
             Self::FollowBotRoom => "TRACK",
+            Self::HiddenElevatorCam => "CAM-E1",
+            Self::HiddenPortHallway => "CAM-H1",
+            Self::HiddenPortAirlock => "CAM-A1",
+            Self::HiddenStbdHallway => "CAM-H2",
+            Self::HiddenStbdAirlock => "CAM-A2",
+            Self::HiddenPipeTunnel => "CAM-T1",
         }
     }
 
@@ -183,6 +201,12 @@ impl CameraFeedId {
             Self::AutoRotateInterior => "AUTO // ROTATING INTERIORS",
             Self::AutoRotateExterior => "AUTO // ROTATING EXTERIORS",
             Self::FollowBotRoom => "TRACK // FOLLOW BOT-01 ROOM",
+            Self::HiddenElevatorCam => "ELEVATOR // GLASS LIFT CAR",
+            Self::HiddenPortHallway => "CORRIDOR // PORT PAD ACCESS",
+            Self::HiddenPortAirlock => "AIRLOCK // PORT PAD CHAMBER",
+            Self::HiddenStbdHallway => "CORRIDOR // STBD PAD ACCESS",
+            Self::HiddenStbdAirlock => "AIRLOCK // STBD PAD CHAMBER",
+            Self::HiddenPipeTunnel => "TUNNEL // AXIAL PIPE CONDUIT",
         }
     }
 
@@ -205,6 +229,12 @@ impl CameraFeedId {
             Self::AutoRotateInterior => "ROTATE INT",
             Self::AutoRotateExterior => "ROTATE EXT",
             Self::FollowBotRoom => "FOLLOW BOT",
+            Self::HiddenElevatorCam => "ELEVATOR",
+            Self::HiddenPortHallway => "PORT HALL",
+            Self::HiddenPortAirlock => "PORT LOCK",
+            Self::HiddenStbdHallway => "STBD HALL",
+            Self::HiddenStbdAirlock => "STBD LOCK",
+            Self::HiddenPipeTunnel => "PIPE TUNNEL",
         }
     }
 
@@ -219,6 +249,12 @@ impl CameraFeedId {
                 | Self::WalkerBotCam
                 | Self::AutoRotateInterior
                 | Self::FollowBotRoom
+                | Self::HiddenElevatorCam
+                | Self::HiddenPortHallway
+                | Self::HiddenPortAirlock
+                | Self::HiddenStbdHallway
+                | Self::HiddenStbdAirlock
+                | Self::HiddenPipeTunnel
         )
     }
 
@@ -265,17 +301,31 @@ impl CameraFeedId {
     ) -> Self {
         match self {
             Self::FollowBotRoom => {
-                if walker_pos[1] > 6.0 {
+                // Inside the 3-deck glass elevator car (boarding, riding, or exiting on any deck)
+                if walker_pos[0].abs() < 2.35 && (-8.4..=-3.85).contains(&walker_pos[2]) {
+                    Self::HiddenElevatorCam
+                } else if walker_pos[1] > 6.0 {
                     Self::IntOpsDeck
                 } else if walker_pos[1] < -9.5 {
                     Self::IntReactorCore
+                } else if walker_pos[0] <= -28.6 {
+                    Self::PadBPortDeck
+                } else if walker_pos[0] >= 28.6 {
+                    Self::PadCStarboardDeck
+                } else if walker_pos[0] <= -23.2 {
+                    Self::HiddenPortAirlock
+                } else if walker_pos[0] >= 23.2 {
+                    Self::HiddenStbdAirlock
+                } else if walker_pos[0] < -11.5 {
+                    Self::HiddenPortHallway
+                } else if walker_pos[0] > 11.5 {
+                    Self::HiddenStbdHallway
                 } else if walker_pos[2] > 11.6 {
                     Self::PadAHangarInterior
                 } else if walker_pos[2] > -14.6 {
                     Self::IntCentralAtrium
                 } else if walker_pos[2] > -25.1 {
-                    // Inside the Axial Pipe Tunnel: cut to BOT-01's onboard porthole view!
-                    Self::WalkerBotCam
+                    Self::HiddenPipeTunnel
                 } else {
                     Self::IntSolarBay
                 }
@@ -311,6 +361,12 @@ impl CameraFeedId {
             Self::AutoRotateInterior => "auto_interior",
             Self::AutoRotateExterior => "auto_exterior",
             Self::FollowBotRoom => "follow_bot",
+            Self::HiddenElevatorCam => "hidden_elevator",
+            Self::HiddenPortHallway => "hidden_port_hallway",
+            Self::HiddenPortAirlock => "hidden_port_airlock",
+            Self::HiddenStbdHallway => "hidden_stbd_hallway",
+            Self::HiddenStbdAirlock => "hidden_stbd_airlock",
+            Self::HiddenPipeTunnel => "hidden_pipe_tunnel",
         }
     }
 
@@ -842,6 +898,30 @@ impl Default for ElevatorState {
     }
 }
 
+/// Pressurized 2-door airlock state connecting a Pad Access Hallway to an external landing pad.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AirlockState {
+    /// `[0.0, 1.0]` inner hallway-side sliding blast door opening.
+    pub inner_door: f32,
+    /// `[0.0, 1.0]` outer landing-pad-side sliding blast door opening.
+    pub outer_door: f32,
+    /// `[0.0, 1.0]` chamber pressure (`1.0` = 101.3 kPa pressurized, `0.0` = vacuum).
+    pub pressure: f32,
+    /// True while actively cycling pressure or holding for pad clearance.
+    pub cycling: bool,
+}
+
+impl Default for AirlockState {
+    fn default() -> Self {
+        Self {
+            inner_door: 0.0,
+            outer_door: 0.0,
+            pressure: 1.0,
+            cycling: false,
+        }
+    }
+}
+
 /// Physical 3D Interior Walker Camera Bot (`BOT-01`) patrolling all interconnected decks & tunnels.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WalkerBotState {
@@ -861,7 +941,7 @@ pub struct WalkerBotState {
 impl Default for WalkerBotState {
     fn default() -> Self {
         Self {
-            pos: [0.0, -3.85, 15.8],
+            pos: [0.0, -3.85, 17.5],
             yaw: 0.0,
             pitch: 0.0,
             walk_phase: 0.0,
