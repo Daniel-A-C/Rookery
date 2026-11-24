@@ -468,25 +468,70 @@ pub struct CameraDrone {
     pub height_amp: f32,
 }
 
-/// Class of autonomous robot or crew member moving inside or on the station.
+/// Class of autonomous rolling robot operating inside or on Station HELIOS-09.
+/// Every interior & dock robot rolls on wheels or caterpillar treads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
-    /// Tracked yellow/gunmetal cargo loader bot operating in the Hangar Bay & external pads.
-    CargoLoader,
-    /// Floating/bipedal System Shock style security patrol droid in the Concourse & Reactor.
-    SecurityDroid,
-    /// Stylized low-poly station officer/technician patrolling the Ops Deck & Concourse.
-    OpsCrew,
-    /// Exterior hull welder drone drifting along station trusses with welding arcs.
+    /// Tracked yellow/hazard forklift hauling crates in the Hangar Bay & external pads.
+    #[serde(alias = "cargo_loader")]
+    CargoForklift,
+    /// 3-wheel UNATCO-style compact floor scrubber with spinning front brush roller.
+    FloorScrubber,
+    /// 4-wheel Ops Deck telemetry droid with 3 glowing CRT displays & spinning micro-dish.
+    #[serde(alias = "ops_crew")]
+    OpsHoloDroid,
+    /// Heavy twin-tread armored security bot with sweeping crimson optic turret.
+    #[serde(alias = "security_droid")]
+    SecurityEnforcer,
+    /// 4-wheel yellow/steel cryo-tanker rover servicing the pulsing plasma reactor core.
+    ReactorCoolantBot,
+    /// Narrow tracked high-voltage maintenance rover calibrating Solar Bay capacitor towers.
+    SolarCapacitorBot,
+    /// Fast 4-wheel angular wedge courier zipping between Hangar, Atrium, Pipe Tunnel & Solar Bay.
+    CourierRunner,
+    /// Exterior hull welder drone cruising along station trusses with flickering welding arcs.
     HullWelder,
 }
 
-/// Zone where a station agent operates.
+impl AgentKind {
+    /// Physical collision radius in 3D world units.
+    pub fn radius(self) -> f32 {
+        match self {
+            Self::CargoForklift => 1.05,
+            Self::SecurityEnforcer => 0.95,
+            Self::ReactorCoolantBot => 0.90,
+            Self::OpsHoloDroid => 0.80,
+            Self::SolarCapacitorBot => 0.80,
+            Self::FloorScrubber => 0.72,
+            Self::CourierRunner => 0.68,
+            Self::HullWelder => 0.85,
+        }
+    }
+
+    /// Cruise speed in world units/second.
+    pub fn cruise_speed(self) -> f32 {
+        match self {
+            Self::CourierRunner => 4.8,
+            Self::FloorScrubber => 2.6,
+            Self::OpsHoloDroid => 2.4,
+            Self::SecurityEnforcer => 2.5,
+            Self::ReactorCoolantBot => 2.2,
+            Self::SolarCapacitorBot => 2.3,
+            Self::CargoForklift => 2.4,
+            Self::HullWelder => 2.2,
+        }
+    }
+}
+
+/// Zone where a station robot operates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentZone {
     HangarBay,
+    CentralAtrium,
+    AxialPipeTunnel,
+    SolarBay,
     PadBPort,
     PadCStarboard,
     OpsDeck,
@@ -495,7 +540,7 @@ pub enum AgentZone {
     ExteriorTruss,
 }
 
-/// An autonomous bot or crew figure bringing interiors and docks to life.
+/// An autonomous rolling robot bringing interiors and docks to life.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StationAgent {
     pub id: u32,
@@ -507,15 +552,27 @@ pub struct StationAgent {
     pub speed: f32,
     pub direction: f32,
     pub phase: f32,
-    /// Whether a CargoLoader is currently carrying a crate on its hydraulic forks.
+    /// Whether a CargoForklift or CourierRunner is currently carrying cargo.
     #[serde(default)]
     pub carrying_cargo: bool,
-    /// `[0.0, 1.0]` normalized hydraulic fork lift height for CargoLoaders.
+    /// `[0.0, 1.0]` normalized hydraulic fork lift or probe extension height.
     #[serde(default)]
     pub lift_height: f32,
-    /// Pause timer (seconds) when loading/unloading at a staging alcove or docked ship.
+    /// Pause timer (seconds) when performing a room activity at a waypoint.
     #[serde(default)]
     pub dwell_timer: f32,
+    /// Current `NAV_NODES` index occupied or last visited.
+    #[serde(default)]
+    pub nav_node: usize,
+    /// Active A* path queue of upcoming `NAV_NODES` indices.
+    #[serde(default)]
+    pub nav_path: Vec<usize>,
+    /// True while smoothly yielding for another robot or waiting for the Pipe Tunnel mutex.
+    #[serde(default)]
+    pub yielding: bool,
+    /// Seconds spent waiting/blocked; triggers dynamic A* rerouting to prevent deadlocks.
+    #[serde(default)]
+    pub stuck_timer: f32,
 }
 
 /// Station deck levels served by the 3-deck central glass elevator (`X = 0, Z = -6.0`).

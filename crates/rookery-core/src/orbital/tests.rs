@@ -171,7 +171,7 @@ fn cargo_loaders_stay_clear_of_crates_and_cycle_forks() {
     let initial_cargo: Vec<(u32, bool)> = st
         .agents
         .iter()
-        .filter(|a| a.kind == AgentKind::CargoLoader)
+        .filter(|a| a.kind == AgentKind::CargoForklift)
         .map(|a| (a.id, a.carrying_cargo))
         .collect();
 
@@ -180,7 +180,7 @@ fn cargo_loaders_stay_clear_of_crates_and_cycle_forks() {
         for a in st
             .agents
             .iter()
-            .filter(|a| a.kind == AgentKind::CargoLoader)
+            .filter(|a| a.kind == AgentKind::CargoForklift)
         {
             if a.lift_height > 0.5 {
                 saw_lift = true;
@@ -277,5 +277,183 @@ fn walker_bot_completes_full_three_deck_and_solar_loop() {
     assert!(
         opened_doors.iter().all(|&o| o),
         "all 3 sliding blast doors should open as walker traverses: {opened_doors:?}"
+    );
+}
+
+#[test]
+fn nav_graph_is_connected_and_clear_of_obstacles() {
+    use super::nav::{NAV_NODES, find_path};
+
+    // 1. A* path from Hangar South (node 0) to Solar Bay Far (node 23) traverses Pipe Tunnel (node 17)
+    let path = find_path(0, 23);
+    assert!(
+        !path.is_empty(),
+        "expected valid A* path from Hangar to Solar Bay"
+    );
+    assert_eq!(path.last().copied(), Some(23));
+    assert!(
+        path.contains(&17),
+        "Hangar->Solar path should pass through Axial Pipe Tunnel node 17: {path:?}"
+    );
+
+    // 2. Every NavNode must stay clear of major static obstacles
+    for node in NAV_NODES {
+        let [x, y, z] = node.pos;
+        if (y - (-3.88)).abs() < 0.5 {
+            // Deck 2: clear of elevator shaft (X in -2.65..2.65, Z in -8.65..-3.35)
+            let in_elevator = x.abs() < 2.65 && (-8.65..=-3.35).contains(&z);
+            assert!(
+                !in_elevator,
+                "Deck 2 NavNode {} at {:?} clips elevator shaft",
+                node.id, node.pos
+            );
+        } else if (y - 12.05).abs() < 0.5 {
+            // Deck 3 Ops: clear of central holotable (0, 1.0) radius 2.9
+            let dist_holo = (x * x + (z - 1.0) * (z - 1.0)).sqrt();
+            assert!(
+                dist_holo >= 2.9,
+                "Deck 3 NavNode {} at {:?} clips holotable (dist={dist_holo:.2})",
+                node.id,
+                node.pos
+            );
+        } else if (y - (-14.95)).abs() < 0.5 {
+            // Deck 1 Reactor: clear of central reactor core (0, 0) radius 3.8
+            let dist_core = (x * x + z * z).sqrt();
+            assert!(
+                dist_core >= 3.8,
+                "Deck 1 NavNode {} at {:?} clips reactor core (dist={dist_core:.2})",
+                node.id,
+                node.pos
+            );
+        }
+    }
+}
+
+#[test]
+fn all_rolling_robots_navigate_without_collisions() {
+    use std::collections::HashMap;
+
+    let mut st = OrbitalHavenState::new(777);
+    let mut courier_visited_solar = false;
+    let mut prev_pos: HashMap<u32, [f32; 3]> = st
+        .agents
+        .iter()
+        .filter(|a| a.kind != AgentKind::HullWelder)
+        .map(|a| (a.id, a.pos))
+        .collect();
+    let mut window_dist: HashMap<u32, f32> = prev_pos.keys().map(|&id| (id, 0.0)).collect();
+
+    // Simulate 180 seconds at 10 Hz
+    for step_idx in 0..1800 {
+        st.step(0.1);
+
+        // 0. BOT-01 must stay clear of the Ops Command Deck Holotable (0, 1.0) and Reactor Core (0, 0)
+        let wp = st.walker.pos;
+        if (wp[1] - 12.05).abs() < 0.5 {
+            let d_holo = (wp[0] * wp[0] + (wp[2] - 1.0) * (wp[2] - 1.0)).sqrt();
+            assert!(
+                d_holo >= 2.4,
+                "step {step_idx}: BOT-01 clipped Ops Holotable at {:?} (dist={d_holo:.2})",
+                wp
+            );
+        } else if (wp[1] - (-14.95)).abs() < 0.5 && !st.walker.riding_elevator {
+            let d_core = (wp[0] * wp[0] + wp[2] * wp[2]).sqrt();
+            assert!(
+                d_core >= 3.2,
+                "step {step_idx}: BOT-01 clipped Reactor Core at {:?} (dist={d_core:.2})",
+                wp
+            );
+        }
+
+        // 1. Axial Pipe Tunnel single-lane mutex: at most 1 agent inside Z in -24.5..-15.5 on Deck 2
+        let pipe_occupants: Vec<u32> = st
+            .agents
+            .iter()
+            .filter(|a| {
+                a.kind != AgentKind::HullWelder
+                    && (a.pos[1] - (-3.88)).abs() < 0.5
+                    && (-24.5..=-15.5).contains(&a.pos[2])
+            })
+            .map(|a| a.id)
+            .collect();
+        assert!(
+            pipe_occupants.len() <= 1,
+            "step {step_idx}: multiple agents inside single-lane Pipe Tunnel: {pipe_occupants:?}"
+        );
+
+        // 2. Track cross-room CourierRunner reaching Solar Bay
+        if st
+            .agents
+            .iter()
+            .any(|a| a.kind == AgentKind::CourierRunner && a.pos[2] < -26.0)
+        {
+            courier_visited_solar = true;
+        }
+
+        // 3. Pairwise same-deck rolling-bot separation check + BOT-01 clearance + liveness tracking
+        for i in 0..st.agents.len() {
+            let a = &st.agents[i];
+            if a.kind == AgentKind::HullWelder {
+                continue;
+            }
+            if let Some(p0) = prev_pos.get_mut(&a.id) {
+                let d_step = ((a.pos[0] - p0[0]).powi(2) + (a.pos[2] - p0[2]).powi(2)).sqrt();
+                *window_dist.entry(a.id).or_insert(0.0) += d_step;
+                *p0 = a.pos;
+            }
+            // Check separation from BOT-01 when on the same deck outside the elevator
+            if !st.walker.riding_elevator && (a.pos[1] - wp[1]).abs() < 1.5 {
+                let dw = ((a.pos[0] - wp[0]).powi(2) + (a.pos[2] - wp[2]).powi(2)).sqrt();
+                let hard_min_w = (0.85 + a.kind.radius()) * 0.65;
+                assert!(
+                    dw >= hard_min_w,
+                    "step {step_idx}: BOT-01 collided with agent {} ({:?}) (dist={dw:.2} < {hard_min_w:.2})",
+                    a.id,
+                    a.kind
+                );
+            }
+            for b in &st.agents[(i + 1)..] {
+                if b.kind == AgentKind::HullWelder || (a.pos[1] - b.pos[1]).abs() > 1.5 {
+                    continue;
+                }
+                let dx = a.pos[0] - b.pos[0];
+                let dz = a.pos[2] - b.pos[2];
+                let dist = (dx * dx + dz * dz).sqrt();
+                let hard_min = (a.kind.radius() + b.kind.radius()) * 0.65;
+                assert!(
+                    dist >= hard_min,
+                    "step {step_idx}: agents {} ({:?}) and {} ({:?}) collided (dist={dist:.2} < {hard_min:.2}) at {:?} / {:?}",
+                    a.id,
+                    a.kind,
+                    b.id,
+                    b.kind,
+                    a.pos,
+                    b.pos
+                );
+            }
+        }
+
+        // 4. Every 30 seconds (300 steps), verify NO rolling robot is stuck staring at another bot!
+        if step_idx > 0 && step_idx % 300 == 0 {
+            for a in st.agents.iter().filter(|a| a.kind != AgentKind::HullWelder) {
+                let moved = window_dist.get(&a.id).copied().unwrap_or(0.0);
+                assert!(
+                    moved >= 8.0,
+                    "step {step_idx}: agent {} ({:?} in {:?}) appears stuck (moved only {moved:.2}m in 30s at {:?})",
+                    a.id,
+                    a.kind,
+                    a.zone,
+                    a.pos
+                );
+            }
+            for v in window_dist.values_mut() {
+                *v = 0.0;
+            }
+        }
+    }
+
+    assert!(
+        courier_visited_solar,
+        "expected cross-room CourierRunner to traverse the Pipe Tunnel and reach Solar Bay"
     );
 }

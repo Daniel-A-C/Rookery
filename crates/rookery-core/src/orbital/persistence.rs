@@ -20,6 +20,7 @@ impl OrbitalHavenState {
         if self.version < ORBITAL_HAVEN_STATE_VERSION
             || self.drones.is_empty()
             || self.ships.is_empty()
+            || self.agents.len() < 14
         {
             *self = Self::new(self.seed);
         }

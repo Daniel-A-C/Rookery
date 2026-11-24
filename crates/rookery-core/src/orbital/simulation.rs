@@ -593,17 +593,8 @@ impl OrbitalHavenState {
     }
 
     fn step_agents(&mut self, dt: f32) {
-        let pad_a_docked = self.ships.iter().any(|s| {
-            s.assigned_pad == LandingPadId::PadAHangar && s.phase == ShipFlightPhase::Docked
-        });
-        let pad_b_docked = self.ships.iter().any(|s| {
-            s.assigned_pad == LandingPadId::PadBPort && s.phase == ShipFlightPhase::Docked
-        });
-        let pad_c_docked = self.ships.iter().any(|s| {
-            s.assigned_pad == LandingPadId::PadCStarboard && s.phase == ShipFlightPhase::Docked
-        });
+        use super::nav::{NAV_NODES, find_path_avoiding, goal_pool_for_agent};
 
-        // Shortest-angle smooth yaw interpolation so loader bots never snap 180°
         let turn_yaw = |curr: f32, target: f32, rate: f32, dt: f32| -> f32 {
             let mut diff = (target - curr).rem_euclid(TAU);
             if diff > std::f32::consts::PI {
@@ -612,141 +603,345 @@ impl OrbitalHavenState {
             curr + diff * (1.0 - (-rate * dt).exp())
         };
 
-        for agent in &mut self.agents {
-            agent.phase = (agent.phase + dt * 3.5) % TAU;
+        // Track BOT-01's occupancy of the single-lane Axial Pipe Tunnel (owner ID = 0)
+        let walker_in_pipe = (self.walker.pos[1] - (-3.85)).abs() < 1.5
+            && (-25.6..=-14.2).contains(&self.walker.pos[2]);
+        if walker_in_pipe {
+            self.pipe_tunnel_owner = Some(0);
+        } else if self.pipe_tunnel_owner == Some(0) {
+            self.pipe_tunnel_owner = None;
+        }
 
-            // CargoLoader bots use a dedicated clip-free dwell + hydraulic fork choreography
-            if agent.kind == AgentKind::CargoLoader {
-                let (lane_x, floor_y, z_min, z_max, ship_docked, ship_dir_yaw) = match agent.zone {
-                    AgentZone::HangarBay => {
-                        let is_port = agent.id % 2 == 0;
-                        // Stay strictly inside X=±7.35, Z=22.0..31.4 (zero overlap with crates at X=±9.6, Z<=20.6 / Z>=33.4)
-                        let x = if is_port { -7.35 } else { 7.35 };
-                        let face_ship = if is_port {
-                            std::f32::consts::FRAC_PI_2
-                        } else {
-                            -std::f32::consts::FRAC_PI_2
-                        };
-                        (x, -3.88, 22.0f32, 31.4f32, pad_a_docked, face_ship)
-                    }
-                    AgentZone::PadBPort => {
-                        // Pad B floor top is -1.42; staging crate sits at Z=+5.4..+7.6 -> stop cleanly at Z=+3.5!
-                        (
-                            -31.3,
-                            -1.42,
-                            -5.2f32,
-                            3.5f32,
-                            pad_b_docked,
-                            -std::f32::consts::FRAC_PI_2,
-                        )
-                    }
-                    AgentZone::PadCStarboard => {
-                        // Pad C floor top is -1.42; staging crate sits at Z=+5.4..+7.6 -> stop cleanly at Z=+3.5!
-                        (
-                            31.3,
-                            -1.42,
-                            -5.2f32,
-                            3.5f32,
-                            pad_c_docked,
-                            std::f32::consts::FRAC_PI_2,
-                        )
-                    }
-                    _ => (agent.pos[0], agent.pos[1], -4.0, 4.0, false, 0.0),
-                };
+        // Snapshot all mobile robot positions + radii (including BOT-01 as ID 0) for collision avoidance
+        let mut all_bodies: Vec<(u32, [f32; 3], f32)> = Vec::with_capacity(self.agents.len() + 1);
+        all_bodies.push((0, self.walker.pos, 0.85));
+        for a in &self.agents {
+            all_bodies.push((a.id, a.pos, a.kind.radius()));
+        }
 
-                if agent.dwell_timer > 0.0 {
-                    agent.dwell_timer = (agent.dwell_timer - dt).max(0.0);
-                    // While dwelling at endpoint, smoothly turn toward ship (if docked) or staging stack and actuate forks
-                    let dwell_yaw = if ship_docked && agent.patrol_t < 0.5 {
-                        ship_dir_yaw
-                    } else if agent.patrol_t >= 0.5 {
-                        0.0
-                    } else {
-                        std::f32::consts::PI
-                    };
-                    agent.yaw = turn_yaw(agent.yaw, dwell_yaw, 4.5, dt);
-                    // Smoothly raise/lower hydraulic forks during load/unload
-                    let target_lift = if agent.dwell_timer > 1.1 {
-                        0.82
-                    } else if agent.carrying_cargo {
-                        0.32
-                    } else {
-                        0.06
-                    };
-                    agent.lift_height = ease_scalar(agent.lift_height, target_lift, 4.0, dt);
-                    if agent.dwell_timer <= 0.0 {
-                        // Toggle cargo transfer as the bot finishes loading/unloading
-                        agent.carrying_cargo = !agent.carrying_cargo;
-                    }
-                } else {
-                    agent.patrol_t += dt * agent.speed * agent.direction;
-                    if agent.patrol_t >= 1.0 {
-                        agent.patrol_t = 1.0;
-                        agent.direction = -1.0;
-                        agent.dwell_timer = 2.2;
-                    } else if agent.patrol_t <= 0.0 {
-                        agent.patrol_t = 0.0;
-                        agent.direction = 1.0;
-                        agent.dwell_timer = 2.2;
-                    }
-                    let travel_yaw = if agent.direction > 0.0 {
-                        0.0
-                    } else {
-                        std::f32::consts::PI
-                    };
-                    agent.yaw = turn_yaw(agent.yaw, travel_yaw, 4.5, dt);
-                    let cruise_lift = if agent.carrying_cargo { 0.32 } else { 0.06 };
-                    agent.lift_height = ease_scalar(agent.lift_height, cruise_lift, 4.0, dt);
+        let agent_count = self.agents.len();
+        for idx in 0..agent_count {
+            let kind = self.agents[idx].kind;
+            let id = self.agents[idx].id;
+            let zone = self.agents[idx].zone;
+            self.agents[idx].phase = (self.agents[idx].phase + dt * 3.8) % TAU;
+
+            // Exterior hull welder drones drift freely along the outer trusses
+            if kind == AgentKind::HullWelder {
+                let a = &mut self.agents[idx];
+                a.patrol_t += dt * a.speed * a.direction;
+                if a.patrol_t > 1.0 {
+                    a.patrol_t = 1.0;
+                    a.direction = -1.0;
+                } else if a.patrol_t < 0.0 {
+                    a.patrol_t = 0.0;
+                    a.direction = 1.0;
                 }
-
-                let z = z_min + (z_max - z_min) * agent.patrol_t;
-                agent.pos = [lane_x, floor_y, z];
+                let side = if id.is_multiple_of(2) { -1.0 } else { 1.0 };
+                let x = side * (16.0 + a.patrol_t * 16.0);
+                let y = 3.5 + (a.phase * 0.5).sin() * 2.2;
+                let z = side * 11.0;
+                a.pos = [x, y, z];
+                a.yaw = a.phase * 0.3;
                 continue;
             }
 
-            agent.patrol_t += dt * agent.speed * agent.direction;
-            if agent.patrol_t > 1.0 {
-                agent.patrol_t = 1.0;
-                agent.direction = -1.0;
-            } else if agent.patrol_t < 0.0 {
-                agent.patrol_t = 0.0;
-                agent.direction = 1.0;
+            // Release Pipe Tunnel mutex if this bot has exited the tunnel
+            let cur_pos = self.agents[idx].pos;
+            let in_pipe_now =
+                (cur_pos[1] - (-3.88)).abs() < 1.5 && (-25.6..=-14.2).contains(&cur_pos[2]);
+            if self.pipe_tunnel_owner == Some(id) && !in_pipe_now {
+                self.pipe_tunnel_owner = None;
             }
 
-            let t = agent.patrol_t;
-            match agent.zone {
-                AgentZone::HangarBay | AgentZone::PadBPort | AgentZone::PadCStarboard => {}
-                AgentZone::OpsDeck => {
-                    let angle = t * TAU;
-                    let r = 6.2;
-                    agent.pos = [angle.cos() * r, 12.1, angle.sin() * r];
-                    agent.yaw = -angle + std::f32::consts::FRAC_PI_2 * agent.direction;
+            // 1. Dwelling at a waypoint: perform room-specific work animation (forks, scanner, coolant, probe)
+            if self.agents[idx].dwell_timer > 0.0 {
+                let a = &mut self.agents[idx];
+                a.dwell_timer = (a.dwell_timer - dt).max(0.0);
+                a.yielding = false;
+                match kind {
+                    AgentKind::CargoForklift => {
+                        let target_lift = if a.dwell_timer > 1.0 {
+                            0.84
+                        } else if a.carrying_cargo {
+                            0.32
+                        } else {
+                            0.06
+                        };
+                        a.lift_height = ease_scalar(a.lift_height, target_lift, 4.2, dt);
+                        if a.dwell_timer <= 0.0 {
+                            a.carrying_cargo = !a.carrying_cargo;
+                        }
+                    }
+                    AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => {
+                        // Extend calibration probe / coolant nozzle during inspection dwell
+                        let target_ext = if a.dwell_timer > 0.4 { 0.9 } else { 0.1 };
+                        a.lift_height = ease_scalar(a.lift_height, target_ext, 4.5, dt);
+                    }
+                    AgentKind::CourierRunner => {
+                        if a.dwell_timer <= 0.0 {
+                            a.carrying_cargo = !a.carrying_cargo;
+                        }
+                    }
+                    _ => {
+                        a.lift_height = ease_scalar(a.lift_height, 0.1, 4.0, dt);
+                    }
                 }
-                AgentZone::Concourse => {
-                    let z = if agent.id % 2 == 0 { 5.4 } else { -5.4 };
-                    let x = -13.0 + t * 26.0;
-                    agent.pos = [x, -14.8, z];
-                    agent.yaw = if agent.direction > 0.0 {
-                        std::f32::consts::FRAC_PI_2
-                    } else {
-                        -std::f32::consts::FRAC_PI_2
-                    };
+                continue;
+            }
+
+            // Helper to compute which NavNodes are currently occupied by OTHER robots on the same deck
+            let mut occupied = [false; 64];
+            for (ni, node) in NAV_NODES.iter().enumerate() {
+                if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
+                    continue;
                 }
-                AgentZone::ReactorCatwalk => {
-                    let angle = t * TAU;
-                    let r = 6.0;
-                    agent.pos = [angle.cos() * r, -14.8, angle.sin() * r];
-                    agent.yaw = -angle;
-                }
-                AgentZone::ExteriorTruss => {
-                    let side = if agent.id % 2 == 0 { -1.0 } else { 1.0 };
-                    let x = side * (16.0 + t * 16.0);
-                    let y = 3.5 + (agent.phase * 0.5).sin() * 2.2;
-                    let z = side * 11.0;
-                    agent.pos = [x, y, z];
-                    agent.yaw = agent.phase * 0.3;
+                for &(other_id, other_pos, _) in &all_bodies {
+                    if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
+                        continue;
+                    }
+                    let ddx = node.pos[0] - other_pos[0];
+                    let ddz = node.pos[2] - other_pos[2];
+                    if ddx * ddx + ddz * ddz < 2.2 * 2.2 {
+                        occupied[ni] = true;
+                        break;
+                    }
                 }
             }
+
+            // 2. Plan a new occupancy-aware A* path on `NAV_NODES` if the current path is empty
+            if self.agents[idx].nav_path.is_empty() {
+                let cur_node = self.agents[idx].nav_node.min(NAV_NODES.len() - 1);
+                let carrying = self.agents[idx].carrying_cargo;
+                let pool = goal_pool_for_agent(kind, zone, cur_node, carrying);
+                if pool.len() > 1 {
+                    // Prefer an unoccupied goal node in the pool so bots never queue up on top of each other
+                    let mut goal = cur_node;
+                    for _ in 0..8 {
+                        let pick = pool[(self.rng.next_u64() as usize) % pool.len()];
+                        if pick != cur_node && !occupied[pick] {
+                            goal = pick;
+                            break;
+                        }
+                    }
+                    if goal == cur_node {
+                        for _ in 0..6 {
+                            let pick = pool[(self.rng.next_u64() as usize) % pool.len()];
+                            if pick != cur_node {
+                                goal = pick;
+                                break;
+                            }
+                        }
+                    }
+                    if goal != cur_node {
+                        self.agents[idx].nav_path =
+                            find_path_avoiding(cur_node, goal, &occupied[..NAV_NODES.len()]);
+                    }
+                }
+            }
+
+            let Some(&next_node_id) = self.agents[idx].nav_path.first() else {
+                self.agents[idx].dwell_timer = 0.6;
+                continue;
+            };
+            let next_node = NAV_NODES[next_node_id];
+            let is_final_waypoint = self.agents[idx].nav_path.len() == 1;
+
+            // If our final goal node is occupied by another bot right now, immediately pick a different goal!
+            if is_final_waypoint
+                && kind != AgentKind::CargoForklift
+                && occupied[next_node_id]
+                && !next_node.is_pipe_tunnel
+            {
+                self.agents[idx].nav_path.clear();
+                continue;
+            }
+
+            // 3. Single-lane Axial Pipe Tunnel mutual exclusion
+            if next_node.is_pipe_tunnel {
+                match self.pipe_tunnel_owner {
+                    None => self.pipe_tunnel_owner = Some(id),
+                    Some(owner) if owner == id => {}
+                    Some(_) => {
+                        self.agents[idx].yielding = true;
+                        continue;
+                    }
+                }
+            }
+
+            // 4. Forward-cone multi-agent collision avoidance & starboard passing steering
+            let target_pos = next_node.pos;
+            let dx = target_pos[0] - cur_pos[0];
+            let dz = target_pos[2] - cur_pos[2];
+            let dist_to_node = (dx * dx + dz * dz).sqrt();
+            let dir_x = if dist_to_node > 1e-4 {
+                dx / dist_to_node
+            } else {
+                0.0
+            };
+            let dir_z = if dist_to_node > 1e-4 {
+                dz / dist_to_node
+            } else {
+                1.0
+            };
+
+            let my_r = kind.radius();
+            let mut must_yield = false;
+            let mut avoid_x = 0.0f32;
+            let mut avoid_z = 0.0f32;
+            for &(other_id, other_pos, other_r) in &all_bodies {
+                if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 2.0 {
+                    continue;
+                }
+                let ox = other_pos[0] - cur_pos[0];
+                let oz = other_pos[2] - cur_pos[2];
+                let d = (ox * ox + oz * oz).sqrt();
+                let safe_r = my_r + other_r + 0.45;
+                let min_sep = my_r + other_r + 1.35;
+                if d < min_sep && d > 1e-4 {
+                    let forward_dot = (ox * dir_x + oz * dir_z) / d;
+                    if forward_dot > 0.35 {
+                        // Deadlock-free tie-breaker: higher ID yields briefly to lower ID
+                        if other_id < id {
+                            must_yield = true;
+                            break;
+                        } else if !next_node.is_pipe_tunnel && kind != AgentKind::CargoForklift {
+                            // Lower-ID bot arcs smoothly around the starboard side of the yielded bot
+                            let strength =
+                                ((min_sep - d) / (min_sep - safe_r).max(0.25)).clamp(0.35, 1.5);
+                            let right_x = dir_z;
+                            let right_z = -dir_x;
+                            avoid_x += right_x * strength;
+                            avoid_z += right_z * strength;
+                        }
+                    }
+                    // Soft radial repulsion if another bot is still inside personal buffer
+                    if d < safe_r && !next_node.is_pipe_tunnel && kind != AgentKind::CargoForklift {
+                        let push = (safe_r - d) / safe_r;
+                        avoid_x -= (ox / d) * push * 1.6;
+                        avoid_z -= (oz / d) * push * 1.6;
+                    }
+                }
+            }
+
+            if must_yield {
+                self.agents[idx].yielding = true;
+                self.agents[idx].stuck_timer += dt;
+                // Anti-deadlock patience: if blocked > 1.3s, dynamically reroute to an unoccupied goal!
+                if self.agents[idx].stuck_timer > 1.3 && kind != AgentKind::CargoForklift {
+                    self.agents[idx].stuck_timer = 0.0;
+                    self.agents[idx].nav_path.clear();
+                    // Re-anchor nav_node to whichever NavNode is closest to current position
+                    let mut best_n = self.agents[idx].nav_node;
+                    let mut best_d2 = f32::INFINITY;
+                    for (ni, node) in NAV_NODES.iter().enumerate() {
+                        if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
+                            continue;
+                        }
+                        let nd2 =
+                            (node.pos[0] - cur_pos[0]).powi(2) + (node.pos[2] - cur_pos[2]).powi(2);
+                        if nd2 < best_d2 {
+                            best_d2 = nd2;
+                            best_n = ni;
+                        }
+                    }
+                    self.agents[idx].nav_node = best_n;
+                }
+                continue;
+            }
+            self.agents[idx].yielding = false;
+            self.agents[idx].stuck_timer = 0.0;
+
+            // 5. Advance smoothly along the NavGraph edge (with starboard obstacle avoidance)
+            let speed = kind.cruise_speed();
+            // Intermediate transit waypoints use a generous pass-through radius so bots curving
+            // around teammates never get trapped trying to hit the exact center of a busy node!
+            let arrive_r = if is_final_waypoint
+                || next_node.is_pipe_tunnel
+                || kind == AgentKind::CargoForklift
+            {
+                0.22
+            } else {
+                1.15
+            };
+            if dist_to_node > arrive_r {
+                let mut move_x = dir_x + avoid_x;
+                let mut move_z = dir_z + avoid_z;
+                let m_len = (move_x * move_x + move_z * move_z).sqrt();
+                if m_len > 1e-4 {
+                    move_x /= m_len;
+                    move_z /= m_len;
+                }
+                let step = (speed * dt).min(dist_to_node);
+                let mut new_x = cur_pos[0] + move_x * step;
+                let mut new_z = cur_pos[2] + move_z * step;
+                // Hard post-step separation clamp so no two bots ever overlap even at coarse dt
+                // (only exempt inside the narrow Pipe Tunnel walls Z in -24.8..-15.2, where the mutex prevents overlap)
+                let in_narrow_pipe_walls = (cur_pos[1] - (-3.88)).abs() < 1.0
+                    && (-24.8..=-15.2).contains(&cur_pos[2]);
+                if !in_narrow_pipe_walls && kind != AgentKind::CargoForklift {
+                    for &(other_id, other_pos, other_r) in &all_bodies {
+                        if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
+                            continue;
+                        }
+                        let rx = new_x - other_pos[0];
+                        let rz = new_z - other_pos[2];
+                        let rd = (rx * rx + rz * rz).sqrt();
+                        let hard_r = my_r + other_r + 0.12;
+                        if rd < hard_r && rd > 1e-4 {
+                            new_x = other_pos[0] + (rx / rd) * hard_r;
+                            new_z = other_pos[2] + (rz / rd) * hard_r;
+                        }
+                    }
+                    // Keep clear of central deck obstacles (Ops Holotable & Reactor Core) even while dodging
+                    if (target_pos[1] - 12.05).abs() < 0.5 {
+                        let hx = new_x;
+                        let hz = new_z - 1.0;
+                        let hd = (hx * hx + hz * hz).sqrt();
+                        if hd < 2.95 && hd > 1e-4 {
+                            new_x = (hx / hd) * 2.95;
+                            new_z = 1.0 + (hz / hd) * 2.95;
+                        }
+                    } else if (target_pos[1] - (-14.95)).abs() < 0.5 {
+                        let hd = (new_x * new_x + new_z * new_z).sqrt();
+                        if hd < 3.85 && hd > 1e-4 {
+                            new_x = (new_x / hd) * 3.85;
+                            new_z = (new_z / hd) * 3.85;
+                        }
+                    }
+                }
+                let a = &mut self.agents[idx];
+                a.pos = [new_x, target_pos[1], new_z];
+                let travel_yaw = move_x.atan2(move_z);
+                a.yaw = turn_yaw(a.yaw, travel_yaw, 5.2, dt);
+                let cruise_lift = if kind == AgentKind::CargoForklift && a.carrying_cargo {
+                    0.32
+                } else {
+                    0.06
+                };
+                a.lift_height = ease_scalar(a.lift_height, cruise_lift, 4.0, dt);
+            } else {
+                let a = &mut self.agents[idx];
+                if is_final_waypoint {
+                    a.pos = target_pos;
+                }
+                a.nav_node = next_node_id;
+                a.nav_path.remove(0);
+                if a.nav_path.is_empty() {
+                    a.dwell_timer = match kind {
+                        AgentKind::CargoForklift => 2.2,
+                        AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => 2.4,
+                        AgentKind::OpsHoloDroid => 2.0,
+                        AgentKind::SecurityEnforcer => 1.8,
+                        AgentKind::FloorScrubber => 1.2,
+                        AgentKind::CourierRunner => 1.1,
+                        AgentKind::HullWelder => 0.0,
+                    };
+                }
+            }
+
+            // Refresh body snapshot so subsequent agents in this tick see the updated position
+            all_bodies[idx + 1].1 = self.agents[idx].pos;
         }
     }
 
@@ -817,7 +1012,7 @@ impl OrbitalHavenState {
                 target_deck: ElevatorDeck::Deck3Ops,
                 room: "ELEVATOR -> DECK-3 OPS",
             },
-            // 4. Patrol Ops Command Deck (around holotable & CRT consoles looking out front viewports!)
+            // 4. Patrol Ops Command Deck (clean perimeter loop well clear of Central Holotable at (0, 1.0) R=2.3!)
             WalkerLeg::Walk {
                 target: [0.0, D3, -2.0],
                 dwell: 0.0,
@@ -825,15 +1020,27 @@ impl OrbitalHavenState {
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
-                target: [-4.2, D3, 3.4],
+                target: [-4.8, D3, -1.8],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "OPS COMMAND DECK",
+            },
+            WalkerLeg::Walk {
+                target: [-4.6, D3, 4.2],
                 dwell: 2.4,
                 look_yaw: Some(0.22), // look out +Z armored viewports at ships & space!
                 room: "OPS DECK VIEWPORT",
             },
             WalkerLeg::Walk {
-                target: [4.2, D3, 3.4],
+                target: [4.6, D3, 4.2],
                 dwell: 1.8,
                 look_yaw: Some(-0.25),
+                room: "OPS COMMAND DECK",
+            },
+            WalkerLeg::Walk {
+                target: [4.8, D3, -1.8],
+                dwell: 0.0,
+                look_yaw: None,
                 room: "OPS COMMAND DECK",
             },
             WalkerLeg::Walk {
@@ -857,11 +1064,18 @@ impl OrbitalHavenState {
                 target_deck: ElevatorDeck::Deck1Reactor,
                 room: "ELEVATOR -> DECK-1 REACTOR",
             },
+            // Clean perimeter loop around Reactor Core at (0, 0) R=3.2!
             WalkerLeg::Walk {
-                target: [0.0, D1, -2.0],
+                target: [0.0, D1, -3.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CHAMBER",
+            },
+            WalkerLeg::Walk {
+                target: [5.6, D1, -4.6],
+                dwell: 0.0,
+                look_yaw: None,
+                room: "REACTOR CATWALK",
             },
             WalkerLeg::Walk {
                 target: [5.6, D1, 0.5],
@@ -882,13 +1096,13 @@ impl OrbitalHavenState {
                 room: "DECK-1 CONCOURSE",
             },
             WalkerLeg::Walk {
-                target: [-5.6, D1, -1.8],
+                target: [-5.6, D1, -4.6],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "REACTOR CATWALK",
             },
             WalkerLeg::Walk {
-                target: [0.0, D1, -2.0],
+                target: [0.0, D1, -3.5],
                 dwell: 0.0,
                 look_yaw: None,
                 room: "DECK-1 ELEVATOR LOBBY",
@@ -1006,22 +1220,125 @@ impl OrbitalHavenState {
                     want_elev_door_open = true;
                 }
 
+                let walker_in_pipe = (self.walker.pos[1] - D2).abs() < 1.0
+                    && (-25.6..=-14.2).contains(&self.walker.pos[2]);
+                let heading_into_pipe = (target[1] - D2).abs() < 1.0
+                    && ((-25.6..=-14.2).contains(&target[2])
+                        || (self.walker.pos[2] < -25.6 && target[2] > -14.2)
+                        || (self.walker.pos[2] > -14.2 && target[2] < -25.6));
+                // Respect the single-lane Axial Pipe Tunnel mutex: wait politely if another bot is inside!
+                let waiting_for_pipe = heading_into_pipe
+                    && !walker_in_pipe
+                    && matches!(self.pipe_tunnel_owner, Some(owner) if owner != 0);
+                if waiting_for_pipe {
+                    self.walker.current_room = "AFT AIRLOCK (YIELDING)".to_string();
+                } else if heading_into_pipe && self.pipe_tunnel_owner.is_none() {
+                    self.pipe_tunnel_owner = Some(0);
+                }
+
                 let dx = target[0] - self.walker.pos[0];
                 let dz = target[2] - self.walker.pos[2];
                 let dist = (dx * dx + dz * dz).sqrt();
-                let walk_speed = 3.8;
+                let walk_speed = if waiting_for_pipe { 0.0 } else { 3.8 };
+                let in_confined_shaft = (self.walker.pos[2] - (-6.0)).abs() < 2.4
+                    && self.walker.pos[0].abs() < 2.4
+                    || ((self.walker.pos[1] - D2).abs() < 1.0
+                        && (-25.6..=-14.2).contains(&self.walker.pos[2]));
+                let arrive_r = if dwell > 0.0 || in_confined_shaft {
+                    0.22
+                } else {
+                    0.85
+                };
 
-                if dist > 0.14 {
+                if dist > arrive_r {
+                    let dir_x = dx / dist;
+                    let dir_z = dz / dist;
+                    let mut avoid_x = 0.0f32;
+                    let mut avoid_z = 0.0f32;
+                    if !in_confined_shaft {
+                        for a in &self.agents {
+                            if a.kind == AgentKind::HullWelder
+                                || (a.pos[1] - self.walker.pos[1]).abs() > 1.8
+                            {
+                                continue;
+                            }
+                            let ox = a.pos[0] - self.walker.pos[0];
+                            let oz = a.pos[2] - self.walker.pos[2];
+                            let d = (ox * ox + oz * oz).sqrt();
+                            let safe_r = 0.85 + a.kind.radius() + 0.45;
+                            let min_sep = 0.85 + a.kind.radius() + 1.4;
+                            if d < min_sep && d > 1e-4 {
+                                let forward_dot = (ox * dir_x + oz * dir_z) / d;
+                                if forward_dot > 0.2 {
+                                    let strength = ((min_sep - d) / (min_sep - safe_r).max(0.25))
+                                        .clamp(0.35, 1.5);
+                                    avoid_x += dir_z * strength;
+                                    avoid_z += -dir_x * strength;
+                                }
+                                if d < safe_r {
+                                    let push = (safe_r - d) / safe_r;
+                                    avoid_x -= (ox / d) * push * 1.6;
+                                    avoid_z -= (oz / d) * push * 1.6;
+                                }
+                            }
+                        }
+                    }
+                    let mut move_x = dir_x + avoid_x;
+                    let mut move_z = dir_z + avoid_z;
+                    let m_len = (move_x * move_x + move_z * move_z).sqrt();
+                    if m_len > 1e-4 {
+                        move_x /= m_len;
+                        move_z /= m_len;
+                    }
                     let step = (walk_speed * dt).min(dist);
-                    self.walker.pos[0] += (dx / dist) * step;
-                    self.walker.pos[2] += (dz / dist) * step;
+                    let mut new_x = self.walker.pos[0] + move_x * step;
+                    let mut new_z = self.walker.pos[2] + move_z * step;
+                    if !in_confined_shaft {
+                        for a in &self.agents {
+                            if a.kind == AgentKind::HullWelder
+                                || (a.pos[1] - self.walker.pos[1]).abs() > 1.8
+                            {
+                                continue;
+                            }
+                            let rx = new_x - a.pos[0];
+                            let rz = new_z - a.pos[2];
+                            let rd = (rx * rx + rz * rz).sqrt();
+                            let hard_r = 0.85 + a.kind.radius() + 0.12;
+                            if rd < hard_r && rd > 1e-4 {
+                                new_x = a.pos[0] + (rx / rd) * hard_r;
+                                new_z = a.pos[2] + (rz / rd) * hard_r;
+                            }
+                        }
+                        // Keep BOT-01 strictly clear of central Ops Holotable & Reactor Core even when dodging
+                        if (target[1] - D3).abs() < 0.5 {
+                            let hx = new_x;
+                            let hz = new_z - 1.0;
+                            let hd = (hx * hx + hz * hz).sqrt();
+                            if hd < 2.95 && hd > 1e-4 {
+                                new_x = (hx / hd) * 2.95;
+                                new_z = 1.0 + (hz / hd) * 2.95;
+                            }
+                        } else if (target[1] - D1).abs() < 0.5 {
+                            let hd = (new_x * new_x + new_z * new_z).sqrt();
+                            if hd < 3.85 && hd > 1e-4 {
+                                new_x = (new_x / hd) * 3.85;
+                                new_z = (new_z / hd) * 3.85;
+                            }
+                        }
+                    }
+                    self.walker.pos[0] = new_x;
+                    self.walker.pos[2] = new_z;
                     self.walker.pos[1] = target[1];
                     self.walker.walk_phase = (self.walker.walk_phase + dt * 7.2) % TAU;
-                    let travel_yaw = dx.atan2(dz);
+                    let travel_yaw = move_x.atan2(move_z);
                     self.walker.yaw = turn_yaw(self.walker.yaw, travel_yaw, 5.0, dt);
                     self.walker.dwell_timer = dwell;
                 } else {
-                    self.walker.pos = target;
+                    if in_confined_shaft {
+                        self.walker.pos = target;
+                    } else {
+                        self.walker.pos[1] = target[1];
+                    }
                     if let Some(ly) = look_yaw {
                         self.walker.yaw = turn_yaw(self.walker.yaw, ly, 3.2, dt);
                     }
@@ -1086,13 +1403,21 @@ impl OrbitalHavenState {
         self.elevator.door_open = ease_scalar(self.elevator.door_open, elev_door_target, 5.0, dt);
 
         // Proximity-triggered sliding blast doors on Deck 2 (`Z = 11.6`, `Z = -14.6`, `Z = -25.0`)
+        // Opens smoothly for BOT-01 AND any Deck-2 rolling robot (CourierRunner, FloorScrubber, etc.)!
         let door_zs = [11.6f32, -14.6f32, -25.0f32];
-        let on_deck_2 = (self.walker.pos[1] - D2).abs() < 1.5;
+        let walker_on_d2 = (self.walker.pos[1] - D2).abs() < 1.5;
         for (i, &dz) in door_zs.iter().enumerate() {
-            let near = on_deck_2
+            let walker_near = walker_on_d2
                 && self.walker.pos[0].abs() < 3.5
                 && (self.walker.pos[2] - dz).abs() < 4.5;
-            let tgt = if near { 1.0 } else { 0.0 };
+            let any_bot_near = self.agents.iter().any(|a| {
+                (a.pos[1] - D2).abs() < 1.5 && a.pos[0].abs() < 3.8 && (a.pos[2] - dz).abs() < 4.5
+            });
+            let tgt = if walker_near || any_bot_near {
+                1.0
+            } else {
+                0.0
+            };
             self.door_open[i] = ease_scalar(self.door_open[i], tgt, 4.8, dt);
         }
     }

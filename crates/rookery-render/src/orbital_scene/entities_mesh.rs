@@ -699,7 +699,7 @@ pub fn build_dynamic_entities(
     }
 
     // =========================================================================
-    // 5. AUTONOMOUS BOTS & INTERIOR CREW FIGURES
+    // 5. AUTONOMOUS WHEELED & TRACKED STATION ROBOTS
     // =========================================================================
     for agent in &state.agents {
         let p = agent.pos;
@@ -709,7 +709,7 @@ pub fn build_dynamic_entities(
         let u = [0.0, 1.0, 0.0];
 
         match agent.kind {
-            AgentKind::CargoLoader => {
+            AgentKind::CargoForklift => {
                 // Detailed Y2K tracked industrial forklift / cargo-loader bot
                 // 1. Twin heavy caterpillar tread pods (left & right)
                 op.push_oriented_box(
@@ -861,7 +861,7 @@ pub fn build_dynamic_entities(
                     theme.hull_tint,
                     0.0,
                 );
-                // 7. Dynamic cargo crate resting on the raised forks when hauling!
+                // 7. Dynamic cargo crate resting on the raised forks when hauling
                 if agent.carrying_cargo {
                     op.push_oriented_box(
                         p,
@@ -875,8 +875,9 @@ pub fn build_dynamic_entities(
                         0.0,
                     );
                 }
-                // 8. Flashing rooftop amber warning strobe
-                if (time * 4.5 + agent.id as f32).sin() > 0.0 {
+                // 8. Flashing rooftop amber warning strobe (faster when yielding)
+                let strobe_rate = if agent.yielding { 10.0 } else { 4.5 };
+                if (time * strobe_rate + agent.id as f32).sin() > 0.0 {
                     op.push_oriented_box(
                         p,
                         r,
@@ -890,76 +891,42 @@ pub fn build_dynamic_entities(
                     );
                 }
             }
-            AgentKind::SecurityDroid => {
-                // System Shock 2 inspired boxy armored security patrol droid with glowing visor
-                let bob = (agent.phase * 2.0).sin() * 0.12;
+            AgentKind::FloorScrubber => {
+                // Compact 3-wheel custodial floor scrubber with spinning front brush roller
+                // 1. Rear twin drive wheels & front caster wheel
+                for sx in [-0.52f32, 0.52f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 0.22, -0.32],
+                        [0.18, 0.44, 0.44],
+                        Tile::DarkSteelRib,
+                        dark_steel,
+                        0.0,
+                    );
+                }
                 op.push_oriented_box(
                     p,
                     r,
                     u,
                     f,
-                    [0.0, 1.2 + bob, 0.0],
-                    [1.1, 1.6, 0.9],
-                    Tile::DarkSteelRib,
-                    theme.hull_tint,
-                    0.0,
-                );
-                op.push_oriented_box(
-                    p,
-                    r,
-                    u,
-                    f,
-                    [0.0, 2.25 + bob, 0.0],
-                    [0.85, 0.65, 0.85],
-                    Tile::ShipArmor,
-                    theme.hull_tint,
-                    0.0,
-                );
-                op.push_oriented_box(
-                    p,
-                    r,
-                    u,
-                    f,
-                    [0.0, 2.3 + bob, 0.46],
-                    [0.65, 0.22, 0.1],
-                    Tile::CeilingLight,
-                    red_strobe,
-                    1.35,
-                );
-            }
-            AgentKind::OpsCrew => {
-                // Stylized low-poly Deus Ex station officer silhouette (legs + torso + head)
-                let stride = agent.phase.sin() * 0.22;
-                op.push_oriented_box(
-                    p,
-                    r,
-                    u,
-                    f,
-                    [-0.22, 0.55, stride],
-                    [0.32, 1.1, 0.35],
+                    [0.0, 0.16, 0.42],
+                    [0.22, 0.32, 0.32],
                     Tile::DarkSteelRib,
                     dark_steel,
                     0.0,
                 );
+                // 2. Low octagonal-style industrial drum body + hazard bumper
                 op.push_oriented_box(
                     p,
                     r,
                     u,
                     f,
-                    [0.22, 0.55, -stride],
-                    [0.32, 1.1, 0.35],
-                    Tile::DarkSteelRib,
-                    dark_steel,
-                    0.0,
-                );
-                op.push_oriented_box(
-                    p,
-                    r,
-                    u,
-                    f,
-                    [0.0, 1.55, 0.0],
-                    [0.82, 1.05, 0.45],
-                    Tile::CorridorWall,
+                    [0.0, 0.48, -0.05],
+                    [0.98, 0.42, 1.05],
+                    Tile::HullPanel,
                     theme.hull_tint,
                     0.0,
                 );
@@ -968,12 +935,463 @@ pub fn build_dynamic_entities(
                     r,
                     u,
                     f,
-                    [0.0, 2.32, 0.0],
-                    [0.46, 0.48, 0.46],
-                    Tile::ShipArmor,
+                    [0.0, 0.36, 0.48],
+                    [1.06, 0.18, 0.16],
+                    Tile::HazardStripe,
                     white,
                     0.0,
                 );
+                // 3. Spinning yellow front scrubber brush roller
+                let spin_osc = (time * 16.0 + agent.id as f32).sin() * 0.05;
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.16 + spin_osc.abs() * 0.4, 0.64],
+                    [0.96, 0.24, 0.24],
+                    Tile::HazardStripe,
+                    sec,
+                    0.25,
+                );
+                // 4. Rear waste tank & glowing cyan optical sensor dome
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.86, -0.26],
+                    [0.72, 0.44, 0.52],
+                    Tile::ShipArmor,
+                    theme.rib_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.82, 0.20],
+                    [0.36, 0.26, 0.36],
+                    Tile::CeilingLight,
+                    accent,
+                    1.15,
+                );
+            }
+            AgentKind::OpsHoloDroid => {
+                // 4-wheel UNATCO telemetry droid with 3 glowing CRT displays & spinning radar dish
+                // 1. 4 omni-wheel pods at corners
+                for sx in [-0.46f32, 0.46f32] {
+                    for sz in [-0.44f32, 0.44f32] {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [sx, 0.18, sz],
+                            [0.18, 0.36, 0.36],
+                            Tile::DarkSteelRib,
+                            dark_steel,
+                            0.0,
+                        );
+                    }
+                }
+                // 2. Low base chassis & central telemetry pedestal
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.38, 0.0],
+                    [0.96, 0.28, 0.96],
+                    Tile::DarkSteelRib,
+                    theme.rib_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.08, 0.0],
+                    [0.64, 1.12, 0.64],
+                    Tile::ShipArmor,
+                    theme.hull_tint,
+                    0.0,
+                );
+                // 3. Three glowing CRT telemetry screens (front, left, right)
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.24, 0.35],
+                    [0.50, 0.42, 0.08],
+                    Tile::CrtConsole,
+                    accent,
+                    1.25,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [-0.35, 1.24, 0.0],
+                    [0.08, 0.38, 0.46],
+                    Tile::CrtConsole,
+                    accent,
+                    1.1,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.35, 1.24, 0.0],
+                    [0.08, 0.38, 0.46],
+                    Tile::CrtConsole,
+                    accent,
+                    1.1,
+                );
+                // 4. Spinning rooftop micro-radar dish
+                let dish_yaw = agent.yaw + time * 2.4 + agent.id as f32;
+                let (dsy, dcy) = dish_yaw.sin_cos();
+                let df = [dsy, 0.0, dcy];
+                let dr = [dcy, 0.0, -dsy];
+                op.push_oriented_box(
+                    p,
+                    dr,
+                    u,
+                    df,
+                    [0.0, 1.76, 0.0],
+                    [0.14, 0.26, 0.14],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    dr,
+                    u,
+                    df,
+                    [0.0, 1.94, 0.10],
+                    [0.54, 0.26, 0.10],
+                    Tile::HullPanel,
+                    white,
+                    0.35,
+                );
+                // 5. Translucent cyan data-sync projection beam while dwelling at consoles
+                if agent.dwell_timer > 0.0 {
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 1.28, 0.95],
+                        [0.42, 0.34, 1.05],
+                        Tile::ForcefieldHex,
+                        [accent[0], accent[1], accent[2], 0.28],
+                        1.4,
+                    );
+                }
+            }
+            AgentKind::SecurityEnforcer => {
+                // Heavy twin-tracked System Shock 2 security enforcer with sweeping turret torso
+                // 1. Wide armored tank treads (left & right)
+                for sx in [-0.64f32, 0.64f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 0.28, 0.0],
+                        [0.34, 0.56, 1.62],
+                        Tile::DarkSteelRib,
+                        dark_steel,
+                        0.0,
+                    );
+                }
+                // 2. Armored lower track hull
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.48, 0.0],
+                    [0.98, 0.44, 1.38],
+                    Tile::ShipArmor,
+                    theme.rib_tint,
+                    0.0,
+                );
+                // 3. Slowly sweeping upper turret torso + glowing crimson visor slit
+                let sweep = (time * 1.35 + agent.id as f32 * 1.7).sin() * 0.42;
+                let (tsy, tcy) = (agent.yaw + sweep).sin_cos();
+                let tf = [tsy, 0.0, tcy];
+                let tr_vec = [tcy, 0.0, -tsy];
+                op.push_oriented_box(
+                    p,
+                    tr_vec,
+                    u,
+                    tf,
+                    [0.0, 1.26, 0.0],
+                    [0.96, 1.08, 0.88],
+                    Tile::ShipArmor,
+                    theme.hull_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    tr_vec,
+                    u,
+                    tf,
+                    [0.0, 1.92, 0.04],
+                    [0.72, 0.44, 0.72],
+                    Tile::DarkSteelRib,
+                    dark_steel,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    tr_vec,
+                    u,
+                    tf,
+                    [0.0, 1.94, 0.42],
+                    [0.62, 0.16, 0.08],
+                    Tile::CeilingLight,
+                    red_strobe,
+                    1.45,
+                );
+                // Twin side sensor / stun-emitter pods
+                for sx in [-0.62f32, 0.62f32] {
+                    op.push_oriented_box(
+                        p,
+                        tr_vec,
+                        u,
+                        tf,
+                        [sx, 1.34, 0.24],
+                        [0.24, 0.28, 0.78],
+                        Tile::DarkSteelRib,
+                        dark_steel,
+                        0.0,
+                    );
+                }
+            }
+            AgentKind::ReactorCoolantBot => {
+                // 4-wheel heavy reactor coolant tanker with twin glowing cyan cryo canisters
+                // 1. 4 heavy industrial wheels
+                for sx in [-0.64f32, 0.64f32] {
+                    for sz in [-0.56f32, 0.56f32] {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [sx, 0.28, sz],
+                            [0.24, 0.56, 0.56],
+                            Tile::DarkSteelRib,
+                            dark_steel,
+                            0.0,
+                        );
+                    }
+                }
+                // 2. Squat yellow/black hazard tanker chassis
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.58, 0.0],
+                    [1.12, 0.56, 1.56],
+                    Tile::HazardStripe,
+                    white,
+                    0.0,
+                );
+                // 3. Twin glowing cyan cryo-coolant pressure tanks mounted on top
+                for sx in [-0.30f32, 0.30f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 1.12, -0.14],
+                        [0.42, 0.54, 1.18],
+                        Tile::ReactorCoil,
+                        accent,
+                        1.15,
+                    );
+                }
+                // 4. Extending front thermal inspection / coolant nozzle arm
+                let ext = 0.85 + agent.lift_height.clamp(0.0, 1.0) * 0.65;
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.86, ext],
+                    [0.22, 0.22, 0.76],
+                    Tile::DarkSteelRib,
+                    theme.hull_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.86, ext + 0.42],
+                    [0.26, 0.26, 0.14],
+                    Tile::CeilingLight,
+                    accent,
+                    1.2,
+                );
+            }
+            AgentKind::SolarCapacitorBot => {
+                // Twin-tracked high-voltage solar calibration bot with copper coil pack & probe arm
+                // 1. Narrow twin tracks
+                for sx in [-0.50f32, 0.50f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 0.24, 0.0],
+                        [0.26, 0.48, 1.38],
+                        Tile::DarkSteelRib,
+                        dark_steel,
+                        0.0,
+                    );
+                }
+                // 2. Tall insulated high-voltage body
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.92, 0.0],
+                    [0.78, 1.08, 1.02],
+                    Tile::ShipArmor,
+                    theme.hull_tint,
+                    0.0,
+                );
+                // 3. Amber copper-coil capacitor backpack
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.08, -0.58],
+                    [0.64, 0.76, 0.34],
+                    Tile::ReactorCoil,
+                    sec,
+                    0.95,
+                );
+                // 4. Extending calibration probe arm & flickering amber arc when calibrating
+                let arm_h = 1.15 + agent.lift_height.clamp(0.0, 1.0) * 0.55;
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, arm_h, 0.76],
+                    [0.18, 0.18, 0.78],
+                    Tile::HazardStripe,
+                    white,
+                    0.0,
+                );
+                if agent.dwell_timer > 0.2 && (time * 14.0 + agent.id as f32).sin() > 0.15 {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, arm_h, 1.24],
+                        [0.34, 0.34, 0.34],
+                        Tile::CeilingLight,
+                        sec,
+                        1.5,
+                    );
+                }
+            }
+            AgentKind::CourierRunner => {
+                // Zippy low-profile 4-wheel cross-room data & parts courier rover
+                // 1. 4 sporty dark wheel pods
+                for sx in [-0.48f32, 0.48f32] {
+                    for sz in [-0.46f32, 0.46f32] {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [sx, 0.20, sz],
+                            [0.18, 0.40, 0.40],
+                            Tile::DarkSteelRib,
+                            dark_steel,
+                            0.0,
+                        );
+                    }
+                }
+                // 2. Low-slung angular wedge chassis with amber hazard stripe
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.44, 0.0],
+                    [0.84, 0.34, 1.32],
+                    Tile::DarkSteelRib,
+                    theme.rib_tint,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.64, -0.08],
+                    [0.72, 0.20, 0.96],
+                    Tile::HazardStripe,
+                    white,
+                    0.0,
+                );
+                // 3. Forward white headlights & twin red rear micro-taillights
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.48, 0.68],
+                    [0.54, 0.14, 0.08],
+                    Tile::CeilingLight,
+                    white,
+                    1.25,
+                );
+                for sx in [-0.28f32, 0.28f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 0.48, -0.68],
+                        [0.16, 0.12, 0.08],
+                        Tile::CeilingLight,
+                        red_strobe,
+                        1.3,
+                    );
+                }
+                // 4. Glowing cyan data-core canister strapped on top when carrying a delivery
+                if agent.carrying_cargo {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 0.92, -0.08],
+                        [0.44, 0.36, 0.56],
+                        Tile::ReactorCoil,
+                        accent,
+                        1.35,
+                    );
+                }
             }
             AgentKind::HullWelder => {
                 // Exterior hull maintenance welder drone with flickering arc spark
@@ -1121,50 +1539,54 @@ pub fn build_dynamic_entities(
         );
     }
 
-    // 6C. Physical 3D Interior Walker Camera Bot (`BOT-01`, visible on all fixed interior CCTV feeds!)
+    // 6C. Physical 3D Interior Tracked / 6-Wheel Camera Rover (`BOT-01`, visible on fixed interior CCTV feeds!)
     {
         let wp = state.walker.pos;
         let (sy, cy) = state.walker.yaw.sin_cos();
         let wf = [sy, 0.0, cy];
         let wr = [cy, 0.0, -sy];
         let wu = [0.0, 1.0, 0.0];
-        let stride = if state.walker.riding_elevator || state.walker.dwell_timer > 0.0 {
-            0.0
+        let rolling = !state.walker.riding_elevator && state.walker.dwell_timer <= 0.0;
+        let suspension_bob = if rolling {
+            (state.walker.walk_phase * 2.5).sin().abs() * 0.03
         } else {
-            state.walker.walk_phase.sin() * 0.24
+            0.0
         };
-        let bob = stride.abs() * 0.14;
-        // Articulated bipedal walker legs
+        // 1. Twin armored side track bogies + 6 visible rugged wheel hubs (3 per side)
+        for sx in [-0.58f32, 0.58f32] {
+            op.push_oriented_box(
+                wp,
+                wr,
+                wu,
+                wf,
+                [sx, 0.24, 0.0],
+                [0.24, 0.42, 1.48],
+                Tile::DarkSteelRib,
+                dark_steel,
+                0.0,
+            );
+            for sz in [-0.52f32, 0.0, 0.52f32] {
+                op.push_oriented_box(
+                    wp,
+                    wr,
+                    wu,
+                    wf,
+                    [sx * 1.12, 0.22, sz],
+                    [0.10, 0.34, 0.34],
+                    Tile::HullPanel,
+                    theme.rib_tint,
+                    0.0,
+                );
+            }
+        }
+        // 2. Low-slung armored reconnaissance rover hull with hazard stripe belt
         op.push_oriented_box(
             wp,
             wr,
             wu,
             wf,
-            [-0.30, 0.48, stride],
-            [0.24, 0.96, 0.30],
-            Tile::DarkSteelRib,
-            dark_steel,
-            0.0,
-        );
-        op.push_oriented_box(
-            wp,
-            wr,
-            wu,
-            wf,
-            [0.30, 0.48, -stride],
-            [0.24, 0.96, 0.30],
-            Tile::DarkSteelRib,
-            dark_steel,
-            0.0,
-        );
-        // Armored Y2K security rover torso with hazard stripe accent
-        op.push_oriented_box(
-            wp,
-            wr,
-            wu,
-            wf,
-            [0.0, 1.28 + bob, 0.0],
-            [0.92, 0.78, 0.78],
+            [0.0, 0.56 + suspension_bob, -0.02],
+            [0.98, 0.52, 1.32],
             Tile::ShipArmor,
             theme.hull_tint,
             0.0,
@@ -1174,20 +1596,45 @@ pub fn build_dynamic_entities(
             wr,
             wu,
             wf,
-            [0.0, 1.02 + bob, 0.0],
-            [0.96, 0.22, 0.82],
+            [0.0, 0.44 + suspension_bob, 0.0],
+            [1.02, 0.18, 1.36],
             Tile::HazardStripe,
             white,
             0.0,
         );
-        // Rotating optical camera turret head + glowing red/cyan lens
+        // Twin forward rover headlights
+        for sx in [-0.34f32, 0.34f32] {
+            op.push_oriented_box(
+                wp,
+                wr,
+                wu,
+                wf,
+                [sx, 0.62 + suspension_bob, 0.66],
+                [0.18, 0.14, 0.08],
+                Tile::CeilingLight,
+                white,
+                1.25,
+            );
+        }
+        // 3. Telescoping vertical optical mast & rotating camera turret head + glowing red REC lens
         op.push_oriented_box(
             wp,
             wr,
             wu,
             wf,
-            [0.0, 1.88 + bob, 0.05],
-            [0.62, 0.48, 0.68],
+            [0.0, 1.24 + suspension_bob, -0.06],
+            [0.24, 0.88, 0.24],
+            Tile::DarkSteelRib,
+            dark_steel,
+            0.0,
+        );
+        op.push_oriented_box(
+            wp,
+            wr,
+            wu,
+            wf,
+            [0.0, 1.78 + suspension_bob, 0.04],
+            [0.64, 0.46, 0.68],
             Tile::DarkSteelRib,
             theme.rib_tint,
             0.0,
@@ -1197,19 +1644,20 @@ pub fn build_dynamic_entities(
             wr,
             wu,
             wf,
-            [0.0, 1.88 + bob, 0.42],
+            [0.0, 1.78 + suspension_bob, 0.40],
             [0.34, 0.26, 0.10],
             Tile::CeilingLight,
             red_strobe,
             1.35,
         );
+        // Rooftop cyan telemetry antenna
         op.push_oriented_box(
             wp,
             wr,
             wu,
             wf,
-            [0.24, 2.25 + bob, -0.10],
-            [0.08, 0.42, 0.08],
+            [0.24, 2.18 + suspension_bob, -0.10],
+            [0.08, 0.44, 0.08],
             Tile::CeilingLight,
             accent,
             1.1,
