@@ -467,7 +467,34 @@ impl MeshBuilder {
                 let pm = ((phi0 + phi1) * 0.5).cos();
                 let tm = (th0 + th1) * 0.5;
                 let n = [pm * tm.cos(), ((phi0 + phi1) * 0.5).sin(), pm * tm.sin()];
-                self.push_quad(p10, p00, p01, p11, n, [1.0, 1.0], tile, col, emissive);
+
+                // Map global spherical UVs smoothly across the whole planet (avoiding per-quad tiling!)
+                let base = self.verts.len() as u32;
+                let rect = tile.rect();
+                let verts_uv = [
+                    (p10, [u1 * 2.0, v0]),
+                    (p00, [u0 * 2.0, v0]),
+                    (p01, [u0 * 2.0, v1]),
+                    (p11, [u1 * 2.0, v1]),
+                ];
+                for (pos, uv) in verts_uv {
+                    self.verts.push(OrbitalVertex {
+                        pos,
+                        normal: n,
+                        uv,
+                        tile_rect: rect,
+                        color: col,
+                        emissive,
+                    });
+                }
+                self.indices.extend_from_slice(&[
+                    base,
+                    base + 1,
+                    base + 2,
+                    base,
+                    base + 2,
+                    base + 3,
+                ]);
             }
         }
     }

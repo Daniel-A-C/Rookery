@@ -1039,10 +1039,10 @@ impl Scene for OrbitalHavenScene {
                 cam.fov_deg,
                 aspect,
                 0.4,
-                650.0,
+                3200.0,
             );
 
-            let fog_density = if cam.is_interior { 0.011 } else { 0.0012 };
+            let fog_density = if cam.is_interior { 0.011 } else { 0.00018 };
             let u3d = Orbital3dUniforms {
                 view_proj,
                 eye_and_time: [cam.eye[0], cam.eye[1], cam.eye[2], t],

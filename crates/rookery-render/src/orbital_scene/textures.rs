@@ -27,6 +27,8 @@ pub enum Tile {
     ServerRack = 13,
     RadiatorLouvers = 14,
     ShipArmor = 15,
+    PlanetSurface = 16,
+    PlanetRing = 17,
 }
 
 impl Tile {
@@ -367,6 +369,52 @@ pub fn generate_atlas_rgba() -> Vec<u8> {
             return [clamp_u8(196 + n), clamp_u8(138 + n), clamp_u8(44), 255];
         }
         [clamp_u8(v - 4), clamp_u8(v), clamp_u8(v + 6), 255]
+    });
+
+    // 16: Natural planetary surface & swirling cloud bands (global spherical wrap, zero rivets)
+    fill_tile(&mut buf, Tile::PlanetSurface, |x, y| {
+        let fx = x as f32 / TILE_SIZE as f32;
+        let fy = y as f32 / TILE_SIZE as f32;
+        let tau = std::f32::consts::TAU;
+        // Seamless horizontal wrap for continuous globe bands + soft continental & cloud strata
+        let swirl = (fx * tau + (fy * tau * 2.0).sin() * 0.85).sin()
+            + 0.45 * (fx * tau * 2.0 - fy * tau * 3.0).cos();
+        let band = (fy * tau * 2.0 + swirl * 0.4).sin();
+        let cloud_wisp =
+            (fx * tau * 2.0 + (fy * tau * 3.0).cos() * 1.1).sin() * (fy * tau * 2.0).cos();
+        let grain = noise_i32(x, y, 16, 7) as f32;
+
+        let base = 138.0 + band * 26.0 + grain;
+        let cloud = if cloud_wisp > 0.25 {
+            (cloud_wisp - 0.25) * 115.0
+        } else {
+            0.0
+        };
+        [
+            clamp_u8((base * 0.86 + cloud) as i32),
+            clamp_u8((base * 0.95 + cloud) as i32),
+            clamp_u8((base * 1.06 + cloud) as i32),
+            255,
+        ]
+    });
+
+    // 17: Natural concentric ice/dust planetary ring bands (with Cassini-style dark division)
+    fill_tile(&mut buf, Tile::PlanetRing, |x, y| {
+        // `x` maps radially from inner edge (0) to outer edge (63)
+        let r = x as f32 / (TILE_SIZE - 1) as f32;
+        let edge_fade = (r * 7.0).min(1.0) * ((1.0 - r) * 7.0).min(1.0);
+        // Cassini-style natural gap around r = 0.56..0.65
+        let gap = if (0.56..0.65).contains(&r) { 0.12 } else { 1.0 };
+        let ringlets = 0.72 + 0.28 * (r * 46.0).sin() * (r * 19.0).cos();
+        let dust_grain = noise_i32(x, y / 2, 17, 14);
+        let alpha = (edge_fade * gap * ringlets * 175.0).clamp(0.0, 220.0) as u8;
+        let lum = 192 + (ringlets * 32.0) as i32 + dust_grain;
+        [
+            clamp_u8(lum + 10),
+            clamp_u8(lum + 4),
+            clamp_u8(lum - 8),
+            alpha,
+        ]
     });
 
     buf

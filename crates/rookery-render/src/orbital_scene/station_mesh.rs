@@ -839,56 +839,67 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
     );
 
     // =========================================================================
-    // 6. STYLIZED LOW-POLY PLANET, ORBITAL RING & DEEP-SPACE STARFIELD
+    // 6. DISTANT NATURAL PLANET, ATMOSPHERIC LIMB, ICE/DUST RING & DEEP STARFIELD
     // =========================================================================
-    let planet_center = [-160.0, -190.0, -260.0];
+    // Positioned ~1,550 units away with a monumental 620-unit radius so it feels genuinely
+    // far below in low orbit with subtle, majestic parallax.
+    let planet_center = [-480.0, -920.0, -1150.0];
+    let planet_radius = 620.0;
     op.push_sphere(
         planet_center,
-        155.0,
-        12,
-        20,
-        Tile::HullPanel,
+        planet_radius,
+        18,
+        32,
+        Tile::PlanetSurface,
         theme.planet_north,
         theme.planet_equator,
-        0.55,
+        0.0, // Real directional sun & day/night terminator lighting!
     );
 
-    // Stylized faceted planetary ring band
-    let ring_segs = 28;
-    let r_in = 190.0;
-    let r_out = 235.0;
+    // Subtle translucent atmospheric limb haze shell enveloping the planet
+    tr.push_sphere(
+        planet_center,
+        planet_radius + 16.0,
+        14,
+        24,
+        Tile::PlanetSurface,
+        theme.planet_atmo,
+        theme.planet_atmo,
+        1.6,
+    );
+
+    // Natural concentric ice-and-dust planetary ring (with Cassini-style gap, zero hex grid)
+    let ring_segs = 44;
+    let r_in = 760.0;
+    let r_out = 1090.0;
     for i in 0..ring_segs {
         let a0 = (i as f32 / ring_segs as f32) * TAU;
         let a1 = ((i + 1) as f32 / ring_segs as f32) * TAU;
         let pt = |r: f32, a: f32| -> [f32; 3] {
             let x = a.cos() * r;
             let z = a.sin() * r;
-            let y = x * 0.28 + z * 0.14;
+            let y = x * 0.30 + z * 0.18;
             [
                 planet_center[0] + x,
                 planet_center[1] + y,
                 planet_center[2] + z,
             ]
         };
+        // Note: `u` runs radially from inner edge (0.0) to outer edge (1.0) to sample Tile::PlanetRing bands
         tr.push_quad(
             pt(r_in, a0),
             pt(r_out, a0),
             pt(r_out, a1),
             pt(r_in, a1),
             [0.0, 1.0, 0.0],
-            [1.0, 1.0],
-            Tile::ForcefieldHex,
-            [
-                theme.accent_primary[0] * 0.55,
-                theme.accent_primary[1] * 0.55,
-                theme.accent_primary[2] * 0.65,
-                0.24,
-            ],
-            1.6,
+            [0.98, 1.0],
+            Tile::PlanetRing,
+            theme.planet_ring,
+            0.0,
         );
     }
 
-    // Deterministic 3D deep-space starfield cubes at radius ~360..420
+    // Deterministic 3D deep-space starfield at radius ~1650..2100
     let mut s: u64 = 0x9E37_79B9_7F4A_7C15;
     let mut next_f = || -> f32 {
         s ^= s << 13;
@@ -896,21 +907,21 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         s ^= s << 17;
         (s & 0xFFFF) as f32 / 65535.0
     };
-    for _ in 0..160 {
+    for _ in 0..220 {
         let th = next_f() * TAU;
         let z_u = next_f() * 2.0 - 1.0;
         let r_xy = (1.0 - z_u * z_u).max(0.0).sqrt();
-        let dist = 360.0 + next_f() * 60.0;
+        let dist = 1650.0 + next_f() * 450.0;
         let pos = [r_xy * th.cos() * dist, z_u * dist, r_xy * th.sin() * dist];
-        let sz = 1.1 + next_f() * 1.4;
+        let sz = 3.2 + next_f() * 4.5;
         let tint = if next_f() > 0.75 {
-            [0.75, 0.90, 1.0, 1.0]
+            [0.78, 0.90, 1.0, 1.0]
         } else if next_f() > 0.8 {
-            [1.0, 0.88, 0.68, 1.0]
+            [1.0, 0.88, 0.72, 1.0]
         } else {
-            [0.88, 0.92, 0.98, 1.0]
+            [0.90, 0.93, 0.98, 1.0]
         };
-        op.push_box(pos, [sz, sz, sz], Tile::CeilingLight, sz, tint, 1.1);
+        op.push_box(pos, [sz, sz, sz], Tile::CeilingLight, sz, tint, 1.15);
     }
 
     StaticStationMeshes {
