@@ -875,6 +875,35 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.92,
         );
     }
+    // Watertight Atrium Roof / Inter-Deck Ceiling Collar sealing the perimeter between the
+    // wider Central Core Atrium (X:-12.2..12.2, Z:-14.6..11.6) and the Ops Command Spire floor
+    // slab (X:-11.0..11.0, Z:-11.0..11.0, Y:10.8..12.0), keeping the Elevator Shaft open.
+    op.push_box(
+        [0.0, 11.3, -12.8],
+        [24.4, 1.0, 3.6],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 11.1, 11.3],
+        [24.4, 0.6, 0.6],
+        Tile::HullPanel,
+        5.0,
+        dark_hull,
+        0.0,
+    );
+    for x_eave in [-11.6f32, 11.6f32] {
+        op.push_box(
+            [x_eave, 11.2, 0.0],
+            [1.2, 0.8, 22.0],
+            Tile::HullPanel,
+            5.0,
+            dark_hull,
+            0.0,
+        );
+    }
 
     // 5B. Continuous 3-Deck Glass Elevator Shaft Frame (`X = 0, Z = -6.0`, spanning `Y = -15.0..+20.6`)
     for sx in [-2.65f32, 2.65f32] {

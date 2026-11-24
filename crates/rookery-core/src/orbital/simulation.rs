@@ -877,8 +877,8 @@ impl OrbitalHavenState {
                 let mut new_z = cur_pos[2] + move_z * step;
                 // Hard post-step separation clamp so no two bots ever overlap even at coarse dt
                 // (only exempt inside the narrow Pipe Tunnel walls Z in -24.8..-15.2, where the mutex prevents overlap)
-                let in_narrow_pipe_walls = (cur_pos[1] - (-3.88)).abs() < 1.0
-                    && (-24.8..=-15.2).contains(&cur_pos[2]);
+                let in_narrow_pipe_walls =
+                    (cur_pos[1] - (-3.88)).abs() < 1.0 && (-24.8..=-15.2).contains(&cur_pos[2]);
                 if !in_narrow_pipe_walls && kind != AgentKind::CargoForklift {
                     for &(other_id, other_pos, other_r) in &all_bodies {
                         if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
