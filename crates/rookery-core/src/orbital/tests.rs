@@ -531,3 +531,35 @@ fn walker_and_courier_never_deadlock_at_solar_pipe_exit() {
         "CourierRunner deadlocked at Solar Bay Pipe Tunnel exit"
     );
 }
+
+#[test]
+fn follow_bot_room_tracks_walker_across_all_decks_and_rooms() {
+    let f = CameraFeedId::from_slug("follow_bot").expect("follow_bot slug should resolve");
+    assert_eq!(f, CameraFeedId::FollowBotRoom);
+    assert!(f.is_dynamic());
+
+    assert_eq!(
+        f.resolve_for_state(0.0, [0.0, -3.85, 22.0], 0),
+        CameraFeedId::PadAHangarInterior
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [0.0, -3.85, 3.0], 0),
+        CameraFeedId::IntCentralAtrium
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [0.0, 12.05, 4.0], 0),
+        CameraFeedId::IntOpsDeck
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [5.6, -14.95, 2.0], 0),
+        CameraFeedId::IntReactorCore
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [0.0, -3.85, -20.0], 0),
+        CameraFeedId::WalkerBotCam
+    );
+    assert_eq!(
+        f.resolve_for_state(0.0, [0.0, -3.85, -34.0], 0),
+        CameraFeedId::IntSolarBay
+    );
+}

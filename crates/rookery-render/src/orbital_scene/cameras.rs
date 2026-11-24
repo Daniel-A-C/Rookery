@@ -233,7 +233,8 @@ pub fn resolve_camera(
     slot_offset: usize,
 ) -> ResolvedCamera {
     let is_rotating = feed.is_rotating();
-    let active_feed = feed.resolve_active(state.total_age_secs, slot_offset);
+    let is_follow_bot = feed == CameraFeedId::FollowBotRoom;
+    let active_feed = feed.resolve_for_state(state.total_age_secs, state.walker.pos, slot_offset);
     let pan = if apply_manual_pan {
         state.camera_rig.manual_pan
     } else {
@@ -258,7 +259,7 @@ pub fn resolve_camera(
                 tgt,
                 [0.0, 1.0, 0.0],
                 48.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!("ORBIT ALT 412KM · {}", state.event.name()),
             )
         }
@@ -277,7 +278,7 @@ pub fn resolve_camera(
                 tgt,
                 [0.0, 1.0, 0.0],
                 54.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!("PERIMETER SWEEP · {} SHIPS", state.ships.len()),
             )
         }
@@ -302,7 +303,7 @@ pub fn resolve_camera(
                 tgt,
                 [0.0, 1.0, 0.0],
                 56.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "BAY-01 FORCEFIELD · ACTIVE".to_string(),
             )
         }
@@ -314,7 +315,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, servo_sweep * 0.65, 0.0),
                 [0.0, 1.0, 0.0],
                 66.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "ATMO FIELD 101.3 KPA · PAD-A".to_string(),
             )
         }
@@ -326,7 +327,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
                 55.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "PORT FREIGHT DECK · PAD-B".to_string(),
             )
         }
@@ -338,7 +339,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, -servo_sweep * 0.5, 0.0),
                 [0.0, 1.0, 0.0],
                 55.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "STBD UTILITY DECK · PAD-C".to_string(),
             )
         }
@@ -351,7 +352,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
                 [0.0, 1.0, 0.0],
                 66.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
                     "DECK-2 ATRIUM · ELEVATOR {}",
                     state.elevator.target_deck.label()
@@ -359,33 +360,24 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::IntOpsDeck => {
-            // High corner inside Ops Command Spire looking across CRT consoles, holotable & live exterior viewports!
-            let eye = [-7.8, 19.2, -7.2];
-            let tgt = [1.5, 14.2, 24.0];
+            // Front-left viewport corner inside Ops Command Spire framing the Central Holotable,
+            // CRT consoles, roaming OpsHoloDroids, AND the 3-deck Glass Elevator at (0, 14, -6)!
+            let eye = [-8.6, 19.2, 8.8];
+            let tgt = [1.0, 14.2, -4.2];
             (
                 eye,
-                apply_pan(eye, tgt, servo_sweep * 0.9, 0.0),
+                apply_pan(eye, tgt, servo_sweep * 0.65, 0.0),
                 [0.0, 1.0, 0.0],
-                68.0,
-                format!("{} // {}", feed.code(), feed.label()),
-                "HELIOS-09 COMMAND · LIVE VIEWPORT".to_string(),
-            )
-        }
-        CameraFeedId::IntConcourseWalk => {
-            // Down-corridor security cam along the grated concourse with side windows into space!
-            let eye = [-15.2, -7.4, 7.6];
-            let tgt = [10.0, -11.8, -1.5];
-            (
-                eye,
-                apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
-                [0.0, 1.0, 0.0],
-                68.0,
-                format!("{} // {}", feed.code(), feed.label()),
-                "DECK-1 CONCOURSE · SEC-CAM".to_string(),
+                70.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                format!(
+                    "HELIOS-09 COMMAND · ELEVATOR {}",
+                    state.elevator.target_deck.label()
+                ),
             )
         }
         CameraFeedId::IntReactorCore => {
-            // Elevated catwalk angle looking across the pulsing plasma core & Deck 1 elevator landing
+            // Elevated catwalk angle looking across the pulsing plasma core, concourse & Deck 1 elevator
             let eye = [11.5, -7.2, 6.8];
             let tgt = [-1.0, -11.8, -4.5];
             (
@@ -393,7 +385,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, -servo_sweep * 0.6, 0.0),
                 [0.0, 1.0, 0.0],
                 66.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "CORE OUTPUT 480 MW · DECK-1".to_string(),
             )
         }
@@ -406,7 +398,7 @@ pub fn resolve_camera(
                 apply_pan(eye, tgt, servo_sweep * 0.7, 0.0),
                 [0.0, 1.0, 0.0],
                 68.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 "AFT SOLAR GRID · LIVE VIEWPORT".to_string(),
             )
         }
@@ -426,7 +418,7 @@ pub fn resolve_camera(
                 tgt,
                 [0.0, 1.0, 0.0],
                 72.0,
-                format!("{} // {}", feed.code(), feed.label()),
+                format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!("LOC: {}", state.walker.current_room),
             )
         }
@@ -509,11 +501,14 @@ pub fn resolve_camera(
         }
         CameraFeedId::AutoRotateAll
         | CameraFeedId::AutoRotateInterior
-        | CameraFeedId::AutoRotateExterior => unreachable!("resolved above"),
+        | CameraFeedId::AutoRotateExterior
+        | CameraFeedId::FollowBotRoom => unreachable!("resolved above"),
     };
 
     target = apply_pan(eye, target, pan[0], pan[1]);
-    let title = if is_rotating {
+    let title = if is_follow_bot {
+        format!("TRACK · {raw_title}")
+    } else if is_rotating {
         format!("AUTO · {raw_title}")
     } else {
         raw_title

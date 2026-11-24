@@ -1021,7 +1021,11 @@ impl Scene for OrbitalHavenScene {
         );
 
         for (i, vp) in viewports.iter().take(MAX_FEEDS).enumerate() {
-            let active_feed = vp.feed.resolve_active(state_snapshot.total_age_secs, i);
+            let active_feed = vp.feed.resolve_for_state(
+                state_snapshot.total_age_secs,
+                state_snapshot.walker.pos,
+                i,
+            );
             let cam = resolve_camera(&state_snapshot, vp.feed, t, vp.slot_tag == 0, i);
             let aspect = (vp.w / vp.h.max(1.0)).clamp(0.3, 4.0);
             let view_proj = build_perspective_view_proj(
@@ -1058,7 +1062,9 @@ impl Scene for OrbitalHavenScene {
                 let pad_y = (vp.h * 0.036).clamp(12.0, 28.0);
 
                 let header = if is_mini {
-                    if vp.feed.is_rotating() {
+                    if vp.feed == rookery_core::orbital::CameraFeedId::FollowBotRoom {
+                        format!("TRACK {}", active_feed.short_label())
+                    } else if vp.feed.is_rotating() {
                         format!("AUTO {}", active_feed.short_label())
                     } else {
                         format!("{} {}", vp.feed.code(), vp.feed.short_label())

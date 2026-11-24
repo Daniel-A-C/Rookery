@@ -789,6 +789,7 @@ const btnOrbitalLaunch = el<HTMLButtonElement>("btn-orbital-launch");
 const btnOrbitalScan = el<HTMLButtonElement>("btn-orbital-scan");
 
 const ORBITAL_CAMERA_OPTIONS: ReadonlyArray<{ slug: string; label: string }> = [
+  { slug: "follow_bot", label: "TRACK · Follow BOT-01 Room" },
   { slug: "auto_all", label: "AUTO · Rotate All Feeds" },
   { slug: "auto_interior", label: "AUTO · Rotate Interiors" },
   { slug: "auto_exterior", label: "AUTO · Rotate Exteriors" },
@@ -800,9 +801,8 @@ const ORBITAL_CAMERA_OPTIONS: ReadonlyArray<{ slug: string; label: string }> = [
   { slug: "pad_c", label: "CAM-06 · Pad-C Stbd Deck" },
   { slug: "atrium", label: "CAM-07 · Central Core Atrium" },
   { slug: "ops_deck", label: "CAM-08 · Ops Command Deck" },
-  { slug: "concourse", label: "CAM-09 · Concourse Walk" },
-  { slug: "reactor", label: "CAM-10 · Reactor Chamber" },
-  { slug: "solar_bay", label: "CAM-11 · Solar Engineering" },
+  { slug: "reactor", label: "CAM-09 · Reactor & Concourse" },
+  { slug: "solar_bay", label: "CAM-10 · Solar Engineering" },
   { slug: "walker_bot", label: "BOT-01 · Interior Walker-Cam" },
   { slug: "ship_nose", label: "UPLINK-1 · Live Ship Nose" },
   { slug: "ship_dorsal", label: "UPLINK-2 · Live Ship Dorsal" },

@@ -80,11 +80,10 @@ pub enum CameraFeedId {
     PadCStarboardDeck,
     /// Interior 2-story Central Core Atrium CCTV overlooking Hangar door & glass Elevator.
     IntCentralAtrium,
-    /// Interior Ops & Command Deck CCTV looking past CRT consoles out the main viewports.
+    /// Interior Ops & Command Deck CCTV looking across holotable & 3-deck glass elevator.
     IntOpsDeck,
-    /// Interior Concourse Corridor CCTV with grated catwalk and space observation windows.
-    IntConcourseWalk,
-    /// Interior Reactor Chamber CCTV overlooking the pulsing plasma column & Deck 1 elevator.
+    /// Interior Reactor Chamber & Concourse CCTV overlooking the plasma column & Deck 1 elevator.
+    #[serde(alias = "int_concourse_walk")]
     IntReactorCore,
     /// Interior Aft Solar & Power Engineering Bay CCTV looking out onto the Solar Collector Wings.
     IntSolarBay,
@@ -100,9 +99,11 @@ pub enum CameraFeedId {
     AutoRotateInterior,
     /// Auto-rotating feed cycling through exterior drones, pads & ship uplinks.
     AutoRotateExterior,
+    /// Automatically switches to whichever room CCTV camera currently frames BOT-01.
+    FollowBotRoom,
 }
 
-pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
+pub const ALL_CAMERA_FEEDS: [CameraFeedId; 13] = [
     CameraFeedId::DroneAlphaWide,
     CameraFeedId::DroneBetaPatrol,
     CameraFeedId::ExtHangarApproach,
@@ -111,7 +112,6 @@ pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
     CameraFeedId::PadCStarboardDeck,
     CameraFeedId::IntCentralAtrium,
     CameraFeedId::IntOpsDeck,
-    CameraFeedId::IntConcourseWalk,
     CameraFeedId::IntReactorCore,
     CameraFeedId::IntSolarBay,
     CameraFeedId::WalkerBotCam,
@@ -119,11 +119,10 @@ pub const ALL_CAMERA_FEEDS: [CameraFeedId; 14] = [
     CameraFeedId::ShipDorsalUplink,
 ];
 
-pub const INTERIOR_CAMERA_FEEDS: [CameraFeedId; 7] = [
+pub const INTERIOR_CAMERA_FEEDS: [CameraFeedId; 6] = [
     CameraFeedId::PadAHangarInterior,
     CameraFeedId::IntCentralAtrium,
     CameraFeedId::IntOpsDeck,
-    CameraFeedId::IntConcourseWalk,
     CameraFeedId::IntReactorCore,
     CameraFeedId::IntSolarBay,
     CameraFeedId::WalkerBotCam,
@@ -153,15 +152,15 @@ impl CameraFeedId {
             Self::PadCStarboardDeck => "CAM-06",
             Self::IntCentralAtrium => "CAM-07",
             Self::IntOpsDeck => "CAM-08",
-            Self::IntConcourseWalk => "CAM-09",
-            Self::IntReactorCore => "CAM-10",
-            Self::IntSolarBay => "CAM-11",
+            Self::IntReactorCore => "CAM-09",
+            Self::IntSolarBay => "CAM-10",
             Self::WalkerBotCam => "BOT-01",
             Self::ShipNoseUplink => "UPLINK-1",
             Self::ShipDorsalUplink => "UPLINK-2",
             Self::AutoRotateAll => "AUTO",
             Self::AutoRotateInterior => "AUTO-INT",
             Self::AutoRotateExterior => "AUTO-EXT",
+            Self::FollowBotRoom => "TRACK",
         }
     }
 
@@ -175,15 +174,15 @@ impl CameraFeedId {
             Self::PadCStarboardDeck => "PAD-C // STBD UTILITY DECK",
             Self::IntCentralAtrium => "INT-01 // CENTRAL CORE ATRIUM",
             Self::IntOpsDeck => "INT-02 // OPS COMMAND DECK",
-            Self::IntConcourseWalk => "INT-03 // CONCOURSE WALK",
-            Self::IntReactorCore => "INT-04 // REACTOR CHAMBER",
-            Self::IntSolarBay => "INT-05 // SOLAR ENGINEERING",
+            Self::IntReactorCore => "INT-03 // REACTOR & CONCOURSE",
+            Self::IntSolarBay => "INT-04 // SOLAR ENGINEERING",
             Self::WalkerBotCam => "ROVER // INTERIOR WALKER-CAM",
             Self::ShipNoseUplink => "LIVE // SHIP NOSE-CAM",
             Self::ShipDorsalUplink => "LIVE // SHIP DORSAL-CAM",
             Self::AutoRotateAll => "AUTO // ROTATING ALL CAMS",
             Self::AutoRotateInterior => "AUTO // ROTATING INTERIORS",
             Self::AutoRotateExterior => "AUTO // ROTATING EXTERIORS",
+            Self::FollowBotRoom => "TRACK // FOLLOW BOT-01 ROOM",
         }
     }
 
@@ -197,7 +196,6 @@ impl CameraFeedId {
             Self::PadCStarboardDeck => "PAD-C STBD",
             Self::IntCentralAtrium => "ATRIUM",
             Self::IntOpsDeck => "OPS DECK",
-            Self::IntConcourseWalk => "CONCOURSE",
             Self::IntReactorCore => "REACTOR",
             Self::IntSolarBay => "SOLAR BAY",
             Self::WalkerBotCam => "WALKER BOT",
@@ -206,6 +204,7 @@ impl CameraFeedId {
             Self::AutoRotateAll => "ROTATE ALL",
             Self::AutoRotateInterior => "ROTATE INT",
             Self::AutoRotateExterior => "ROTATE EXT",
+            Self::FollowBotRoom => "FOLLOW BOT",
         }
     }
 
@@ -215,11 +214,11 @@ impl CameraFeedId {
             Self::PadAHangarInterior
                 | Self::IntCentralAtrium
                 | Self::IntOpsDeck
-                | Self::IntConcourseWalk
                 | Self::IntReactorCore
                 | Self::IntSolarBay
                 | Self::WalkerBotCam
                 | Self::AutoRotateInterior
+                | Self::FollowBotRoom
         )
     }
 
@@ -232,6 +231,11 @@ impl CameraFeedId {
             self,
             Self::AutoRotateAll | Self::AutoRotateInterior | Self::AutoRotateExterior
         )
+    }
+
+    /// True for any dynamic meta-feed (time-rotating or BOT-01 room-tracking) that manages its own cuts.
+    pub fn is_dynamic(self) -> bool {
+        self.is_rotating() || self == Self::FollowBotRoom
     }
 
     /// Resolve a rotating meta-feed into the concrete camera currently active at `total_age_secs`.
@@ -248,7 +252,35 @@ impl CameraFeedId {
             Self::AutoRotateExterior => {
                 EXTERIOR_CAMERA_FEEDS[(step + slot_offset * 2) % EXTERIOR_CAMERA_FEEDS.len()]
             }
-            concrete => concrete,
+            other => other,
+        }
+    }
+
+    /// Resolve any dynamic meta-feed (rotating OR `FollowBotRoom`) into a concrete camera feed.
+    pub fn resolve_for_state(
+        self,
+        total_age_secs: f64,
+        walker_pos: [f32; 3],
+        slot_offset: usize,
+    ) -> Self {
+        match self {
+            Self::FollowBotRoom => {
+                if walker_pos[1] > 6.0 {
+                    Self::IntOpsDeck
+                } else if walker_pos[1] < -9.5 {
+                    Self::IntReactorCore
+                } else if walker_pos[2] > 11.6 {
+                    Self::PadAHangarInterior
+                } else if walker_pos[2] > -14.6 {
+                    Self::IntCentralAtrium
+                } else if walker_pos[2] > -25.1 {
+                    // Inside the Axial Pipe Tunnel: cut to BOT-01's onboard porthole view!
+                    Self::WalkerBotCam
+                } else {
+                    Self::IntSolarBay
+                }
+            }
+            other => other.resolve_active(total_age_secs, slot_offset),
         }
     }
 
@@ -270,7 +302,6 @@ impl CameraFeedId {
             Self::PadCStarboardDeck => "pad_c",
             Self::IntCentralAtrium => "atrium",
             Self::IntOpsDeck => "ops_deck",
-            Self::IntConcourseWalk => "concourse",
             Self::IntReactorCore => "reactor",
             Self::IntSolarBay => "solar_bay",
             Self::WalkerBotCam => "walker_bot",
@@ -279,6 +310,7 @@ impl CameraFeedId {
             Self::AutoRotateAll => "auto_all",
             Self::AutoRotateInterior => "auto_interior",
             Self::AutoRotateExterior => "auto_exterior",
+            Self::FollowBotRoom => "follow_bot",
         }
     }
 
@@ -292,15 +324,15 @@ impl CameraFeedId {
             "pad_c" | "cam_06" => Some(Self::PadCStarboardDeck),
             "atrium" | "cam_07" => Some(Self::IntCentralAtrium),
             "ops_deck" | "cam_08" => Some(Self::IntOpsDeck),
-            "concourse" | "cam_09" => Some(Self::IntConcourseWalk),
-            "reactor" | "cam_10" => Some(Self::IntReactorCore),
-            "solar_bay" | "cam_11" => Some(Self::IntSolarBay),
+            "reactor" | "concourse" | "cam_09" => Some(Self::IntReactorCore),
+            "solar_bay" | "cam_10" | "cam_11" => Some(Self::IntSolarBay),
             "walker_bot" | "bot_01" => Some(Self::WalkerBotCam),
             "ship_nose" | "uplink_1" => Some(Self::ShipNoseUplink),
             "ship_dorsal" | "uplink_2" => Some(Self::ShipDorsalUplink),
             "auto_all" => Some(Self::AutoRotateAll),
             "auto_interior" => Some(Self::AutoRotateInterior),
             "auto_exterior" => Some(Self::AutoRotateExterior),
+            "follow_bot" => Some(Self::FollowBotRoom),
             _ => None,
         }
     }
