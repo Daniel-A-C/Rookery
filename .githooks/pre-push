@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${SKIP_PRE_PUSH:-0}" = "1" ]; then
+  echo "[pre-push] SKIP_PRE_PUSH=1 set, bypassing checks."
+  exit 0
+fi
+
+# 1. Prevent partial commits where local checks pass on a dirty tree but CI fails on the pushed commit.
+DIRTY_TRACKED="$(git status --porcelain --untracked-files=no)"
+if [ -n "$DIRTY_TRACKED" ]; then
+  echo "[pre-push] ERROR: Tracked files have uncommitted changes:" >&2
+  echo "$DIRTY_TRACKED" >&2
+  echo "" >&2
+  echo "Commit or stash all modified tracked files before pushing so local CI" >&2
+  echo "verifies the exact tree being pushed to GitHub." >&2
+  exit 1
+fi
+
+# 2. Run the full local CI suite (fmt, clippy -D warnings, tests, bench budgets, UI build).
+echo "[pre-push] Running local CI verification (npm run check:ci)..."
+npm run check:ci

@@ -1,11 +1,18 @@
 # Agent Guidelines & CI Verification Protocol
 
 ## Mandatory Pre-Completion CI Verification Gate
-Before declaring any task complete or asking to commit/push to remote, you **MUST** run the local CI verification checks and ensure all formatting, clippy warnings, tests, benchmarks, and UI builds pass cleanly:
+Before declaring any task complete or asking to commit/push to remote, you **MUST** run the local CI verification checks **after your final edit** and ensure all formatting, clippy warnings, tests, benchmarks, and UI builds pass cleanly:
 
 ```bash
 cargo fmt --all && npm run check:ci
 ```
+
+### Clean-Commit & Push Discipline
+Most past GitHub CI failures were caused by either (a) committing only a subset of modified files while dependent edits remained uncommitted in the working tree, or (b) making edits after running `check:ci` without re-running it.
+- **Check `git status --short` before committing**: verify that every modified file required by the build is staged. Never run `check:ci` against a dirty working tree and then selectively commit only part of it.
+- **Re-run after any edit**: if you touch any file after running `npm run check:ci`, re-run `cargo fmt --all && npm run check:ci` before committing.
+- **Keep `.githooks/pre-push` active**: this repo ships a versioned `.githooks/pre-push` hook (installed via `npm run hooks:install`) that blocks pushes with uncommitted tracked changes and runs `npm run check:ci`. Do **not** bypass it with `--no-verify`.
+- **Toolchain parity**: the Rust version is pinned in [rust-toolchain.toml](file:///Users/danielcarroll/Documents/programs/Rookery/rust-toolchain.toml) and matched in [.github/workflows/ci.yml](file:///Users/danielcarroll/Documents/programs/Rookery/.github/workflows/ci.yml) so local `rustfmt` and `clippy` match CI lint-for-lint. If you bump the version in one, bump both together.
 
 ### Breakdown of Verification Checks
 If you prefer running individual checks or need to isolate an issue:
