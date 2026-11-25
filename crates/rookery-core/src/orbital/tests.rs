@@ -806,3 +806,188 @@ fn walker_bot_only_enters_pads_when_clear() {
         "expected BOT-01 to inspect all 3 landing pads when clear: {checked:?}"
     );
 }
+
+#[test]
+fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
+    let mut st = OrbitalHavenState::new(2026);
+
+    // Track full 300-second cycle milestones across all 5 main interior rooms
+    let mut saw_hangar_crush = false;
+    let mut saw_hangar_full_bales = false;
+    let mut saw_hangar_gantry_finale = false;
+    let mut saw_hangar_replenished = false;
+
+    let mut saw_atrium_clean_all = false;
+    let mut saw_atrium_purge = false;
+    let mut saw_atrium_pillars_all = false;
+
+    let mut saw_ops_all_layers = false;
+    let mut saw_ops_broadcast = false;
+    let mut saw_ops_archive = false;
+
+    let mut saw_reactor_all_swapped = false;
+    let mut saw_reactor_quench = false;
+    let mut saw_reactor_pneumatic = false;
+
+    let mut saw_solar_full = false;
+    let mut saw_solar_discharge = false;
+
+    // Also track that robots actually adopt bespoke work actions and carry room-specific cargo
+    let mut saw_holo_cube = false;
+    let mut saw_cryo_swap = false;
+    let mut saw_solar_calibrate = false;
+    let mut saw_atrium_scrub = false;
+
+    // Simulate 320 seconds (slightly over 1 full 5-minute 300s loop) at 5 Hz
+    for _ in 0..1600 {
+        st.step(0.2);
+        let act = &st.room_activities;
+
+        if act.hangar.ram_depth > 0.8 && act.hangar.crate_in_hopper {
+            saw_hangar_crush = true;
+        }
+        if act.hangar.compacted_bales == HANGAR_CRATES_PER_CYCLE {
+            saw_hangar_full_bales = true;
+        }
+        if act.hangar.in_finale && act.hangar.gantry_payload == 1 {
+            saw_hangar_gantry_finale = true;
+        }
+        if saw_hangar_gantry_finale
+            && !act.hangar.in_finale
+            && act.hangar.raw_crates_remaining == HANGAR_CRATES_PER_CYCLE
+        {
+            saw_hangar_replenished = true;
+        }
+
+        if act.atrium.cleaned_sectors == ATRIUM_SECTOR_COUNT as u8 {
+            saw_atrium_clean_all = true;
+        }
+        if act.atrium.verified_pillars == 4 {
+            saw_atrium_pillars_all = true;
+        }
+        if act.atrium.purging_waste {
+            saw_atrium_purge = true;
+        }
+
+        if act.ops.completed_layers == OPS_HOLO_LAYERS {
+            saw_ops_all_layers = true;
+        }
+        if act.ops.broadcasting {
+            saw_ops_broadcast = true;
+        }
+        if act.ops.archive_collapse > 0.5 {
+            saw_ops_archive = true;
+        }
+
+        if act.reactor.rods_swapped == REACTOR_ROD_COUNT as u8 {
+            saw_reactor_all_swapped = true;
+        }
+        if act.reactor.quenching && act.reactor.vat_quench_t > 0.8 {
+            saw_reactor_quench = true;
+        }
+        if act.reactor.quenching && act.reactor.pneumatic_pulse_t > 0.2 {
+            saw_reactor_pneumatic = true;
+        }
+
+        if act.solar.grid_charge > 0.95 {
+            saw_solar_full = true;
+        }
+        if act.solar.discharging && act.solar.discharge_intensity > 0.5 {
+            saw_solar_discharge = true;
+        }
+
+        for a in &st.agents {
+            if a.cargo_kind == CargoVisualKind::HoloDataCube {
+                saw_holo_cube = true;
+            }
+            if a.work_action == AgentWorkAction::SwappingCryoRod {
+                saw_cryo_swap = true;
+            }
+            if a.work_action == AgentWorkAction::CalibratingCapacitor {
+                saw_solar_calibrate = true;
+            }
+            if a.work_action == AgentWorkAction::Scrubbing {
+                saw_atrium_scrub = true;
+            }
+        }
+    }
+
+    assert!(saw_hangar_crush, "Hangar compactor ram should crush crates");
+    assert!(
+        saw_hangar_full_bales,
+        "Hangar output pallet should reach 6 compacted bales"
+    );
+    assert!(
+        saw_hangar_gantry_finale,
+        "Hangar overhead gantry should hoist completed bale pallet"
+    );
+    assert!(
+        saw_hangar_replenished,
+        "Hangar staging rack should replenish to 6 crates after finale"
+    );
+
+    assert!(
+        saw_atrium_clean_all,
+        "Atrium should clean all 12 floor sectors"
+    );
+    assert!(
+        saw_atrium_pillars_all,
+        "Atrium security enforcer should verify all 4 server pillars"
+    );
+    assert!(
+        saw_atrium_purge,
+        "Atrium wash dock should trigger waste purge finale"
+    );
+
+    assert!(
+        saw_ops_all_layers,
+        "Ops holotable should build all 6 hologram layers"
+    );
+    assert!(
+        saw_ops_broadcast,
+        "Ops holotable should enter full broadcast finale"
+    );
+    assert!(
+        saw_ops_archive,
+        "Ops holotable should archive-collapse cleanly at end of 5-minute loop"
+    );
+
+    assert!(
+        saw_reactor_all_swapped,
+        "Reactor should swap all 4 cryo-rods"
+    );
+    assert!(
+        saw_reactor_quench,
+        "Reactor cooling vat should run cryo-quench shroud finale"
+    );
+    assert!(
+        saw_reactor_pneumatic,
+        "Reactor overhead pneumatic conduit should restock fresh rack"
+    );
+
+    assert!(
+        saw_solar_full,
+        "Solar Bay capacitor towers should reach full grid charge"
+    );
+    assert!(
+        saw_solar_discharge,
+        "Solar Bay should fire high-voltage grid discharge finale"
+    );
+
+    assert!(
+        saw_holo_cube,
+        "OpsHoloDroids should carry floating HoloDataCubes"
+    );
+    assert!(
+        saw_cryo_swap,
+        "ReactorCoolantBots should perform SwappingCryoRod work action"
+    );
+    assert!(
+        saw_solar_calibrate,
+        "SolarCapacitorBots should perform CalibratingCapacitor work action"
+    );
+    assert!(
+        saw_atrium_scrub,
+        "FloorScrubbers should perform Scrubbing work action"
+    );
+}

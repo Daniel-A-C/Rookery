@@ -314,7 +314,7 @@ pub fn resolve_camera(
             let sub = state.pad_services[0]
                 .status_label()
                 .map(|s| format!("PAD-A · {s}"))
-                .unwrap_or_else(|| "ATMO FIELD 101.3 KPA · PAD-A".to_string());
+                .unwrap_or_else(|| state.room_activities.hangar.hud_status());
             (
                 eye,
                 apply_pan(eye, tgt, servo_sweep * 0.5, 0.0),
@@ -368,7 +368,8 @@ pub fn resolve_camera(
                 80.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
-                    "DECK-2 ATRIUM · ELEVATOR {}",
+                    "{} · ELEV {}",
+                    state.room_activities.atrium.hud_status(),
                     state.elevator.target_deck.label()
                 ),
             )
@@ -385,7 +386,8 @@ pub fn resolve_camera(
                 82.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
-                    "HELIOS-09 COMMAND · ELEVATOR {}",
+                    "{} · {}",
+                    state.room_activities.ops.hud_status(),
                     state.elevator.target_deck.label()
                 ),
             )
@@ -401,7 +403,7 @@ pub fn resolve_camera(
                 [0.0, 1.0, 0.0],
                 78.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
-                "CORE OUTPUT 480 MW · DECK-1".to_string(),
+                format!("{} · 480 MW", state.room_activities.reactor.hud_status()),
             )
         }
         CameraFeedId::IntSolarBay => {
@@ -415,7 +417,7 @@ pub fn resolve_camera(
                 [0.0, 1.0, 0.0],
                 80.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
-                "AFT SOLAR GRID · LIVE VIEWPORT".to_string(),
+                state.room_activities.solar.hud_status(),
             )
         }
         CameraFeedId::HiddenElevatorCam => {

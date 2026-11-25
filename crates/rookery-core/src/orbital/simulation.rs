@@ -189,6 +189,9 @@ impl OrbitalHavenState {
         // 2b. Advance docked-ship service choreographies (welding arm, fuel boom, bio-scan, drones, ramps)
         self.step_pad_services(dt);
 
+        // 2c. Advance bespoke 5-minute looping room activities across all 5 main interior rooms
+        self.room_activities.step(dt);
+
         // 3. Update interior crew, security droids, cargo loaders & exterior welders
         self.step_agents(dt);
 
@@ -215,6 +218,7 @@ impl OrbitalHavenState {
         self.total_age_secs += clamped;
         self.orbit_angle = (self.orbit_angle + (clamped as f32) * 0.0085) % TAU;
         self.hab_ring_angle = (self.hab_ring_angle + (clamped as f32) * 0.14) % TAU;
+        self.room_activities.step(clamped as f32);
         // Run a handful of bounded steps so ships/drones settle cleanly
         let ticks = ((clamped / 2.0).min(24.0)) as usize;
         for _ in 0..ticks {
@@ -941,7 +945,8 @@ impl OrbitalHavenState {
                 continue;
             }
 
-            // Interactive Pad CargoForklifts: respond directly to their pad's active `CargoTransfer` step!
+            // Interactive Pad CargoForklifts: respond to docked-ship `CargoTransfer` first,
+            // and in the Main Hangar Bay execute the 5-minute Compactor & Gantry Crane cycle between ships!
             if kind == AgentKind::CargoForklift {
                 let (pad_idx, stage_pos, load_pos, face_ship_yaw, face_stage_yaw) = match zone {
                     AgentZone::HangarBay => {
@@ -982,6 +987,7 @@ impl OrbitalHavenState {
                 let cargo_active =
                     self.pad_services[pad_idx].active_kind() == Some(ServiceKind::CargoTransfer);
                 let p = self.pad_services[pad_idx].step_progress.clamp(0.0, 1.0);
+                let hangar_sub_u = self.room_activities.hangar.active_crate_sub_u();
                 let a = &mut self.agents[idx];
                 a.yielding = false;
 
@@ -997,6 +1003,11 @@ impl OrbitalHavenState {
                         let lift = if u < 0.65 { 0.88 } else { 0.36 };
                         if (0.45..0.55).contains(&u) && a.dwell_timer <= 0.0 {
                             a.carrying_cargo = !a.carrying_cargo;
+                            a.cargo_kind = if a.carrying_cargo {
+                                CargoVisualKind::RawCrate
+                            } else {
+                                CargoVisualKind::None
+                            };
                             a.dwell_timer = 1.5;
                         }
                         (load_pos, face_ship_yaw, lift)
@@ -1007,6 +1018,7 @@ impl OrbitalHavenState {
                             (stage_pos[0] - load_pos[0]).atan2(stage_pos[2] - load_pos[2]);
                         (pos, move_yaw, if a.carrying_cargo { 0.34 } else { 0.08 })
                     };
+                    a.work_action = AgentWorkAction::LoadingCrate;
                     a.dwell_timer = (a.dwell_timer - dt).max(0.0);
                     a.pos = [
                         ease_scalar(a.pos[0], tgt_pos[0], 5.5, dt),
@@ -1015,8 +1027,76 @@ impl OrbitalHavenState {
                     ];
                     a.yaw = turn_yaw(a.yaw, tgt_yaw, 5.2, dt);
                     a.lift_height = ease_scalar(a.lift_height, tgt_lift, 4.5, dt);
+                } else if zone == AgentZone::HangarBay {
+                    // Bespoke 5-minute Hangar Bay Compactor Cycle (stays strictly within Z = 22.0..=31.4!)
+                    let side_x = if a.role_slot == 0 { -7.35f32 } else { 7.35f32 };
+                    let face_wall_yaw = if a.role_slot == 0 {
+                        -std::f32::consts::FRAC_PI_2
+                    } else {
+                        std::f32::consts::FRAC_PI_2
+                    };
+                    let rack_pos = [side_x, -3.88, 31.4];
+                    let press_pos = [side_x, -3.88, 22.0];
+                    let watch_pos = [side_x, -3.88, 26.8];
+
+                    let (tgt_pos, tgt_yaw, tgt_lift, carrying, work) = if let Some(u) = hangar_sub_u
+                    {
+                        if u < 0.18 {
+                            // At Staging Rack (Z=31.4): face wall, lower forks, lift raw crate
+                            let lift = if u < 0.10 { 0.08 } else { 0.44 };
+                            (
+                                rack_pos,
+                                face_wall_yaw,
+                                lift,
+                                u >= 0.16,
+                                AgentWorkAction::LoadingCrate,
+                            )
+                        } else if u < 0.46 {
+                            // Drive crate from Staging Rack (31.4) to Hydraulic Compactor (22.0)
+                            let t = smoothstep((u - 0.18) / 0.28);
+                            let pos = lerp3(rack_pos, press_pos, t);
+                            (pos, std::f32::consts::PI, 0.38, true, AgentWorkAction::Idle)
+                        } else if u < 0.60 {
+                            // Face Compactor hopper, raise forks & load crate in
+                            let lift = if u < 0.56 { 0.86 } else { 0.24 };
+                            (
+                                press_pos,
+                                face_wall_yaw,
+                                lift,
+                                u < 0.56,
+                                AgentWorkAction::LoadingCrate,
+                            )
+                        } else if u < 0.84 {
+                            // Hold clear while hydraulic ram crushes the crate into an alloy bale
+                            (press_pos, face_wall_yaw, 0.10, false, AgentWorkAction::Idle)
+                        } else {
+                            // Return to Staging Rack (Z=31.4) for the next crate
+                            let t = smoothstep((u - 0.84) / 0.16);
+                            let pos = lerp3(press_pos, rack_pos, t);
+                            (pos, 0.0, 0.08, false, AgentWorkAction::Idle)
+                        }
+                    } else {
+                        // Gantry Crane Finale (`255..300s`): park at mid-lane watching overhead hoist
+                        (watch_pos, face_wall_yaw, 0.08, false, AgentWorkAction::Idle)
+                    };
+                    a.dwell_timer = 0.0;
+                    a.carrying_cargo = carrying;
+                    a.cargo_kind = if carrying {
+                        CargoVisualKind::RawCrate
+                    } else {
+                        CargoVisualKind::None
+                    };
+                    a.work_action = work;
+                    a.pos = [
+                        ease_scalar(a.pos[0], tgt_pos[0], 4.8, dt),
+                        tgt_pos[1],
+                        ease_scalar(a.pos[2], tgt_pos[2], 4.8, dt),
+                    ];
+                    a.yaw = turn_yaw(a.yaw, tgt_yaw, 4.6, dt);
+                    a.lift_height = ease_scalar(a.lift_height, tgt_lift, 4.2, dt);
                 } else {
                     a.dwell_timer = 0.0;
+                    a.work_action = AgentWorkAction::Idle;
                     a.pos = [
                         ease_scalar(a.pos[0], stage_pos[0], 3.5, dt),
                         stage_pos[1],
@@ -1052,6 +1132,9 @@ impl OrbitalHavenState {
                     a.dwell_timer = (a.dwell_timer - dt).max(0.0);
                 }
                 a.yielding = false;
+                if let Some(target_yaw) = a.work_target_yaw {
+                    a.yaw = turn_yaw(a.yaw, target_yaw, 4.6, dt);
+                }
                 match kind {
                     AgentKind::CargoForklift => {
                         let target_lift = if a.dwell_timer > 1.0 {
@@ -1068,17 +1151,30 @@ impl OrbitalHavenState {
                     }
                     AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => {
                         // Extend calibration probe / coolant nozzle during inspection dwell
-                        let target_ext = if a.dwell_timer > 0.4 { 0.9 } else { 0.1 };
+                        let target_ext = if a.dwell_timer > 0.4 { 0.92 } else { 0.1 };
                         a.lift_height = ease_scalar(a.lift_height, target_ext, 4.5, dt);
                     }
                     AgentKind::CourierRunner => {
                         if a.dwell_timer <= 0.0 {
                             a.carrying_cargo = !a.carrying_cargo;
+                            a.cargo_kind = if a.carrying_cargo {
+                                CargoVisualKind::SolarMicroCell
+                            } else {
+                                CargoVisualKind::None
+                            };
                         }
                     }
                     _ => {
                         a.lift_height = ease_scalar(a.lift_height, 0.1, 4.0, dt);
                     }
+                }
+                if a.dwell_timer <= 0.0 {
+                    if !matches!(kind, AgentKind::CourierRunner | AgentKind::CargoForklift) {
+                        a.cargo_kind = a.pending_cargo_kind;
+                        a.carrying_cargo = a.cargo_kind != CargoVisualKind::None;
+                    }
+                    a.work_action = AgentWorkAction::Idle;
+                    a.work_target_yaw = None;
                 }
                 continue;
             }
@@ -1106,29 +1202,60 @@ impl OrbitalHavenState {
             if self.agents[idx].nav_path.is_empty() {
                 let cur_node = self.agents[idx].nav_node.min(NAV_NODES.len() - 1);
                 let carrying = self.agents[idx].carrying_cargo;
-                let pool = goal_pool_for_agent(kind, zone, cur_node, carrying);
-                if pool.len() > 1 {
-                    // Prefer an unoccupied goal node in the pool so bots never queue up on top of each other
-                    let mut goal = cur_node;
-                    for _ in 0..8 {
-                        let pick = pool[(self.rng.next_u64() as usize) % pool.len()];
-                        if pick != cur_node && !occupied[pick] {
-                            goal = pick;
-                            break;
-                        }
+                let role_slot = self.agents[idx].role_slot;
+                let cargo_kind = self.agents[idx].cargo_kind;
+                let roll = self.rng.next_u64() as usize;
+
+                // Prefer bespoke 5-minute room activity directives when the target workstation is clear
+                let directed = self
+                    .room_activities
+                    .next_directive(kind, zone, role_slot, cur_node, cargo_kind, roll);
+                let mut planned = false;
+                if let Some(dir) = directed
+                    && dir.goal_node != cur_node
+                    && !occupied[dir.goal_node]
+                {
+                    let path =
+                        find_path_avoiding(cur_node, dir.goal_node, &occupied[..NAV_NODES.len()]);
+                    if !path.is_empty() {
+                        let a = &mut self.agents[idx];
+                        a.nav_path = path;
+                        a.work_action = dir.work_action;
+                        a.work_target_yaw = dir.face_yaw;
+                        a.pending_cargo_kind = dir.cargo_after_dwell;
+                        planned = true;
                     }
-                    if goal == cur_node {
-                        for _ in 0..6 {
+                }
+
+                if !planned {
+                    let pool = goal_pool_for_agent(kind, zone, cur_node, carrying);
+                    if pool.len() > 1 {
+                        // Prefer an unoccupied goal node in the pool so bots never queue up on top of each other
+                        let mut goal = cur_node;
+                        for _ in 0..8 {
                             let pick = pool[(self.rng.next_u64() as usize) % pool.len()];
-                            if pick != cur_node {
+                            if pick != cur_node && !occupied[pick] {
                                 goal = pick;
                                 break;
                             }
                         }
-                    }
-                    if goal != cur_node {
-                        self.agents[idx].nav_path =
-                            find_path_avoiding(cur_node, goal, &occupied[..NAV_NODES.len()]);
+                        if goal == cur_node {
+                            for _ in 0..6 {
+                                let pick = pool[(self.rng.next_u64() as usize) % pool.len()];
+                                if pick != cur_node {
+                                    goal = pick;
+                                    break;
+                                }
+                            }
+                        }
+                        if goal != cur_node {
+                            let a = &mut self.agents[idx];
+                            a.nav_path =
+                                find_path_avoiding(cur_node, goal, &occupied[..NAV_NODES.len()]);
+                            a.work_action = AgentWorkAction::Idle;
+                            a.work_target_yaw = None;
+                            a.pending_cargo_kind = a.cargo_kind;
+                        }
                     }
                 }
             }
@@ -1339,14 +1466,23 @@ impl OrbitalHavenState {
                 a.nav_node = next_node_id;
                 a.nav_path.remove(0);
                 if a.nav_path.is_empty() {
-                    a.dwell_timer = match kind {
-                        AgentKind::CargoForklift => 2.2,
-                        AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => 2.4,
-                        AgentKind::OpsHoloDroid => 2.0,
-                        AgentKind::SecurityEnforcer => 1.8,
-                        AgentKind::FloorScrubber => 1.2,
-                        AgentKind::CourierRunner => 1.1,
-                        AgentKind::HullWelder => 0.0,
+                    a.dwell_timer = match a.work_action {
+                        AgentWorkAction::SwappingCryoRod => 3.2,
+                        AgentWorkAction::UploadingHolo => 3.0,
+                        AgentWorkAction::CalibratingCapacitor => 2.8,
+                        AgentWorkAction::Scanning => 2.8,
+                        AgentWorkAction::DownloadingData => 2.6,
+                        AgentWorkAction::Scrubbing | AgentWorkAction::PurgingWaste => 2.4,
+                        AgentWorkAction::LoadingCrate => 2.2,
+                        AgentWorkAction::Idle => match kind {
+                            AgentKind::CargoForklift => 2.2,
+                            AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => 2.4,
+                            AgentKind::OpsHoloDroid => 2.0,
+                            AgentKind::SecurityEnforcer => 1.8,
+                            AgentKind::FloorScrubber => 1.2,
+                            AgentKind::CourierRunner => 1.1,
+                            AgentKind::HullWelder => 0.0,
+                        },
                     };
                 }
             }

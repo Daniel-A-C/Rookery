@@ -206,24 +206,13 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         );
     }
 
-    // Overhead yellow industrial gantry crane beam inside hangar
-    op.push_box(
-        [0.0, 8.2, 25.0],
-        [21.0, 0.9, 1.2],
-        Tile::HazardStripe,
-        2.4,
-        bright_white,
-        0.0,
-    );
-
-    // Stacked industrial cargo crates in hangar side alcoves
+    // Stacked industrial cargo crates in rear-most hangar corners (clear of dynamic Compactor & Staging Racks)
     let crate_spots = [
         ([-9.6, -2.9, 16.5], [2.2, 2.0, 2.4]),
-        ([-9.6, -2.9, 19.6], [2.0, 1.8, 2.0]),
         ([-9.6, -1.2, 16.8], [1.8, 1.4, 1.8]),
-        ([9.6, -2.9, 17.5], [2.4, 2.1, 2.4]),
-        ([9.6, -2.9, 34.5], [2.2, 1.9, 2.2]),
-        ([-9.6, -2.9, 36.0], [2.0, 1.7, 2.2]),
+        ([9.6, -2.9, 16.5], [2.2, 2.0, 2.2]),
+        ([9.6, -2.9, 36.2], [2.2, 1.9, 2.2]),
+        ([-9.6, -2.9, 36.2], [2.0, 1.7, 2.2]),
     ];
     for (pos, sz) in crate_spots {
         op.push_box(pos, sz, Tile::CargoCrate, 2.2, bright_white, 0.0);

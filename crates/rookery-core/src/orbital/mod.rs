@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::world::WorldRng;
 
+pub mod activities;
 pub mod nav;
 pub mod persistence;
 pub mod simulation;
@@ -18,6 +19,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+pub use activities::*;
 pub use types::*;
 
 /// Unified 3D world coordinate anchors for Station HELIOS-09 (right-handed Y-up).
@@ -87,6 +89,9 @@ pub struct OrbitalHavenState {
     /// Active docked-ship service choreographies for Pad A (`[0]`), Pad B (`[1]`), and Pad C (`[2]`).
     #[serde(default)]
     pub pad_services: [PadServiceState; 3],
+    /// Bespoke 5-minute looping room activities across all 5 main interior rooms.
+    #[serde(default)]
+    pub room_activities: RoomActivitiesState,
     /// Monotonic entity ID counter.
     pub next_id: u32,
     /// Cached operational telemetry.
@@ -223,10 +228,21 @@ impl OrbitalHavenState {
 
         // 3. Unique rolling robots for every room + cross-room courier rover (100% wheels & treads!)
         let mut agents = Vec::new();
-        let mut spawn_nav_bot = |kind: AgentKind, zone: AgentZone, start_node: usize| {
+        let mut spawn_nav_bot = |kind: AgentKind,
+                                 zone: AgentZone,
+                                 start_node: usize,
+                                 role_slot: u8| {
             let id = next_id;
             next_id += 1;
             let pos = nav::NAV_NODES[start_node].pos;
+            let initial_cargo = match kind {
+                AgentKind::CargoForklift if id.is_multiple_of(2) => CargoVisualKind::RawCrate,
+                AgentKind::CourierRunner => CargoVisualKind::SolarMicroCell,
+                AgentKind::ReactorCoolantBot if role_slot == 0 => CargoVisualKind::FreshCryoCell,
+                AgentKind::OpsHoloDroid if role_slot == 0 => CargoVisualKind::HoloDataCube,
+                _ => CargoVisualKind::None,
+            };
+            let carrying = initial_cargo != CargoVisualKind::None;
             agents.push(StationAgent {
                 id,
                 kind,
@@ -237,9 +253,8 @@ impl OrbitalHavenState {
                 speed: kind.cruise_speed(),
                 direction: 1.0,
                 phase: rng.range(0.0, PI * 2.0),
-                carrying_cargo: matches!(kind, AgentKind::CargoForklift | AgentKind::CourierRunner)
-                    && id.is_multiple_of(2),
-                lift_height: if kind == AgentKind::CargoForklift && id.is_multiple_of(2) {
+                carrying_cargo: carrying,
+                lift_height: if kind == AgentKind::CargoForklift && carrying {
                     0.35
                 } else {
                     0.06
@@ -249,37 +264,53 @@ impl OrbitalHavenState {
                 nav_path: Vec::new(),
                 yielding: false,
                 stuck_timer: 0.0,
+                work_action: AgentWorkAction::Idle,
+                work_target_yaw: None,
+                cargo_kind: initial_cargo,
+                pending_cargo_kind: initial_cargo,
+                role_slot,
             });
         };
 
-        // Main Hangar Bay: 2 tracked CargoForklifts + 1 wheeled FloorScrubber
-        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::HangarBay, 0);
-        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::HangarBay, 5);
-        spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::HangarBay, 7);
+        // Main Hangar Bay: 2 tracked CargoForklifts (Port=0, Starboard=1) + 1 wheeled FloorScrubber
+        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::HangarBay, 0, 0);
+        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::HangarBay, 5, 1);
+        spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::HangarBay, 7, 0);
 
         // Central Core Atrium: 1 wheeled FloorScrubber + 1 tracked SecurityEnforcer
-        spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::CentralAtrium, 11);
-        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::CentralAtrium, 14);
+        spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::CentralAtrium, 11, 0);
+        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::CentralAtrium, 14, 0);
 
         // Cross-Room Data Courier Runner (Hangar <-> Atrium <-> Pipe Tunnel <-> Solar Bay!)
-        spawn_nav_bot(AgentKind::CourierRunner, AgentZone::CentralAtrium, 12);
+        spawn_nav_bot(AgentKind::CourierRunner, AgentZone::CentralAtrium, 12, 0);
 
-        // Aft Solar Engineering Bay: 2 narrow-tracked SolarCapacitorBots
-        spawn_nav_bot(AgentKind::SolarCapacitorBot, AgentZone::SolarBay, 21);
-        spawn_nav_bot(AgentKind::SolarCapacitorBot, AgentZone::SolarBay, 23);
+        // Aft Solar Engineering Bay: 2 narrow-tracked SolarCapacitorBots (Port=0, Starboard=1)
+        spawn_nav_bot(AgentKind::SolarCapacitorBot, AgentZone::SolarBay, 21, 0);
+        spawn_nav_bot(AgentKind::SolarCapacitorBot, AgentZone::SolarBay, 22, 1);
 
-        // Ops Command Spire (Deck 3): 2 wheeled OpsHoloDroids
-        spawn_nav_bot(AgentKind::OpsHoloDroid, AgentZone::OpsDeck, 24);
-        spawn_nav_bot(AgentKind::OpsHoloDroid, AgentZone::OpsDeck, 27);
+        // Ops Command Spire (Deck 3): 2 wheeled OpsHoloDroids (Port=0, Starboard=1)
+        spawn_nav_bot(AgentKind::OpsHoloDroid, AgentZone::OpsDeck, 24, 0);
+        spawn_nav_bot(AgentKind::OpsHoloDroid, AgentZone::OpsDeck, 27, 1);
 
-        // Concourse & Reactor Core (Deck 1): 1 wheeled ReactorCoolantBot + 2 tracked SecurityEnforcers
-        spawn_nav_bot(AgentKind::ReactorCoolantBot, AgentZone::ReactorCatwalk, 33);
-        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::Concourse, 37);
-        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::Concourse, 38);
+        // Concourse & Reactor Core (Deck 1): 2 wheeled ReactorCoolantBots + 2 tracked SecurityEnforcers
+        spawn_nav_bot(
+            AgentKind::ReactorCoolantBot,
+            AgentZone::ReactorCatwalk,
+            33,
+            0,
+        );
+        spawn_nav_bot(
+            AgentKind::ReactorCoolantBot,
+            AgentZone::ReactorCatwalk,
+            34,
+            1,
+        );
+        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::Concourse, 37, 0);
+        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::Concourse, 38, 1);
 
         // External Landing Pads B & C: 1 tracked CargoForklift per pad
-        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::PadBPort, 41);
-        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::PadCStarboard, 44);
+        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::PadBPort, 41, 0);
+        spawn_nav_bot(AgentKind::CargoForklift, AgentZone::PadCStarboard, 44, 0);
 
         // Exterior Hull Welder Drones (2)
         for (i, pos) in [[-22.0, 5.0, 12.0], [22.0, -4.0, -12.0]]
@@ -305,6 +336,11 @@ impl OrbitalHavenState {
                 nav_path: Vec::new(),
                 yielding: false,
                 stuck_timer: 0.0,
+                work_action: AgentWorkAction::Idle,
+                work_target_yaw: None,
+                cargo_kind: CargoVisualKind::None,
+                pending_cargo_kind: CargoVisualKind::None,
+                role_slot: i as u8,
             });
         }
 
@@ -343,6 +379,7 @@ impl OrbitalHavenState {
                 PadServiceState::default(),
                 PadServiceState::default(),
             ],
+            room_activities: RoomActivitiesState::default(),
             next_id,
             stats: OrbitalHavenStats::default(),
         };

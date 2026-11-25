@@ -811,6 +811,36 @@ pub enum AgentZone {
     ExteriorTruss,
 }
 
+/// Active bespoke workstation animation performed by a station robot during a dwell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentWorkAction {
+    #[default]
+    Idle,
+    LoadingCrate,
+    Scrubbing,
+    Scanning,
+    DownloadingData,
+    UploadingHolo,
+    SwappingCryoRod,
+    CalibratingCapacitor,
+    PurgingWaste,
+}
+
+/// Visual cargo prop carried by a station robot during its room activity.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CargoVisualKind {
+    #[default]
+    None,
+    RawCrate,
+    CompactedBale,
+    HoloDataCube,
+    FreshCryoCell,
+    SpentFuelRod,
+    SolarMicroCell,
+}
+
 /// An autonomous rolling robot bringing interiors and docks to life.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StationAgent {
@@ -844,6 +874,21 @@ pub struct StationAgent {
     /// Seconds spent waiting/blocked; triggers dynamic A* rerouting to prevent deadlocks.
     #[serde(default)]
     pub stuck_timer: f32,
+    /// Bespoke room activity action currently executing during dwell.
+    #[serde(default)]
+    pub work_action: AgentWorkAction,
+    /// Optional yaw angle (radians) to face a workstation/console/machine while dwelling.
+    #[serde(default)]
+    pub work_target_yaw: Option<f32>,
+    /// Visual cargo item currently carried by this robot.
+    #[serde(default)]
+    pub cargo_kind: CargoVisualKind,
+    /// Cargo item to adopt when the current workstation dwell completes.
+    #[serde(default)]
+    pub pending_cargo_kind: CargoVisualKind,
+    /// Partner slot index (`0` = Port/Primary, `1` = Starboard/Secondary) for coordinated room teams.
+    #[serde(default)]
+    pub role_slot: u8,
 }
 
 /// Station deck levels served by the 3-deck central glass elevator (`X = 0, Z = -6.0`).

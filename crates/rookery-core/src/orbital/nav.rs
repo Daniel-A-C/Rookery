@@ -299,6 +299,65 @@ pub const NAV_NODES: &[NavNode] = &[
         zone: AgentZone::PadCStarboard,
         is_pipe_tunnel: false,
     },
+    // --- Bespoke Room Activity Workstation Spurs (45..=53) ---
+    // 45: Atrium Wash & Waste-Flush Dock (Deck 2, clear of pillar at [6.8, 5.2] & Pad C portal)
+    NavNode {
+        id: 45,
+        pos: [6.8, D2, 8.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    // 46..=47: Ops Holotable Upload Perimeter Spurs (Deck 3, R = 3.6 >= 2.9 clear of holotable)
+    NavNode {
+        id: 46,
+        pos: [-3.6, D3, 1.0],
+        zone: AgentZone::OpsDeck,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 47,
+        pos: [3.6, D3, 1.0],
+        zone: AgentZone::OpsDeck,
+        is_pipe_tunnel: false,
+    },
+    // 48..=49: Deck 1 Port Spent-Rod Cooling Vat & Starboard Fresh Cryo-Cell Rack Docks
+    NavNode {
+        id: 48,
+        pos: [-13.4, D1, 0.0],
+        zone: AgentZone::Concourse,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 49,
+        pos: [13.4, D1, 0.0],
+        zone: AgentZone::Concourse,
+        is_pipe_tunnel: false,
+    },
+    // 50..=53: Solar Bay Capacitor Tower Calibration Spurs (Deck 2, central X=0 lane stays clear)
+    NavNode {
+        id: 50,
+        pos: [-2.3, D2, -29.8],
+        zone: AgentZone::SolarBay,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 51,
+        pos: [2.3, D2, -29.8],
+        zone: AgentZone::SolarBay,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 52,
+        pos: [-2.3, D2, -37.2],
+        zone: AgentZone::SolarBay,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 53,
+        pos: [2.3, D2, -37.2],
+        zone: AgentZone::SolarBay,
+        is_pipe_tunnel: false,
+    },
 ];
 
 /// Undirected obstacle-free navigation edges.
@@ -359,6 +418,28 @@ pub const NAV_EDGES: &[(usize, usize)] = &[
     // External Landing Pads B & C
     (41, 42),
     (43, 44),
+    // Bespoke Room Activity Workstation Spurs
+    // Atrium Wash Dock
+    (9, 45),
+    // Ops Holotable Upload Spurs
+    (24, 46),
+    (26, 46),
+    (25, 47),
+    (27, 47),
+    // Reactor Cooling Vat & Fresh Cryo-Cell Rack Docks
+    (37, 48),
+    (39, 48),
+    (38, 49),
+    (40, 49),
+    // Solar Bay Capacitor Tower Calibration Spurs
+    (19, 50),
+    (21, 50),
+    (19, 51),
+    (22, 51),
+    (21, 52),
+    (23, 52),
+    (22, 53),
+    (23, 53),
 ];
 
 #[inline]

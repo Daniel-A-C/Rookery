@@ -8,8 +8,8 @@ use std::f32::consts::TAU;
 
 use rookery_core::orbital::simulation::REACTOR_CORE_Z;
 use rookery_core::orbital::{
-    AgentKind, OrbitalHavenState, PAD_A_POS, PAD_B_POS, PAD_C_POS, ServiceKind, ShipClass,
-    StationEventKind,
+    AgentKind, AgentWorkAction, CargoVisualKind, OrbitalHavenState, PAD_A_POS, PAD_B_POS,
+    PAD_C_POS, ServiceKind, ShipClass, StationEventKind,
 };
 
 use super::cameras::basis_from_forward;
@@ -208,30 +208,8 @@ pub fn build_dynamic_entities(
         1.8,
     );
 
-    // Rotating Ops Deck Holographic Station Projection above Holotable (Y = 14.9, Z = 1.0)
-    let holo_col = [accent[0], accent[1], accent[2], 0.55];
-    tr.push_oriented_box(
-        [0.0, 15.0, 1.0],
-        r_right,
-        r_up,
-        r_fwd,
-        [0.0, 0.0, 0.0],
-        [2.8, 0.55, 0.85],
-        Tile::ForcefieldHex,
-        holo_col,
-        1.9,
-    );
-    tr.push_oriented_box(
-        [0.0, 15.0, 1.0],
-        r_right,
-        r_up,
-        r_fwd,
-        [0.0, 0.0, 0.0],
-        [0.7, 1.8, 0.7],
-        Tile::ForcefieldHex,
-        holo_col,
-        1.9,
-    );
+    // Bespoke 5-minute looping room activity machinery & progress visuals across all 5 rooms
+    super::room_activities_mesh::build_room_activity_meshes(state, theme, time, op, tr);
 
     // Hangar Approach Runway Chase Lights (along Z = 18..41 inside Hangar Bay)
     let chase_idx = ((time * 5.0) as i32).rem_euclid(5);
@@ -1395,19 +1373,33 @@ pub fn build_dynamic_entities(
                     theme.hull_tint,
                     0.0,
                 );
-                // 7. Dynamic cargo crate resting on the raised forks when hauling
-                if agent.carrying_cargo {
-                    op.push_oriented_box(
-                        p,
-                        r,
-                        u,
-                        f,
-                        [0.0, fork_y + 0.56, 1.50],
-                        [1.15, 0.98, 1.05],
-                        Tile::CargoCrate,
-                        white,
-                        0.0,
-                    );
+                // 7. Dynamic cargo crate or compacted alloy bale resting on the raised forks when hauling
+                if agent.carrying_cargo || agent.cargo_kind != CargoVisualKind::None {
+                    if agent.cargo_kind == CargoVisualKind::CompactedBale {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [0.0, fork_y + 0.28, 1.50],
+                            [1.22, 0.42, 1.05],
+                            Tile::ShipArmor,
+                            [0.70, 0.78, 0.86, 1.0],
+                            0.0,
+                        );
+                    } else {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [0.0, fork_y + 0.56, 1.50],
+                            [1.15, 0.98, 1.05],
+                            Tile::CargoCrate,
+                            white,
+                            0.0,
+                        );
+                    }
                 }
                 // 8. Flashing rooftop amber warning strobe (faster when yielding)
                 let strobe_rate = if agent.yielding { 10.0 } else { 4.5 };
@@ -1511,6 +1503,26 @@ pub fn build_dynamic_entities(
                     accent,
                     1.15,
                 );
+                // 5. Active cyan sanitizer foam/mist ring underneath chassis while scrubbing
+                if agent.dwell_timer > 0.0
+                    && matches!(
+                        agent.work_action,
+                        AgentWorkAction::Scrubbing | AgentWorkAction::PurgingWaste
+                    )
+                {
+                    let foam_r = 1.18 + (time * 8.0 + agent.id as f32).sin().abs() * 0.26;
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 0.08, 0.32],
+                        [foam_r, 0.10, foam_r],
+                        Tile::ForcefieldHex,
+                        [accent[0], accent[1], accent[2], 0.38],
+                        1.5,
+                    );
+                }
             }
             AgentKind::OpsHoloDroid => {
                 // 4-wheel UNATCO telemetry droid with 3 glowing CRT displays & spinning radar dish
@@ -1614,18 +1626,43 @@ pub fn build_dynamic_entities(
                     white,
                     0.35,
                 );
-                // 5. Translucent cyan data-sync projection beam while dwelling at consoles
+                // 5. Floating holographic Data-Packet Cube above rooftop dish when transporting telemetry
+                if agent.cargo_kind == CargoVisualKind::HoloDataCube {
+                    let cube_bob = 2.42 + (time * 4.5 + agent.id as f32).sin() * 0.12;
+                    tr.push_oriented_box(
+                        p,
+                        dr,
+                        u,
+                        df,
+                        [0.0, cube_bob, 0.0],
+                        [0.42, 0.42, 0.42],
+                        Tile::ForcefieldHex,
+                        [accent[0], accent[1], accent[2], 0.68],
+                        1.85,
+                    );
+                }
+                // 6. Translucent data-sync / holotable upload projection beam while dwelling
                 if agent.dwell_timer > 0.0 {
+                    let beam_col = if agent.work_action == AgentWorkAction::UploadingHolo {
+                        [sec[0], sec[1], sec[2], 0.36]
+                    } else {
+                        [accent[0], accent[1], accent[2], 0.30]
+                    };
+                    let beam_len = if agent.work_action == AgentWorkAction::UploadingHolo {
+                        2.1
+                    } else {
+                        1.15
+                    };
                     tr.push_oriented_box(
                         p,
                         r,
                         u,
                         f,
-                        [0.0, 1.28, 0.95],
-                        [0.42, 0.34, 1.05],
+                        [0.0, 1.38, 0.55 + beam_len * 0.5],
+                        [0.46, 0.38, beam_len],
                         Tile::ForcefieldHex,
-                        [accent[0], accent[1], accent[2], 0.28],
-                        1.4,
+                        beam_col,
+                        1.65,
                     );
                 }
             }
@@ -1709,6 +1746,21 @@ pub fn build_dynamic_entities(
                         0.0,
                     );
                 }
+                // Volumetric vertical laser audit fan while scanning Atrium server pillars
+                if agent.dwell_timer > 0.0 && agent.work_action == AgentWorkAction::Scanning {
+                    let scan_y = 1.55 + (time * 3.8 + agent.id as f32).sin() * 0.75;
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, scan_y, 1.45],
+                        [1.35, 0.16, 2.0],
+                        Tile::ForcefieldHex,
+                        [red_strobe[0], red_strobe[1], red_strobe[2], 0.36],
+                        1.75,
+                    );
+                }
             }
             AgentKind::ReactorCoolantBot => {
                 // 4-wheel heavy reactor coolant tanker with twin glowing cyan cryo canisters
@@ -1778,6 +1830,44 @@ pub fn build_dynamic_entities(
                     accent,
                     1.2,
                 );
+                // 5. Dorsal carried Fresh Cryo-Cell (bright cyan) or Spent Fuel Rod (glowing orange)
+                if matches!(
+                    agent.cargo_kind,
+                    CargoVisualKind::FreshCryoCell | CargoVisualKind::SpentFuelRod
+                ) {
+                    let rod_col = if agent.cargo_kind == CargoVisualKind::SpentFuelRod {
+                        [1.0, 0.34, 0.08, 1.0]
+                    } else {
+                        accent
+                    };
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 1.62, -0.08],
+                        [0.36, 0.36, 1.38],
+                        Tile::ReactorCoil,
+                        rod_col,
+                        1.45,
+                    );
+                }
+                // 6. Translucent cryo-vapor mist burst when swapping a reactor rod
+                if agent.dwell_timer > 0.0 && agent.work_action == AgentWorkAction::SwappingCryoRod
+                {
+                    let puff = 0.65 + (time * 9.0 + agent.id as f32).sin().abs() * 0.45;
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 1.05, ext + 0.85],
+                        [puff, puff * 0.9, puff],
+                        Tile::ForcefieldHex,
+                        [0.72, 0.96, 1.0, 0.38],
+                        1.65,
+                    );
+                }
             }
             AgentKind::SolarCapacitorBot => {
                 // Twin-tracked high-voltage solar calibration bot with copper coil pack & probe arm
@@ -1844,6 +1934,19 @@ pub fn build_dynamic_entities(
                         sec,
                         1.5,
                     );
+                    if agent.work_action == AgentWorkAction::CalibratingCapacitor {
+                        tr.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [0.0, arm_h + 0.15, 1.82],
+                            [0.24, 0.24, 1.15],
+                            Tile::ForcefieldHex,
+                            [sec[0], sec[1], sec[2], 0.52],
+                            1.9,
+                        );
+                    }
                 }
             }
             AgentKind::CourierRunner => {

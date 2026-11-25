@@ -21,6 +21,7 @@ use crate::{Gpu, Pointer, PointerAction, Scene, SceneInput};
 mod cameras;
 mod entities_mesh;
 mod mesh_builder;
+mod room_activities_mesh;
 mod station_mesh;
 mod textures;
 mod theme;
