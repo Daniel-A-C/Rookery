@@ -455,33 +455,34 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         0.0,
     );
     // Lower deck ceiling split around the 3-Deck Elevator Shaft cutout (`X:-2.6..2.6, Z:-8.6..-3.4`)
+    // Top face sits at Y = -4.40 so the sloped Pad Access Hallways (`Y_bottom >= -4.30`) clear it cleanly.
     op.push_box(
-        [0.0, -4.9, 3.3],
-        [38.0, 1.2, 13.4],
+        [0.0, -4.95, 3.3],
+        [38.0, 1.1, 13.4],
         Tile::HullPanel,
         5.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [0.0, -4.9, -9.3],
-        [38.0, 1.2, 1.4],
+        [0.0, -4.95, -9.3],
+        [38.0, 1.1, 1.4],
         Tile::HullPanel,
         5.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [-10.8, -4.9, -6.0],
-        [16.4, 1.2, 5.2],
+        [-10.8, -4.95, -6.0],
+        [16.4, 1.1, 5.2],
         Tile::HullPanel,
         5.0,
         dark_hull,
         0.0,
     );
     op.push_box(
-        [10.8, -4.9, -6.0],
-        [16.4, 1.2, 5.2],
+        [10.8, -4.95, -6.0],
+        [16.4, 1.1, 5.2],
         Tile::HullPanel,
         5.0,
         dark_hull,
@@ -632,37 +633,38 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         let u_vec = [-sin_a * side, cos_a, 0.0];
         let f_vec = [0.0, 0.0, 1.0];
 
-        // Sloped grated walkway floor & underside cantilevered structural truss beam
+        // Sloped grated walkway floor (`0.45` thick, matching Atrium floor so it clears the Reactor roof cleanly)
         op.push_oriented_box(
             ramp_origin,
             r_vec,
             u_vec,
             f_vec,
-            [0.0, -0.32, 0.0],
-            [ramp_len + 0.35, 0.64, 5.2],
+            [0.0, -0.225, 0.0],
+            [ramp_len + 0.55, 0.45, 5.2],
             Tile::FloorGrate,
             hull,
             0.0,
         );
+        // Underside cantilevered structural truss beam (starts outside the Reactor Room end wall at `|X| >= 19.4`)
         op.push_oriented_box(
             ramp_origin,
             r_vec,
             u_vec,
             f_vec,
-            [0.0, -1.25, 0.0],
-            [ramp_len + 0.5, 1.22, 4.4],
+            [side * 3.65, -0.95, 0.0],
+            [4.1, 0.96, 4.4],
             Tile::DarkSteelRib,
             rib,
             0.0,
         );
-        // Sloped ceiling slab & glowing fluorescent corridor strip
+        // Sloped ceiling slab & glowing fluorescent corridor strip (extended slightly into the transition collar to leave zero gap)
         op.push_oriented_box(
             ramp_origin,
             r_vec,
             u_vec,
             f_vec,
-            [0.0, 4.45, 0.0],
-            [ramp_len + 0.35, 0.65, 5.4],
+            [side * 0.45, 4.45, 0.0],
+            [ramp_len + 1.35, 0.65, 5.4],
             Tile::HullPanel,
             dark_hull,
             0.0,
@@ -685,8 +687,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
                 r_vec,
                 u_vec,
                 f_vec,
-                [0.0, 0.65, z_wall],
-                [ramp_len + 0.25, 1.30, 0.45],
+                [side * 0.15, 0.65, z_wall],
+                [ramp_len + 0.75, 1.30, 0.45],
                 Tile::CorridorWall,
                 corr,
                 0.0,
@@ -696,8 +698,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
                 r_vec,
                 u_vec,
                 f_vec,
-                [0.0, 3.62, z_wall],
-                [ramp_len + 0.25, 1.00, 0.45],
+                [side * 0.40, 3.62, z_wall],
+                [ramp_len + 1.25, 1.00, 0.45],
                 Tile::DarkSteelRib,
                 rib,
                 0.0,
@@ -726,6 +728,34 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
                 [lx, 4.92, 0.0],
                 [0.72, 0.34, 5.8],
                 Tile::DarkSteelRib,
+                rib,
+                0.0,
+            );
+        }
+        // Watertight vertical transition collar sealing the 12.5° bend between the sloped hallway and straight airlock (`|X| = 22.85`)
+        let joint_x = side * 22.85;
+        op.push_box(
+            [joint_x, 3.22, 0.0],
+            [0.95, 0.62, 5.95],
+            Tile::DarkSteelRib,
+            3.0,
+            rib,
+            0.0,
+        );
+        op.push_box(
+            [joint_x, -1.78, 0.0],
+            [0.95, 0.72, 5.95],
+            Tile::DarkSteelRib,
+            3.0,
+            rib,
+            0.0,
+        );
+        for z_wall in [-2.68f32, 2.68f32] {
+            op.push_box(
+                [joint_x, 0.72, z_wall],
+                [0.95, 4.45, 0.58],
+                Tile::DarkSteelRib,
+                3.0,
                 rib,
                 0.0,
             );
@@ -795,10 +825,11 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             }
         }
         // Hazard-striped inner & outer airlock bulkhead doorway lintels (`|X| = 23.2` and `|X| = 28.6`)
+        // Trimmed cleanly inside the side walls (`Z: -2.28..+2.28`) and below the ceiling (`Y_top = 2.68 < 2.725`) to prevent Z-fighting.
         for x_frame in [side * 23.2, side * 28.6] {
             op.push_box(
-                [x_frame, 2.52, 0.0],
-                [0.65, 0.42, 4.9],
+                [x_frame, 2.48, 0.0],
+                [0.52, 0.40, 4.56],
                 Tile::HazardStripe,
                 2.0,
                 bright_white,
@@ -861,8 +892,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.0,
         );
         op.push_box(
-            [px - side * 9.5, py + 5.15, pz],
-            [1.4, 0.9, 11.0],
+            [px - side * 9.5, py + 5.72, pz],
+            [1.4, 0.64, 11.0],
             Tile::DarkSteelRib,
             4.0,
             rib,
@@ -1294,8 +1325,8 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             0.0,
         );
         op.push_box(
-            [x_side, -1.0, -23.7],
-            [0.5, 5.7, 2.6],
+            [x_side, -1.0, -23.55],
+            [0.5, 5.7, 2.3],
             Tile::CorridorWall,
             3.0,
             corr,
@@ -1340,10 +1371,10 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         }
     }
 
-    // 5D. Hollowed-Out Aft Solar & Power Engineering Bay (`X:-6.6..6.6, Y:-3.9..6.4, Z:-42.6..-25.0`)
+    // 5D. Hollowed-Out Aft Solar & Power Engineering Bay (`X:-6.6..6.6, Y:-3.9..6.4, Z:-42.7..-25.1`)
     op.push_box(
-        [0.0, -4.3, -33.8],
-        [14.0, 0.85, 17.8],
+        [0.0, -4.3, -33.9],
+        [14.0, 0.85, 17.6],
         Tile::FloorGrate,
         3.0,
         hull,

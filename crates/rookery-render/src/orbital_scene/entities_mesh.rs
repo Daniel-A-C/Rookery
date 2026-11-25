@@ -583,6 +583,7 @@ pub fn build_dynamic_entities(
                     accent,
                     1.2,
                 );
+                // Non-overlapping dorsal crimson medical cross (center longitudinal bar + 2 flush side arms)
                 op.push_oriented_box(
                     p,
                     r,
@@ -594,17 +595,19 @@ pub fn build_dynamic_entities(
                     red_strobe,
                     0.85,
                 );
-                op.push_oriented_box(
-                    p,
-                    r,
-                    u,
-                    f,
-                    [0.0, 1.88, -0.4],
-                    [2.2, 0.14, 0.72],
-                    Tile::CeilingLight,
-                    red_strobe,
-                    0.85,
-                );
+                for sx in [-0.73f32, 0.73f32] {
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [sx, 1.88, -0.4],
+                        [0.74, 0.14, 0.72],
+                        Tile::CeilingLight,
+                        red_strobe,
+                        0.85,
+                    );
+                }
                 for sx in [-2.65f32, 2.65f32] {
                     op.push_oriented_box(
                         p,
@@ -2334,12 +2337,12 @@ pub fn build_dynamic_entities(
     ];
     for (dz, half_w, dh, open_t) in door_specs {
         let o = open_t.clamp(0.0, 1.0);
-        let leaf_w = (half_w * (1.0 - o * 0.82)).max(0.18);
-        let cx_off = half_w - leaf_w * 0.5 + o * 0.15;
+        let leaf_w = (half_w * (1.0 - o * 0.84)).max(0.18);
+        let cx_off = half_w - leaf_w * 0.5;
         let cy = -3.85 + dh * 0.5;
         op.push_box(
             [-cx_off, cy, dz],
-            [leaf_w, dh, 0.45],
+            [leaf_w, dh, 0.36],
             Tile::BlastDoor,
             4.5,
             white,
@@ -2347,7 +2350,7 @@ pub fn build_dynamic_entities(
         );
         op.push_box(
             [cx_off, cy, dz],
-            [leaf_w, dh, 0.45],
+            [leaf_w, dh, 0.36],
             Tile::BlastDoor,
             4.5,
             white,

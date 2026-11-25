@@ -5,8 +5,8 @@ use std::f32::consts::TAU;
 
 use rookery_core::orbital::simulation::REACTOR_CORE_Z;
 use rookery_core::orbital::{
-    ATRIUM_PILLARS, ATRIUM_SECTOR_COUNT, ATRIUM_SECTORS, HANGAR_CRATES_PER_CYCLE, OPS_HOLO_LAYERS,
-    OrbitalHavenState,
+    ATRIUM_LIFT_LOW_Y, ATRIUM_LIFT_X, ATRIUM_LIFT_Z, ATRIUM_PANEL_COUNT, ATRIUM_PANELS,
+    HANGAR_CRATES_PER_CYCLE, MiniLiftPhase, OPS_HOLO_LAYERS, OrbitalHavenState, PanelStatus,
 };
 
 use super::mesh_builder::MeshBuilder;
@@ -334,8 +334,21 @@ fn build_hangar_compactor(
 }
 
 // =============================================================================
-// 2. CENTRAL CORE ATRIUM — 12-Sector Floor Scrub, Wash Dock & 4 Pillar Beacons
+// 2. CENTRAL CORE ATRIUM — 12 Wall Control Panels, Mini-Elevator & Light Show
 // =============================================================================
+
+fn multicolor_cycle(phase: f32) -> [f32; 4] {
+    const PALETTE: [[f32; 4]; 6] = [
+        [0.12, 0.88, 1.0, 1.0], // Electric Cyan
+        [1.0, 0.22, 0.82, 1.0], // Neon Magenta
+        [1.0, 0.84, 0.14, 1.0], // Bright Gold
+        [0.22, 1.0, 0.45, 1.0], // Vivid Emerald
+        [1.0, 0.46, 0.12, 1.0], // Plasma Orange
+        [0.58, 0.36, 1.0, 1.0], // Electric Violet
+    ];
+    let idx = (phase.rem_euclid(PALETTE.len() as f32)) as usize % PALETTE.len();
+    PALETTE[idx]
+}
 
 fn build_atrium_maintenance(
     state: &OrbitalHavenState,
@@ -345,7 +358,6 @@ fn build_atrium_maintenance(
     tr: &mut MeshBuilder,
 ) {
     let at = &state.room_activities.atrium;
-    let floor_y = -3.84f32;
     let accent = [
         theme.accent_primary[0],
         theme.accent_primary[1],
@@ -358,57 +370,231 @@ fn build_atrium_maintenance(
         theme.accent_secondary[2],
         1.0,
     ];
-    let green = [0.22, 1.0, 0.45, 1.0];
+    let blue = [0.14, 0.56, 1.0, 1.0];
+    let green = [0.16, 1.0, 0.42, 1.0];
     let white = [0.95, 0.97, 1.0, 1.0];
-    let dark_steel = [0.42, 0.47, 0.54, 1.0];
+    let dark_steel = [0.38, 0.43, 0.50, 1.0];
 
-    // A. 12 Dynamic Deck Maintenance Sectors (dirty amber oil-film vs gleaming sanitized cyan)
-    for (idx, &([sx, sz], _)) in ATRIUM_SECTORS.iter().enumerate() {
-        let cleaned = (idx as u8) < at.cleaned_sectors;
-        if !cleaned && at.grime_fade_in > 0.04 {
-            let alpha = 0.34 * at.grime_fade_in;
+    // A. 12 Wall-Mounted Glowing Control Panels (5 forward ground + 7 upper U-Mezzanine)
+    for (idx, (spec, rt)) in ATRIUM_PANELS.iter().zip(at.panels.iter()).enumerate() {
+        let [wx, wy, wz] = spec.wall_pos;
+        let [nx, _, nz] = spec.normal;
+        let is_x_wall = nx.abs() > 0.5;
+
+        // Tangent axis along the wall for placing sub-tiles and progress bar
+        let (tx, tz) = if is_x_wall {
+            (0.0f32, 1.0f32)
+        } else {
+            (1.0f32, 0.0f32)
+        };
+
+        // Recessed dark steel panel housing flush against wall/pillar/mullion
+        let frame_size = if is_x_wall {
+            [0.24, 1.72, 1.38]
+        } else {
+            [1.38, 1.72, 0.24]
+        };
+        op.push_box(
+            [wx + nx * 0.06, wy, wz + nz * 0.06],
+            frame_size,
+            Tile::DarkSteelRib,
+            1.8,
+            dark_steel,
+            0.0,
+        );
+
+        // Main screen color & emissive intensity based on panel status / room celebration
+        let (screen_col, screen_em) = if at.celebrating {
+            let wave = time * 6.0 + idx as f32 * 0.55;
+            (multicolor_cycle(wave), 1.48)
+        } else {
+            match rt.status {
+                PanelStatus::Pending => {
+                    let breath = 1.05 + 0.22 * (time * 2.4 + idx as f32 * 0.7).sin().abs();
+                    (blue, breath)
+                }
+                PanelStatus::Working => {
+                    let col = multicolor_cycle(time * 9.5 + idx as f32 * 1.3);
+                    (col, 1.48)
+                }
+                PanelStatus::Fixed => (green, 1.35),
+            }
+        };
+
+        // Main upper glowing control screen
+        let screen_size = if is_x_wall {
+            [0.10, 0.72, 1.08]
+        } else {
+            [1.08, 0.72, 0.10]
+        };
+        op.push_box(
+            [wx + nx * 0.17, wy + 0.28, wz + nz * 0.17],
+            screen_size,
+            Tile::CrtConsole,
+            1.2,
+            screen_col,
+            screen_em,
+        );
+
+        // 2x3 matrix of glowing indicator buttons below the main screen
+        for row in 0..2 {
+            for col_i in 0..3 {
+                let u_off = (col_i as f32 - 1.0) * 0.34;
+                let v_off = -0.26 - row as f32 * 0.26;
+                let tile_idx = row * 3 + col_i;
+                let (btn_col, btn_em) = if at.celebrating {
+                    (
+                        multicolor_cycle(time * 8.0 + idx as f32 * 0.4 + tile_idx as f32 * 0.8),
+                        1.45,
+                    )
+                } else {
+                    match rt.status {
+                        PanelStatus::Pending => (blue, 1.0),
+                        PanelStatus::Working => (
+                            multicolor_cycle(time * 12.0 + tile_idx as f32 * 1.15 + idx as f32),
+                            1.48,
+                        ),
+                        PanelStatus::Fixed => (green, 1.3),
+                    }
+                };
+                let btn_size = if is_x_wall {
+                    [0.10, 0.17, 0.24]
+                } else {
+                    [0.24, 0.17, 0.10]
+                };
+                op.push_box(
+                    [
+                        wx + nx * 0.18 + tx * u_off,
+                        wy + v_off,
+                        wz + nz * 0.18 + tz * u_off,
+                    ],
+                    btn_size,
+                    Tile::CeilingLight,
+                    1.0,
+                    btn_col,
+                    btn_em,
+                );
+            }
+        }
+
+        // Bottom calibration progress bar (glows green as robot fills progress 0..1)
+        let fill = if at.celebrating || rt.status == PanelStatus::Fixed {
+            1.0
+        } else if rt.status == PanelStatus::Working {
+            rt.progress.clamp(0.08, 1.0)
+        } else {
+            0.12
+        };
+        let bar_col = if at.celebrating {
+            multicolor_cycle(time * 7.0 + idx as f32)
+        } else if rt.status == PanelStatus::Fixed {
+            green
+        } else if rt.status == PanelStatus::Working {
+            lerp_col(blue, green, fill)
+        } else {
+            [0.10, 0.32, 0.65, 1.0]
+        };
+        let bar_len = 1.06 * fill;
+        let bar_shift = -0.53 + bar_len * 0.5;
+        let bar_size = if is_x_wall {
+            [0.10, 0.10, bar_len]
+        } else {
+            [bar_len, 0.10, 0.10]
+        };
+        op.push_box(
+            [
+                wx + nx * 0.18 + tx * bar_shift,
+                wy - 0.72,
+                wz + nz * 0.18 + tz * bar_shift,
+            ],
+            bar_size,
+            Tile::CeilingLight,
+            1.0,
+            bar_col,
+            1.3,
+        );
+
+        // Translucent glowing halo aura around active Working or Celebrating panels
+        if rt.status == PanelStatus::Working || at.celebrating {
+            let halo_size = if is_x_wall {
+                [0.24, 1.92, 1.56]
+            } else {
+                [1.56, 1.92, 0.24]
+            };
             tr.push_box(
-                [sx, floor_y + 0.04, sz],
-                [2.4, 0.05, 2.4],
-                Tile::HazardStripe,
-                2.2,
-                [0.62, 0.42, 0.16, alpha],
-                0.25,
-            );
-        } else if cleaned && (idx as u8) + 2 >= at.cleaned_sectors {
-            // Recently scrubbed sector shimmers with a clean cyan sanitized sheen
-            let pulse = 0.16 + 0.10 * (time * 3.2 + idx as f32).sin().abs();
-            tr.push_box(
-                [sx, floor_y + 0.04, sz],
-                [2.2, 0.04, 2.2],
+                [wx + nx * 0.22, wy, wz + nz * 0.22],
+                halo_size,
                 Tile::ForcefieldHex,
-                2.0,
-                [accent[0], accent[1], accent[2], pulse],
-                1.35,
+                1.4,
+                [screen_col[0], screen_col[1], screen_col[2], 0.28],
+                1.75,
             );
         }
     }
 
-    // B. 4 Server Pillar Status Beacons (`±6.8, 5.2` & `±7.2, -10.2`, Y = 3.05)
-    for (i, &([px, pz], _, _)) in ATRIUM_PILLARS.iter().enumerate() {
-        let verified = (i as u8) < at.verified_pillars;
-        let col = if verified { green } else { sec };
-        let em = if verified {
-            1.35
-        } else {
-            0.75 + 0.35 * (time * 4.0 + i as f32).sin().abs()
-        };
+    // B. Dedicated Starboard Atrium Bot Mini-Elevator Platform (`X = +8.8, Z = +8.4`)
+    let lift_y = at.mini_lift.current_y;
+    let lift_active = at.mini_lift.phase != MiniLiftPhase::Idle;
+    let lift_trim_col = if at.celebrating {
+        multicolor_cycle(time * 7.5)
+    } else if lift_active {
+        sec
+    } else {
+        accent
+    };
+    // Moving hazard platform deck (seated cleanly on top of the Atrium floor `Y = -3.875` when down)
+    let deck_h = 0.14f32;
+    let deck_cy = lift_y + 0.08;
+    op.push_box(
+        [ATRIUM_LIFT_X, deck_cy, ATRIUM_LIFT_Z],
+        [2.35, deck_h, 2.15],
+        Tile::HazardStripe,
+        2.0,
+        white,
+        0.0,
+    );
+    // Glowing perimeter beacon strips on the lift deck
+    op.push_box(
+        [ATRIUM_LIFT_X - 1.19, deck_cy, ATRIUM_LIFT_Z],
+        [0.06, 0.10, 1.95],
+        Tile::CeilingLight,
+        1.0,
+        lift_trim_col,
+        1.35,
+    );
+    op.push_box(
+        [ATRIUM_LIFT_X, deck_cy, ATRIUM_LIFT_Z - 1.09],
+        [2.15, 0.10, 0.06],
+        Tile::CeilingLight,
+        1.0,
+        lift_trim_col,
+        1.35,
+    );
+    // Guide carriage gripping the vertical rails on the starboard wall
+    op.push_box(
+        [ATRIUM_LIFT_X + 1.28, deck_cy + 0.68, ATRIUM_LIFT_Z],
+        [0.42, 1.42, 2.05],
+        Tile::DarkSteelRib,
+        2.0,
+        theme.rib_tint,
+        0.0,
+    );
+    // Telescoping hydraulic piston column beneath platform down to Atrium floor (only visible once raised)
+    let deck_bottom = deck_cy - deck_h * 0.5;
+    let floor_top = ATRIUM_LIFT_LOW_Y + 0.005;
+    let piston_h = deck_bottom - floor_top;
+    if piston_h > 0.06 {
         op.push_box(
-            [px, 3.08, pz],
-            [1.65, 0.34, 1.65],
-            Tile::CeilingLight,
-            1.5,
-            col,
-            em,
+            [ATRIUM_LIFT_X, floor_top + piston_h * 0.5, ATRIUM_LIFT_Z],
+            [0.46, piston_h, 0.46],
+            Tile::DarkSteelRib,
+            2.0,
+            dark_steel,
+            0.0,
         );
     }
 
-    // C. 12-Segment Cycle Progress Strip on the +Z front fascia of the Elevator Shaft (`Z = -3.28`)
+    // C. 12-Segment Panel Status Board on the +Z front fascia of the main Elevator Shaft (`Z = -3.28`)
     op.push_box(
         [0.0, 1.72, -3.28],
         [4.8, 0.46, 0.18],
@@ -417,59 +603,93 @@ fn build_atrium_maintenance(
         dark_steel,
         0.0,
     );
-    for i in 0..ATRIUM_SECTOR_COUNT {
+    for (i, rt) in at.panels.iter().enumerate() {
         let bx = -2.05 + i as f32 * 0.372;
-        let lit = (i as u8) < at.cleaned_sectors;
-        let col = if lit { accent } else { [0.18, 0.22, 0.28, 1.0] };
+        let (col, em) = if at.celebrating {
+            (multicolor_cycle(time * 8.0 + i as f32 * 0.5), 1.48)
+        } else {
+            match rt.status {
+                PanelStatus::Pending => (blue, 0.95),
+                PanelStatus::Working => (multicolor_cycle(time * 10.0 + i as f32), 1.45),
+                PanelStatus::Fixed => (green, 1.38),
+            }
+        };
         op.push_box(
             [bx, 1.72, -3.17],
             [0.26, 0.24, 0.08],
             Tile::CeilingLight,
             1.0,
             col,
-            if lit { 1.3 } else { 0.1 },
+            em,
         );
     }
 
-    // D. Atrium Wash & Waste-Flush Dock (`X = 9.9, Z = 8.2`, clear of Pad C portal & server pillar)
-    op.push_box(
-        [9.9, floor_y + 1.35, 8.2],
-        [1.5, 2.7, 2.8],
-        Tile::DarkSteelRib,
-        2.2,
-        theme.rib_tint,
-        0.0,
-    );
-    op.push_box(
-        [9.05, floor_y + 0.12, 8.2],
-        [1.4, 0.16, 2.4],
-        Tile::HazardStripe,
-        1.8,
-        white,
-        0.0,
-    );
-    let dock_col = if at.purging_waste { accent } else { green };
-    op.push_box(
-        [9.12, floor_y + 2.35, 8.2],
-        [0.14, 0.42, 1.8],
-        Tile::CeilingLight,
-        1.2,
-        dock_col,
-        1.3,
-    );
-    if at.purging_waste {
-        // Rising translucent cyan-white purge steam plume
-        for k in 0..3 {
-            let phase = (time * 1.4 + k as f32 * 0.33).fract();
-            let sy = floor_y + 0.8 + phase * 3.4;
-            let sz_s = 0.65 + phase * 0.9;
-            tr.push_box(
-                [9.1, sy, 8.2 + (time * 3.0 + k as f32).sin() * 0.25],
-                [sz_s, sz_s * 0.7, sz_s],
+    // D. 4 Server Pillar Top Beacons (subtle blue/green progress, flashing strobe during Celebration!)
+    let fixed_ratio = at.fixed_count() as f32 / ATRIUM_PANEL_COUNT as f32;
+    for (i, &(px, pz)) in [(-6.8f32, 5.2f32), (6.8, 5.2), (-7.2, -10.2), (7.2, -10.2)]
+        .iter()
+        .enumerate()
+    {
+        let (col, em) = if at.celebrating {
+            let strobe = multicolor_cycle(time * 7.5 + i as f32 * 1.5);
+            (strobe, 1.5)
+        } else if (i as f32 + 0.5) / 4.0 <= fixed_ratio {
+            (green, 1.3)
+        } else {
+            (blue, 0.85 + 0.2 * (time * 3.0 + i as f32).sin().abs())
+        };
+        op.push_box(
+            [px, 0.89, pz],
+            [1.65, 0.34, 1.65],
+            Tile::CeilingLight,
+            1.5,
+            col,
+            em,
+        );
+    }
+
+    // E. Whole-Room Celebration Light Show Finale! (Flashing ceiling strobes + rising holographic rings)
+    if at.celebrating {
+        // 1. Flashing multicolored ceiling strobe overlays on all 6 Atrium ceiling light banks
+        for (zi, &z_l) in [-10.0f32, -1.0, 7.0].iter().enumerate() {
+            for (si, &x_l) in [-4.8f32, 4.8].iter().enumerate() {
+                let c = multicolor_cycle(time * 6.5 + (zi * 2 + si) as f32 * 0.9);
+                op.push_box(
+                    [x_l, 10.50, z_l],
+                    [3.5, 0.24, 1.3],
+                    Tile::CeilingLight,
+                    2.5,
+                    c,
+                    1.5,
+                );
+                // Volumetric downward celebration light cone beneath each ceiling strobe
+                tr.push_box(
+                    [x_l, 6.2, z_l],
+                    [2.4, 8.2, 1.2],
+                    Tile::ForcefieldHex,
+                    1.8,
+                    [c[0], c[1], c[2], 0.16],
+                    1.75,
+                );
+            }
+        }
+
+        // 2. Rising translucent holographic celebration rings in the open forward Atrium void (`X = 0, Z = 5.0`)
+        for k in 0..4 {
+            let p = (time * 0.55 + k as f32 * 0.25).fract();
+            let ry = -3.4 + p * 12.8;
+            let rad = 1.6 + (p * std::f32::consts::PI).sin() * 2.4;
+            let rc = multicolor_cycle(time * 4.5 + k as f32 * 1.5);
+            let alpha = (1.0 - p) * 0.44;
+            tr.push_cylinder(
+                [0.0, ry, 5.0],
+                rad,
+                rad,
+                0.28,
+                12,
                 Tile::ForcefieldHex,
-                1.5,
-                [0.75, 0.96, 1.0, (1.0 - phase) * 0.36],
-                1.4,
+                [rc[0], rc[1], rc[2], alpha],
+                1.9,
             );
         }
     }
