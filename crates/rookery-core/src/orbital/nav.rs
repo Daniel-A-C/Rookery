@@ -17,7 +17,8 @@ pub struct NavNode {
 }
 
 const D1: f32 = -14.95; // Deck 1: Concourse & Reactor
-const D2: f32 = -3.88; // Deck 2: Hangar, Atrium, Pipe Tunnel, Solar Bay
+pub const D2: f32 = -3.88; // Deck 2: Hangar, Atrium, Pipe Tunnel, Solar Bay
+pub const D2U: f32 = 3.225; // Deck 2 Upper: Atrium U-Mezzanine Walkways
 const D3: f32 = 12.05; // Deck 3: Ops & Command Spire
 const PAD: f32 = -1.42; // External Landing Pads B & C
 
@@ -300,10 +301,10 @@ pub const NAV_NODES: &[NavNode] = &[
         is_pipe_tunnel: false,
     },
     // --- Bespoke Room Activity Workstation Spurs (45..=53) ---
-    // 45: Atrium Wash & Waste-Flush Dock (Deck 2, clear of pillar at [6.8, 5.2] & Pad C portal)
+    // 45: Atrium Mini-Elevator Lower Approach (Deck 2 forward half, clear of pillar [6.8, 5.2])
     NavNode {
         id: 45,
-        pos: [6.8, D2, 8.2],
+        pos: [6.2, D2, 8.4],
         zone: AgentZone::CentralAtrium,
         is_pipe_tunnel: false,
     },
@@ -356,6 +357,98 @@ pub const NAV_NODES: &[NavNode] = &[
         id: 53,
         pos: [2.3, D2, -37.2],
         zone: AgentZone::SolarBay,
+        is_pipe_tunnel: false,
+    },
+    // --- Atrium Ground Forward Control-Panel Workstations (54..=58, strictly Z >= +3.5) ---
+    NavNode {
+        id: 54,
+        pos: [9.4, D2, 3.5],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 55,
+        pos: [9.4, D2, 6.0],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 56,
+        pos: [4.2, D2, 5.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 57,
+        pos: [-4.2, D2, 5.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 58,
+        pos: [-9.4, D2, 3.5],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    // --- Atrium Upper U-Mezzanine Walkways & Control-Panel Workstations (59..=68, Y = D2U) ---
+    NavNode {
+        id: 59,
+        pos: [8.8, D2U, 6.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 60,
+        pos: [8.8, D2U, 2.55],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 61,
+        pos: [8.8, D2U, -2.55],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 62,
+        pos: [8.8, D2U, -8.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 63,
+        pos: [8.8, D2U, -12.0],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 64,
+        pos: [3.6, D2U, -12.0],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 65,
+        pos: [-3.6, D2U, -12.0],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 66,
+        pos: [-8.8, D2U, -12.0],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 67,
+        pos: [-8.8, D2U, -8.2],
+        zone: AgentZone::CentralAtrium,
+        is_pipe_tunnel: false,
+    },
+    NavNode {
+        id: 68,
+        pos: [-8.8, D2U, -2.55],
+        zone: AgentZone::CentralAtrium,
         is_pipe_tunnel: false,
     },
 ];
@@ -419,8 +512,25 @@ pub const NAV_EDGES: &[(usize, usize)] = &[
     (41, 42),
     (43, 44),
     // Bespoke Room Activity Workstation Spurs
-    // Atrium Wash Dock
+    // Atrium Forward Ground Control Panels & Mini-Elevator Approach (strictly clear of main elevator)
     (9, 45),
+    (12, 54),
+    (54, 55),
+    (12, 56),
+    (56, 9),
+    (11, 57),
+    (57, 9),
+    (11, 58),
+    // Atrium Upper U-Mezzanine Walkways (Starboard -> Rear Skybridge -> Port)
+    (59, 60),
+    (60, 61),
+    (61, 62),
+    (62, 63),
+    (63, 64),
+    (64, 65),
+    (65, 66),
+    (66, 67),
+    (67, 68),
     // Ops Holotable Upload Spurs
     (24, 46),
     (26, 46),
@@ -491,7 +601,7 @@ impl PartialOrd for AStarState {
 
 /// Deterministic A* shortest path on `NAV_NODES`, returning node IDs from the next step through `goal`.
 pub fn find_path(start: usize, goal: usize) -> Vec<usize> {
-    let empty = [false; 64];
+    let empty = [false; 128];
     find_path_avoiding(start, goal, &empty[..NAV_NODES.len()])
 }
 
@@ -562,7 +672,14 @@ pub fn goal_pool_for_agent(
         (AgentKind::CargoForklift, AgentZone::PadBPort) => &[41, 42],
         (AgentKind::CargoForklift, AgentZone::PadCStarboard) => &[43, 44],
         (AgentKind::FloorScrubber, AgentZone::HangarBay) => &[6, 7, 8, 9, 10],
-        (AgentKind::FloorScrubber, _) => &[9, 10, 11, 12, 13, 14, 15],
+        (AgentKind::FloorScrubber, _) => &[9, 10, 11, 12],
+        (AgentKind::PanelTechBot, _) => {
+            if cur_node >= 59 {
+                &[59, 60, 61, 62, 63, 64, 65, 66, 67, 68]
+            } else {
+                &[9, 10, 11, 12, 45, 54, 55, 56, 57, 58]
+            }
+        }
         (AgentKind::OpsHoloDroid, _) => &[24, 25, 26, 27, 28, 29, 30],
         (AgentKind::SecurityEnforcer, AgentZone::CentralAtrium) => &[9, 11, 13, 15, 14, 12],
         (AgentKind::SecurityEnforcer, _) => &[31, 37, 39, 35, 36, 40, 38, 32],

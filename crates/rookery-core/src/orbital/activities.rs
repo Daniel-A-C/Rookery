@@ -222,107 +222,277 @@ impl HangarCompactorState {
 }
 
 // =============================================================================
-// 2. CENTRAL CORE ATRIUM — 12-Sector Deck Scrub & 4-Pillar Security Audit (300s)
+// 2. CENTRAL CORE ATRIUM — 12 Wall Control Panels, Mini-Elevator & Light Show
 // =============================================================================
 
-pub const ATRIUM_SECTOR_COUNT: usize = 12;
-const ATRIUM_WORK_END_SECS: f32 = 270.0;
+pub const ATRIUM_PANEL_COUNT: usize = 12;
+pub const ATRIUM_CELEBRATION_SECS: f32 = 12.0;
+pub const ATRIUM_PANEL_WORK_SECS: f32 = 4.4;
+pub const ATRIUM_LIFT_X: f32 = 8.8;
+pub const ATRIUM_LIFT_Z: f32 = 8.4;
+pub const ATRIUM_LIFT_LOW_Y: f32 = super::nav::D2;
+pub const ATRIUM_LIFT_HIGH_Y: f32 = super::nav::D2U;
+pub const ATRIUM_LIFT_LOW_NODE: usize = 45;
+pub const ATRIUM_LIFT_HIGH_NODE: usize = 59;
 
-/// 3D world centers `[x, z]` and closest NavNode IDs for the 12 Atrium decontamination sectors.
-pub const ATRIUM_SECTORS: [([f32; 2], usize); ATRIUM_SECTOR_COUNT] = [
-    ([-3.6, 7.6], 9),
-    ([0.0, 7.6], 9),
-    ([3.6, 7.6], 9),
-    ([-4.2, 3.6], 11),
-    ([0.0, 3.6], 10),
-    ([4.2, 3.6], 12),
-    ([-4.8, -1.2], 11),
-    ([4.8, -1.2], 12),
-    ([-4.8, -6.0], 13),
-    ([4.8, -6.0], 14),
-    ([-3.0, -11.0], 15),
-    ([3.0, -11.0], 15),
+/// Static 3D mounting descriptor for an Atrium wall/pillar control panel.
+#[derive(Clone, Copy, Debug)]
+pub struct AtriumPanelSpec {
+    /// World `[x, y, z]` center of the glowing panel mounted flush on a wall/pillar/mullion.
+    pub wall_pos: [f32; 3],
+    /// Outward surface normal `[nx, ny, nz]` pointing into the room.
+    pub normal: [f32; 3],
+    /// `NAV_NODES` index where a `PanelTechBot` stands to calibrate this panel.
+    pub work_node: usize,
+    /// Yaw angle (radians) for the robot to face directly into the panel.
+    pub face_yaw: f32,
+    /// True if mounted on the Upper U-Mezzanine (`Y = 3.225`), false on the forward ground floor.
+    pub upper_level: bool,
+}
+
+/// 12 Atrium Control Panels: 5 on the elevator-free forward ground half (`Z >= +3.5`)
+/// and 7 along the Upper U-Mezzanine (Starboard mullions, Rear skybridge wall, Port mullions).
+pub const ATRIUM_PANELS: [AtriumPanelSpec; ATRIUM_PANEL_COUNT] = [
+    // --- Ground Floor Forward Half (0..=4) ---
+    AtriumPanelSpec {
+        wall_pos: [11.12, -2.0, 3.5],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 54,
+        face_yaw: FRAC_PI_2,
+        upper_level: false,
+    },
+    AtriumPanelSpec {
+        wall_pos: [11.12, -2.0, 6.0],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 55,
+        face_yaw: FRAC_PI_2,
+        upper_level: false,
+    },
+    AtriumPanelSpec {
+        wall_pos: [5.75, -2.0, 5.2],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 56,
+        face_yaw: FRAC_PI_2,
+        upper_level: false,
+    },
+    AtriumPanelSpec {
+        wall_pos: [-5.75, -2.0, 5.2],
+        normal: [1.0, 0.0, 0.0],
+        work_node: 57,
+        face_yaw: -FRAC_PI_2,
+        upper_level: false,
+    },
+    AtriumPanelSpec {
+        wall_pos: [-11.12, -2.0, 3.5],
+        normal: [1.0, 0.0, 0.0],
+        work_node: 58,
+        face_yaw: -FRAC_PI_2,
+        upper_level: false,
+    },
+    // --- Upper U-Mezzanine Walkways (5..=11) ---
+    AtriumPanelSpec {
+        wall_pos: [11.05, 5.0, 2.55],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 60,
+        face_yaw: FRAC_PI_2,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [11.05, 5.0, -2.55],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 61,
+        face_yaw: FRAC_PI_2,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [11.05, 5.0, -8.2],
+        normal: [-1.0, 0.0, 0.0],
+        work_node: 62,
+        face_yaw: FRAC_PI_2,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [3.6, 5.0, -14.1],
+        normal: [0.0, 0.0, 1.0],
+        work_node: 64,
+        face_yaw: PI,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [-3.6, 5.0, -14.1],
+        normal: [0.0, 0.0, 1.0],
+        work_node: 65,
+        face_yaw: PI,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [-11.05, 5.0, -8.2],
+        normal: [1.0, 0.0, 0.0],
+        work_node: 67,
+        face_yaw: -FRAC_PI_2,
+        upper_level: true,
+    },
+    AtriumPanelSpec {
+        wall_pos: [-11.05, 5.0, -2.55],
+        normal: [1.0, 0.0, 0.0],
+        work_node: 68,
+        face_yaw: -FRAC_PI_2,
+        upper_level: true,
+    },
 ];
 
-/// World `[x, z]`, inspection NavNode, and facing yaw for the 4 Atrium server pillars.
-pub const ATRIUM_PILLARS: [([f32; 2], usize, f32); 4] = [
-    ([-6.8, 5.2], 11, -FRAC_PI_2),
-    ([6.8, 5.2], 12, FRAC_PI_2),
-    ([-7.2, -10.2], 13, -2.2),
-    ([7.2, -10.2], 14, 2.2),
-];
+/// Operational status of a single Atrium wall control panel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PanelStatus {
+    /// Waiting for calibration (glowing electric blue).
+    #[default]
+    Pending,
+    /// Robot is actively calibrating this panel (flashing multicolor animation).
+    Working,
+    /// Calibration complete (steady bright emerald green).
+    Fixed,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AtriumPanelRuntime {
+    #[serde(default)]
+    pub status: PanelStatus,
+    /// `[0.0, 1.0]` calibration progress while `status == Working`.
+    #[serde(default)]
+    pub progress: f32,
+    /// Agent ID currently claiming/working on this panel, if any.
+    #[serde(default)]
+    pub assigned_bot: Option<u32>,
+}
+
+/// Phase of the dedicated Starboard Atrium Bot Mini-Elevator (`X = +8.8, Z = +8.4`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MiniLiftPhase {
+    #[default]
+    Idle,
+    MovingToPickup,
+    Boarding,
+    Riding,
+    Exiting,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AtriumMiniLiftState {
+    #[serde(default = "default_lift_y")]
+    pub current_y: f32,
+    #[serde(default)]
+    pub target_upper: bool,
+    #[serde(default)]
+    pub rider_id: Option<u32>,
+    #[serde(default)]
+    pub phase: MiniLiftPhase,
+}
+
+fn default_lift_y() -> f32 {
+    ATRIUM_LIFT_LOW_Y
+}
+
+impl Default for AtriumMiniLiftState {
+    fn default() -> Self {
+        Self {
+            current_y: ATRIUM_LIFT_LOW_Y,
+            target_upper: false,
+            rider_id: None,
+            phase: MiniLiftPhase::Idle,
+        }
+    }
+}
+
+fn default_atrium_panels() -> [AtriumPanelRuntime; ATRIUM_PANEL_COUNT] {
+    [AtriumPanelRuntime::default(); ATRIUM_PANEL_COUNT]
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AtriumMaintenanceState {
-    pub cycle_secs: f32,
-    /// Number of floor sectors cleaned so far (`0..=12`).
-    pub cleaned_sectors: u8,
-    /// Number of server pillars verified green (`0..=4`).
-    pub verified_pillars: u8,
-    /// `[0.0, 1.0]` grime overlay opacity (fades back in during final 15s of cycle).
-    pub grime_fade_in: f32,
-    /// True during the 30s Wash Dock purge & shift reset finale.
-    pub purging_waste: bool,
+    #[serde(default = "default_atrium_panels")]
+    pub panels: [AtriumPanelRuntime; ATRIUM_PANEL_COUNT],
+    #[serde(default)]
+    pub mini_lift: AtriumMiniLiftState,
+    /// True during the ~16s whole-room light-show finale after all 12 panels turn green.
+    #[serde(default)]
+    pub celebrating: bool,
+    /// Remaining seconds in the celebration light show (`16.0 -> 0.0`).
+    #[serde(default)]
+    pub celebration_timer: f32,
+    /// Total full 12-panel calibration + celebration cycles completed.
+    #[serde(default)]
+    pub cycles_completed: u32,
 }
 
 impl Default for AtriumMaintenanceState {
     fn default() -> Self {
-        let mut s = Self {
-            cycle_secs: 66.0, // Staggered 22% initial phase
-            cleaned_sectors: 0,
-            verified_pillars: 0,
-            grime_fade_in: 1.0,
-            purging_waste: false,
-        };
-        s.sync_from_clock();
-        s
+        Self {
+            panels: default_atrium_panels(),
+            mini_lift: AtriumMiniLiftState::default(),
+            celebrating: false,
+            celebration_timer: 0.0,
+            cycles_completed: 0,
+        }
     }
 }
 
 impl AtriumMaintenanceState {
     pub fn advance(&mut self, dt: f32) {
-        self.cycle_secs = (self.cycle_secs + dt).rem_euclid(ROOM_CYCLE_DURATION_SECS);
-        self.sync_from_clock();
-    }
-
-    pub fn progress(&self) -> f32 {
-        (self.cycle_secs / ROOM_CYCLE_DURATION_SECS).clamp(0.0, 1.0)
-    }
-
-    fn sync_from_clock(&mut self) {
-        let t = self.cycle_secs;
-        if t < ATRIUM_WORK_END_SECS {
-            self.purging_waste = false;
-            self.grime_fade_in = 1.0;
-            let sec_step = ATRIUM_WORK_END_SECS / ATRIUM_SECTOR_COUNT as f32;
-            self.cleaned_sectors = ((t / sec_step).floor() as u8).min(ATRIUM_SECTOR_COUNT as u8);
-            let pil_step = ATRIUM_WORK_END_SECS / 4.0;
-            self.verified_pillars = ((t / pil_step).floor() as u8).min(4);
-        } else {
-            let ft = t - ATRIUM_WORK_END_SECS; // 0..30s
-            self.purging_waste = ft < 18.0;
-            if ft < 15.0 {
-                self.cleaned_sectors = ATRIUM_SECTOR_COUNT as u8;
-                self.verified_pillars = 4;
-                self.grime_fade_in = 0.0;
-            } else {
-                // Smoothly fade subtle residue back in for the next shift
-                self.cleaned_sectors = 0;
-                self.verified_pillars = 0;
-                self.grime_fade_in = smooth01((ft - 15.0) / 15.0);
+        if self.celebrating {
+            self.celebration_timer = (self.celebration_timer - dt).max(0.0);
+            if self.celebration_timer <= 0.0 {
+                self.celebrating = false;
+                self.cycles_completed = self.cycles_completed.saturating_add(1);
+                self.reset_panels();
             }
         }
     }
 
-    pub fn hud_status(&self) -> String {
-        let pct = (self.progress() * 100.0).round() as u32;
-        if self.purging_waste {
-            format!("WASH DOCK PURGE · {pct}%")
+    pub fn fixed_count(&self) -> usize {
+        self.panels
+            .iter()
+            .filter(|p| p.status == PanelStatus::Fixed)
+            .count()
+    }
+
+    pub fn all_fixed(&self) -> bool {
+        self.panels.iter().all(|p| p.status == PanelStatus::Fixed)
+    }
+
+    pub fn reset_panels(&mut self) {
+        for p in &mut self.panels {
+            p.status = PanelStatus::Pending;
+            p.progress = 0.0;
+            p.assigned_bot = None;
+        }
+    }
+
+    pub fn trigger_celebration(&mut self) {
+        self.celebrating = true;
+        self.celebration_timer = ATRIUM_CELEBRATION_SECS;
+        for p in &mut self.panels {
+            p.assigned_bot = None;
+            p.progress = 1.0;
+        }
+    }
+
+    pub fn progress(&self) -> f32 {
+        if self.celebrating {
+            1.0
         } else {
-            format!(
-                "DECK SCRUB · {}/{} SECTORS ({pct}%)",
-                self.cleaned_sectors, ATRIUM_SECTOR_COUNT
-            )
+            (self.fixed_count() as f32 / ATRIUM_PANEL_COUNT as f32).clamp(0.0, 1.0)
+        }
+    }
+
+    pub fn hud_status(&self) -> String {
+        if self.celebrating {
+            "ATRIUM SYNC 100% · LIGHT SHOW".to_string()
+        } else {
+            let fixed = self.fixed_count();
+            let pct = (self.progress() * 100.0).round() as u32;
+            format!("PANEL SYNC · {fixed}/{ATRIUM_PANEL_COUNT} ONLINE ({pct}%)")
         }
     }
 }
@@ -676,39 +846,6 @@ impl RoomActivitiesState {
         rng_roll: usize,
     ) -> Option<ActivityDirective> {
         match (kind, zone) {
-            // Atrium FloorScrubber: sweeps the 12 floor sectors in order, then purges at Wash Dock (node 45)
-            (AgentKind::FloorScrubber, AgentZone::CentralAtrium) => {
-                if self.atrium.purging_waste {
-                    let goal = if cur_node == 45 { 9 } else { 45 };
-                    return Some(ActivityDirective {
-                        goal_node: goal,
-                        work_action: if goal == 45 {
-                            AgentWorkAction::PurgingWaste
-                        } else {
-                            AgentWorkAction::Scrubbing
-                        },
-                        face_yaw: if goal == 45 { Some(FRAC_PI_2) } else { None },
-                        dwell_secs: 2.8,
-                        cargo_after_dwell: CargoVisualKind::None,
-                    });
-                }
-                let base_idx = (self.atrium.cleaned_sectors as usize) % ATRIUM_SECTOR_COUNT;
-                // Pick the active sector or advance to the next distinct node so the scrubber stays lively
-                let mut goal = ATRIUM_SECTORS[base_idx].1;
-                if goal == cur_node {
-                    goal = ATRIUM_SECTORS[(base_idx + 1 + (rng_roll % 3)) % ATRIUM_SECTOR_COUNT].1;
-                }
-                if goal == cur_node {
-                    goal = if cur_node == 10 { 11 } else { 10 };
-                }
-                Some(ActivityDirective {
-                    goal_node: goal,
-                    work_action: AgentWorkAction::Scrubbing,
-                    face_yaw: None,
-                    dwell_secs: 2.6,
-                    cargo_after_dwell: CargoVisualKind::None,
-                })
-            }
             // Hangar FloorScrubber: scrubs rear apron & hangar doorway sectors
             (AgentKind::FloorScrubber, AgentZone::HangarBay) => {
                 let pool = [6usize, 7, 8, 9, 10];
@@ -721,23 +858,6 @@ impl RoomActivitiesState {
                     work_action: AgentWorkAction::Scrubbing,
                     face_yaw: None,
                     dwell_secs: 2.2,
-                    cargo_after_dwell: CargoVisualKind::None,
-                })
-            }
-            // Atrium SecurityEnforcer: audits the 4 Server Pillars in sequence with volumetric laser scan
-            (AgentKind::SecurityEnforcer, AgentZone::CentralAtrium) => {
-                let p_idx = (self.atrium.verified_pillars as usize + rng_roll) % 4;
-                let (_, mut goal, mut yaw) = ATRIUM_PILLARS[p_idx];
-                if goal == cur_node {
-                    let next_p = ATRIUM_PILLARS[(p_idx + 1) % 4];
-                    goal = next_p.1;
-                    yaw = next_p.2;
-                }
-                Some(ActivityDirective {
-                    goal_node: goal,
-                    work_action: AgentWorkAction::Scanning,
-                    face_yaw: Some(yaw),
-                    dwell_secs: 3.0,
                     cargo_after_dwell: CargoVisualKind::None,
                 })
             }

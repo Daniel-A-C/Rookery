@@ -81,10 +81,11 @@ pub fn app_webview_url(app_id: &str) -> Result<tauri::Url, tauri::Url> {
 }
 
 type StatsCallback<'a> = &'a dyn Fn(&str, BTreeMap<String, String>);
+type ControlsCallback<'a> = &'a dyn Fn(&str) -> Option<BTreeMap<String, String>>;
 
 /// Custom URI scheme protocol handler for `rookery-app://`.
 pub fn handle_custom_protocol(request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-    handle_custom_protocol_inner(None, None, request)
+    handle_custom_protocol_inner(None, None, None, None, request)
 }
 
 /// Custom URI scheme protocol handler with optional `AppHandle` for live SDK telemetry & state persistence.
@@ -93,7 +94,7 @@ pub fn handle_custom_protocol_with_app(
     request: &Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     let Some(app_handle) = app else {
-        return handle_custom_protocol_inner(None, None, request);
+        return handle_custom_protocol_inner(None, None, None, None, request);
     };
     let state = app_handle.state::<HostState>();
     let state_dir = state.settings_path.parent().map(|p| p.join("apps_state"));
@@ -101,12 +102,28 @@ pub fn handle_custom_protocol_with_app(
         state.catalog_state.set_stats(app_id, string_stats);
         state.emit_status_if_popover_open(app_handle);
     };
-    handle_custom_protocol_inner(state_dir.as_deref(), Some(&on_stats), request)
+    let get_controls = |app_id: &str| -> Option<BTreeMap<String, String>> {
+        state
+            .catalog_state
+            .custom_controls
+            .lock()
+            .ok()
+            .and_then(|m| m.get(app_id).cloned())
+    };
+    handle_custom_protocol_inner(
+        None,
+        state_dir.as_deref(),
+        Some(&on_stats),
+        Some(&get_controls),
+        request,
+    )
 }
 
 fn handle_custom_protocol_inner(
+    apps_dir_override: Option<&Path>,
     state_dir: Option<&Path>,
     on_stats: Option<StatsCallback<'_>>,
+    get_controls: Option<ControlsCallback<'_>>,
     request: &Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     let path = request.uri().path().trim_start_matches('/');
@@ -124,7 +141,9 @@ fn handle_custom_protocol_inner(
         return handle_sdk_endpoint(state_dir, on_stats, app_id, sdk_endpoint, request);
     }
 
-    let apps_dir = get_apps_dir();
+    let apps_dir = apps_dir_override
+        .map(Path::to_path_buf)
+        .unwrap_or_else(get_apps_dir);
     let app_dir = apps_dir.join(app_id);
     let decoded_subpath = percent_decode(file_subpath);
     let target = app_dir.join(&decoded_subpath);
@@ -134,10 +153,42 @@ fn handle_custom_protocol_inner(
         && canon_target.starts_with(&canon_app)
         && canon_target.is_file()
     {
+        if let Some(controls_cb) = get_controls
+            && decoded_subpath == "index.html"
+            && let Ok(html) = std::fs::read_to_string(&canon_target)
+        {
+            let controls = controls_cb(app_id);
+            let init_script = sdk_init_script_with_controls(app_id, controls.as_ref());
+            let injected = inject_sdk_into_html(&html, &init_script).into_bytes();
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .header(header::CONTENT_LENGTH, injected.len().to_string())
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .header(header::CACHE_CONTROL, "no-cache")
+                .body(injected)
+                .unwrap_or_else(|_| not_found_response());
+        }
         return serve_static_file(&canon_target, request);
     }
 
     not_found_response()
+}
+
+fn inject_sdk_into_html(html: &str, init_script: &str) -> String {
+    let tag = format!("<script>{init_script}</script>");
+    let lower = html.to_ascii_lowercase();
+    if let Some(head_start) = lower.find("<head")
+        && let Some(rel_end) = lower[head_start..].find('>')
+    {
+        let insert_at = head_start + rel_end + 1;
+        let mut out = String::with_capacity(html.len() + tag.len());
+        out.push_str(&html[..insert_at]);
+        out.push_str(&tag);
+        out.push_str(&html[insert_at..]);
+        return out;
+    }
+    format!("{tag}{html}")
 }
 
 fn serve_static_file(path: &Path, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
@@ -422,10 +473,12 @@ pub fn sdk_init_script_with_controls(
     let escaped = app_id.replace('\\', "\\\\").replace('\'', "\\'");
     let controls_json = initial_controls
         .and_then(|c| serde_json::to_string(c).ok())
-        .unwrap_or_else(|| "{}".to_string());
+        .unwrap_or_else(|| "{}".to_string())
+        .replace("</", "<\\/");
     format!(
         r#"(function() {{
-  const appId = '{escaped}';
+  const pathAppId = (window.location.pathname || '').split('/').filter(Boolean)[0] || '';
+  const appId = pathAppId || '{escaped}';
   const initialControls = {controls_json};
   window.__ROOKERY_INITIAL_CONTROLS__ = initialControls;
   const sdkBase = window.location.origin + '/' + appId + '/__sdk';
@@ -470,7 +523,7 @@ pub fn sdk_init_script_with_controls(
     }},
     async loadState() {{
       try {{
-        const res = await fetch(sdkBase + '/state');
+        const res = await fetch(sdkBase + '/state', {{ cache: 'no-store' }});
         if (res.ok) return await res.json();
       }} catch {{}}
       return null;
@@ -602,7 +655,6 @@ pub fn update_webview_wallpaper(app: &AppHandle, active_app: &str, apps_dir: Opt
                     map.insert(label.clone(), active_app.to_string());
                 }
                 let _ = existing.navigate(url.clone());
-                let _ = existing.eval(&init_script);
             }
             if !existing.is_visible().unwrap_or(true) {
                 let _ = existing.show();
@@ -825,6 +877,57 @@ mod tests {
         );
         assert!(script.contains("window.__ROOKERY_INITIAL_CONTROLS__ = initialControls;"));
         assert!(script.contains("getControl(id, fallback)"));
+        assert!(script.contains("window.location.pathname"));
+        assert!(script.contains("cache: 'no-store'"));
+    }
+
+    #[test]
+    fn html_sdk_injection_updates_controls_per_app() {
+        let html = "<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>";
+        let mut controls = BTreeMap::new();
+        controls.insert("fit_mode".to_string(), "contain".to_string());
+        controls.insert("xss".to_string(), "</script><alert>".to_string());
+        let script = sdk_init_script_with_controls("dynamic-wallpaper", Some(&controls));
+        let injected = inject_sdk_into_html(html, &script);
+
+        assert!(injected.starts_with("<!DOCTYPE html><html><head><script>"));
+        assert!(injected.contains("const appId = pathAppId || 'dynamic-wallpaper';"));
+        assert!(injected.contains("\"fit_mode\":\"contain\""));
+        assert!(!injected.contains("</script><alert>"));
+        assert!(injected.contains("<\\/script><alert>"));
+        assert!(injected.ends_with("<title>Test</title></head><body></body></html>"));
+    }
+
+    #[test]
+    fn protocol_injects_fresh_sdk_into_index_html() {
+        let temp = tempfile::tempdir().unwrap();
+        let app_dir = temp.path().join("dynamic-wallpaper");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        std::fs::write(
+            app_dir.join("index.html"),
+            "<html><head></head><body>WP</body></html>",
+        )
+        .unwrap();
+        let get_controls = |app_id: &str| -> Option<BTreeMap<String, String>> {
+            if app_id == "dynamic-wallpaper" {
+                let mut m = BTreeMap::new();
+                m.insert("fit_mode".to_string(), "contain".to_string());
+                Some(m)
+            } else {
+                None
+            }
+        };
+
+        let req = Request::builder()
+            .uri("rookery-app://localhost/dynamic-wallpaper/index.html")
+            .body(Vec::new())
+            .unwrap();
+        let res =
+            handle_custom_protocol_inner(Some(temp.path()), None, None, Some(&get_controls), &req);
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = String::from_utf8(res.body().clone()).unwrap();
+        assert!(body.contains("const appId = pathAppId || 'dynamic-wallpaper';"));
+        assert!(body.contains("\"fit_mode\":\"contain\""));
     }
 
     #[test]

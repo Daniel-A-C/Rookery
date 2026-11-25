@@ -17,12 +17,23 @@ struct LegacySeedProbe {
 impl OrbitalHavenState {
     /// Ensure deserialized v3 state has valid drones, ships, and agents.
     pub fn ensure_migrated(&mut self) {
+        let has_panel_bots = self
+            .agents
+            .iter()
+            .any(|a| a.kind == super::types::AgentKind::PanelTechBot);
         if self.version < ORBITAL_HAVEN_STATE_VERSION
             || self.drones.is_empty()
             || self.ships.is_empty()
             || self.agents.len() < 14
+            || !has_panel_bots
         {
+            let palette = self.palette;
+            let camera_rig = self.camera_rig.clone();
+            let hud_enabled = self.hud_enabled;
             *self = Self::new(self.seed);
+            self.palette = palette;
+            self.camera_rig = camera_rig;
+            self.hud_enabled = hud_enabled;
         }
         self.recompute_telemetry();
     }

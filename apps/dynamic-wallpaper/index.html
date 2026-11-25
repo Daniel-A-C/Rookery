@@ -343,7 +343,6 @@
 
     async function boot() {
       applyInitialControls();
-      wireRookeryEvents();
 
       if (window.Rookery) {
         const saved = await window.Rookery.loadState();
@@ -357,6 +356,7 @@
         }
       }
 
+      wireRookeryEvents();
       await refreshMediaList();
     }
 
