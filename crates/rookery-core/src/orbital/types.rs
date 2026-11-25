@@ -89,6 +89,8 @@ pub enum CameraFeedId {
     IntSolarBay,
     /// Live first-person camera from the patrolling Interior Walker Bot (BOT-01).
     WalkerBotCam,
+    /// Live first-person camera from the controllable free-flying camera drone (HERMES-01).
+    HermesFlyCam,
     /// Live cockpit/nose uplink feed from the active approaching or departing spacecraft.
     ShipNoseUplink,
     /// Live dorsal over-the-shoulder hull feed from the active spacecraft.
@@ -167,6 +169,7 @@ impl CameraFeedId {
             Self::IntReactorCore => "CAM-09",
             Self::IntSolarBay => "CAM-10",
             Self::WalkerBotCam => "BOT-01",
+            Self::HermesFlyCam => "HERMES",
             Self::ShipNoseUplink => "UPLINK-1",
             Self::ShipDorsalUplink => "UPLINK-2",
             Self::AutoRotateAll => "AUTO",
@@ -195,6 +198,7 @@ impl CameraFeedId {
             Self::IntReactorCore => "INT-03 // REACTOR & CONCOURSE",
             Self::IntSolarBay => "INT-04 // SOLAR ENGINEERING",
             Self::WalkerBotCam => "ROVER // INTERIOR WALKER-CAM",
+            Self::HermesFlyCam => "HERMES-01 // FREE-FLY DRONE",
             Self::ShipNoseUplink => "LIVE // SHIP NOSE-CAM",
             Self::ShipDorsalUplink => "LIVE // SHIP DORSAL-CAM",
             Self::AutoRotateAll => "AUTO // ROTATING ALL CAMS",
@@ -223,6 +227,7 @@ impl CameraFeedId {
             Self::IntReactorCore => "REACTOR",
             Self::IntSolarBay => "SOLAR BAY",
             Self::WalkerBotCam => "WALKER BOT",
+            Self::HermesFlyCam => "HERMES-01",
             Self::ShipNoseUplink => "SHIP NOSE",
             Self::ShipDorsalUplink => "SHIP DORSAL",
             Self::AutoRotateAll => "ROTATE ALL",
@@ -355,6 +360,7 @@ impl CameraFeedId {
             Self::IntReactorCore => "reactor",
             Self::IntSolarBay => "solar_bay",
             Self::WalkerBotCam => "walker_bot",
+            Self::HermesFlyCam => "hermes",
             Self::ShipNoseUplink => "ship_nose",
             Self::ShipDorsalUplink => "ship_dorsal",
             Self::AutoRotateAll => "auto_all",
@@ -383,6 +389,7 @@ impl CameraFeedId {
             "reactor" | "concourse" | "cam_09" => Some(Self::IntReactorCore),
             "solar_bay" | "cam_10" | "cam_11" => Some(Self::IntSolarBay),
             "walker_bot" | "bot_01" => Some(Self::WalkerBotCam),
+            "hermes" | "hermes_01" => Some(Self::HermesFlyCam),
             "ship_nose" | "uplink_1" => Some(Self::ShipNoseUplink),
             "ship_dorsal" | "uplink_2" => Some(Self::ShipDorsalUplink),
             "auto_all" => Some(Self::AutoRotateAll),
@@ -759,6 +766,8 @@ pub enum AgentKind {
     ReactorCoolantBot,
     /// Narrow tracked high-voltage maintenance rover calibrating Solar Bay capacitor towers.
     SolarCapacitorBot,
+    /// Nimble 4-wheel Atrium control-panel calibration robot with twin articulated arms.
+    PanelTechBot,
     /// Fast 4-wheel angular wedge courier zipping between Hangar, Atrium, Pipe Tunnel & Solar Bay.
     CourierRunner,
     /// Exterior hull welder drone cruising along station trusses with flickering welding arcs.
@@ -775,6 +784,7 @@ impl AgentKind {
             Self::OpsHoloDroid => 0.80,
             Self::SolarCapacitorBot => 0.80,
             Self::FloorScrubber => 0.72,
+            Self::PanelTechBot => 0.55,
             Self::CourierRunner => 0.68,
             Self::HullWelder => 0.85,
         }
@@ -784,6 +794,7 @@ impl AgentKind {
     pub fn cruise_speed(self) -> f32 {
         match self {
             Self::CourierRunner => 4.8,
+            Self::PanelTechBot => 3.2,
             Self::FloorScrubber => 2.6,
             Self::OpsHoloDroid => 2.4,
             Self::SecurityEnforcer => 2.5,
@@ -824,6 +835,8 @@ pub enum AgentWorkAction {
     UploadingHolo,
     SwappingCryoRod,
     CalibratingCapacitor,
+    CalibratingPanel,
+    Celebrating,
     PurgingWaste,
 }
 
@@ -995,6 +1008,49 @@ impl Default for WalkerBotState {
             riding_elevator: false,
             current_room: "MAIN HANGAR BAY".into(),
             leg_timer: 0.0,
+        }
+    }
+}
+
+/// Home docking coordinates for Hermes (`HERMES-01`) inside the Central Core Atrium alcove
+/// (upper rear-port bulkhead, clearly visible on the upper-left of `CAM-07 // Central Core Atrium`
+/// and well clear of the activity control panels below).
+pub const HERMES_HOME_POS: [f32; 3] = [-5.8, 7.55, -13.1];
+pub const HERMES_HOME_YAW: f32 = 0.28;
+pub const HERMES_HOME_PITCH: f32 = -0.22;
+
+/// Controllable free-flying 3D camera drone (`HERMES-01`) with Minecraft-creative-style flight.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HermesBotState {
+    pub pos: [f32; 3],
+    pub vel: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub active: bool,
+    pub docked: bool,
+    pub returning_home: bool,
+    pub hover_phase: f32,
+    pub thrust_level: f32,
+    #[serde(default)]
+    pub saved_feed: Option<CameraFeedId>,
+    #[serde(default)]
+    pub saved_layout: Option<CameraLayout>,
+}
+
+impl Default for HermesBotState {
+    fn default() -> Self {
+        Self {
+            pos: HERMES_HOME_POS,
+            vel: [0.0, 0.0, 0.0],
+            yaw: HERMES_HOME_YAW,
+            pitch: HERMES_HOME_PITCH,
+            active: false,
+            docked: true,
+            returning_home: false,
+            hover_phase: 0.0,
+            thrust_level: 0.0,
+            saved_feed: None,
+            saved_layout: None,
         }
     }
 }

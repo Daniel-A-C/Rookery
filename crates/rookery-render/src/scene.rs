@@ -24,12 +24,25 @@ pub enum PointerAction {
     RightClick,
 }
 
-/// Raw cursor and button state before display-local coordinate mapping.
+/// Held directional and vertical flight keys polled during Direct Interaction Mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FlightKeys {
+    pub up: bool,
+    pub down: bool,
+    pub left: bool,
+    pub right: bool,
+    pub space: bool,
+    pub shift: bool,
+}
+
+/// Raw cursor, button, mouse-delta, and flight key state before display-local coordinate mapping.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RawPointer {
     pub position: Option<(f64, f64)>,
     pub left_down: bool,
     pub right_down: bool,
+    pub mouse_delta: (f32, f32),
+    pub keys: FlightKeys,
 }
 
 /// Per-frame input passed to [`Scene::update`].
@@ -45,6 +58,12 @@ pub struct SceneInput {
     pub left_held: bool,
     /// True if right mouse button is held down over this display.
     pub right_held: bool,
+    /// Relative mouse movement `(dx, dy)` captured while pointer-locked mouse-look is active.
+    pub mouse_delta: (f32, f32),
+    /// Held directional & vertical flight keys (Arrows, Space, Shift).
+    pub keys: FlightKeys,
+    /// True while left mouse button is held in interactive mode (used for click-to-fly toward look).
+    pub mouse_fly_forward: bool,
 }
 
 /// A renderable, steppable world. One instance is created per display.

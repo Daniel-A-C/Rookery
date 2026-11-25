@@ -182,6 +182,7 @@ pub struct OrbitalHavenScene {
     hud_glyphs: GlyphPass,
 
     // Direct Interaction Mode tracking
+    was_interactive: bool,
     last_pointer: Option<Pointer>,
     is_dragging: bool,
     drag_dist: f32,
@@ -632,6 +633,7 @@ impl OrbitalHavenScene {
             post_uniform_buf,
             post_bind_group,
             hud_glyphs,
+            was_interactive: false,
             last_pointer: None,
             is_dragging: false,
             drag_dist: 0.0,
@@ -771,14 +773,26 @@ impl OrbitalHavenScene {
                 ],
             },
             // 6: Central Core Atrium overhead + elevator shaft light
-            PointLightGpu {
-                pos_radius: [0.0, 6.5, -2.0, 32.0],
-                color_intensity: [
-                    corr_col[0],
-                    corr_col[1],
-                    corr_col[2],
-                    if alert { 1.35 * alert_pulse } else { 1.25 },
-                ],
+            // Pulses vividly through celebratory colors during the Atrium Panel Sync Light Show!
+            {
+                let atrium_party = state.room_activities.atrium.celebrating && !alert;
+                let (at_col, at_int) = if atrium_party {
+                    const PARTY: [[f32; 3]; 4] = [
+                        [0.18, 1.0, 0.48],
+                        [0.15, 0.88, 1.0],
+                        [1.0, 0.82, 0.18],
+                        [1.0, 0.25, 0.82],
+                    ];
+                    let c = PARTY[((t * 3.8) as usize) % PARTY.len()];
+                    let pulse = 1.90 + 0.55 * (t * 9.0).sin().abs();
+                    (c, pulse)
+                } else {
+                    (corr_col, if alert { 1.35 * alert_pulse } else { 1.25 })
+                };
+                PointLightGpu {
+                    pos_radius: [0.0, 6.5, -1.0, 34.0],
+                    color_intensity: [at_col[0], at_col[1], at_col[2], at_int],
+                }
             },
             // 7: Aft Solar Engineering Bay & Axial Pipe Tunnel warm/cyan work light
             PointLightGpu {
@@ -825,56 +839,95 @@ impl Scene for OrbitalHavenScene {
 
         let mut switched_cam = false;
         let state_snapshot = if let Ok(mut st) = self.station.lock() {
+            // Detect Mouse Mode (Direct Interaction Mode) rising/falling edges to activate/dock Hermes
+            if input.interactive && !self.was_interactive {
+                st.activate_hermes();
+                switched_cam = true;
+            } else if !input.interactive && self.was_interactive {
+                st.deactivate_hermes();
+                switched_cam = true;
+            }
+            self.was_interactive = input.interactive;
+
             st.step(dt_s);
 
             if input.interactive {
-                let w = self.width as f32;
-                let h = self.height as f32;
+                if st.hermes.active {
+                    let move_fwd = (if input.keys.up { 1.0 } else { 0.0 })
+                        - (if input.keys.down { 1.0 } else { 0.0 });
+                    let move_right = (if input.keys.right { 1.0 } else { 0.0 })
+                        - (if input.keys.left { 1.0 } else { 0.0 });
+                    let move_up = (if input.keys.space { 1.0 } else { 0.0 })
+                        - (if input.keys.shift { 1.0 } else { 0.0 });
 
-                if input.left_held {
-                    if let (Some(curr), Some(prev)) = (input.pointer, self.last_pointer) {
-                        let dx = curr.x - prev.x;
-                        let dy = curr.y - prev.y;
-                        self.drag_dist += (dx * dx + dy * dy).sqrt();
-                        if self.drag_dist > 5.0 {
-                            self.is_dragging = true;
-                            st.nudge_pan(dx * 0.003, -dy * 0.0025);
-                        }
-                    }
-                } else {
-                    self.is_dragging = false;
-                    self.drag_dist = 0.0;
-                }
+                    // Mouse look sensitivity (radians per pixel delta):
+                    // Moving mouse right (dx > 0) decreases yaw to look right in our right-handed basis;
+                    // moving mouse up (dy < 0) increases pitch to look up.
+                    const LOOK_SENS: f32 = 0.0028;
+                    let look_dyaw = -input.mouse_delta.0 * LOOK_SENS;
+                    let look_dpitch = -input.mouse_delta.1 * LOOK_SENS;
 
-                if input.action == PointerAction::LeftClick
-                    && !self.is_dragging
-                    && let Some(pt) = input.pointer
-                {
-                    let viewports = compute_viewports(
-                        st.camera_rig.layout,
-                        w,
-                        h,
-                        st.camera_rig.primary_feed,
-                        st.camera_rig.pip_feeds,
-                        st.camera_rig.grid_feeds,
+                    st.apply_hermes_controls(
+                        dt_s,
+                        move_fwd,
+                        move_right,
+                        move_up,
+                        input.mouse_fly_forward,
+                        look_dyaw,
+                        look_dpitch,
                     );
-                    // Check front-to-back (PiP mini-feeds first!)
-                    let hit = viewports.iter().rev().find(|vp| {
-                        pt.x >= vp.x && pt.x <= vp.x + vp.w && pt.y >= vp.y && pt.y <= vp.y + vp.h
-                    });
-                    if let Some(vp) = hit {
-                        match vp.slot_tag {
-                            0 => st.cycle_camera(),
-                            1 => st.promote_pip_slot(0),
-                            2 => st.promote_pip_slot(1),
-                            10..=13 => st.cycle_grid_slot((vp.slot_tag - 10) as usize),
-                            _ => st.cycle_camera(),
+                } else {
+                    let w = self.width as f32;
+                    let h = self.height as f32;
+
+                    if input.left_held {
+                        if let (Some(curr), Some(prev)) = (input.pointer, self.last_pointer) {
+                            let dx = curr.x - prev.x;
+                            let dy = curr.y - prev.y;
+                            self.drag_dist += (dx * dx + dy * dy).sqrt();
+                            if self.drag_dist > 5.0 {
+                                self.is_dragging = true;
+                                st.nudge_pan(dx * 0.003, -dy * 0.0025);
+                            }
                         }
+                    } else {
+                        self.is_dragging = false;
+                        self.drag_dist = 0.0;
+                    }
+
+                    if input.action == PointerAction::LeftClick
+                        && !self.is_dragging
+                        && let Some(pt) = input.pointer
+                    {
+                        let viewports = compute_viewports(
+                            st.camera_rig.layout,
+                            w,
+                            h,
+                            st.camera_rig.primary_feed,
+                            st.camera_rig.pip_feeds,
+                            st.camera_rig.grid_feeds,
+                        );
+                        // Check front-to-back (PiP mini-feeds first!)
+                        let hit = viewports.iter().rev().find(|vp| {
+                            pt.x >= vp.x
+                                && pt.x <= vp.x + vp.w
+                                && pt.y >= vp.y
+                                && pt.y <= vp.y + vp.h
+                        });
+                        if let Some(vp) = hit {
+                            match vp.slot_tag {
+                                0 => st.cycle_camera(),
+                                1 => st.promote_pip_slot(0),
+                                2 => st.promote_pip_slot(1),
+                                10..=13 => st.cycle_grid_slot((vp.slot_tag - 10) as usize),
+                                _ => st.cycle_camera(),
+                            }
+                            switched_cam = true;
+                        }
+                    } else if input.action == PointerAction::RightClick {
+                        st.cycle_layout();
                         switched_cam = true;
                     }
-                } else if input.action == PointerAction::RightClick {
-                    st.cycle_layout();
-                    switched_cam = true;
                 }
 
                 self.last_pointer = input.pointer;

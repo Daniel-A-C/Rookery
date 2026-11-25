@@ -77,6 +77,9 @@ pub struct OrbitalHavenState {
     /// Patrolling Interior Walker Camera Bot (`BOT-01`).
     #[serde(default)]
     pub walker: WalkerBotState,
+    /// Controllable free-flying 3D camera drone (`HERMES-01`).
+    #[serde(default)]
+    pub hermes: HermesBotState,
     /// `[0.0, 1.0]` sliding blast door openings: `[0]` Hangar↔Atrium, `[1]` Atrium↔Pipe, `[2]` Pipe↔Solar.
     #[serde(default)]
     pub door_open: [f32; 3],
@@ -277,9 +280,9 @@ impl OrbitalHavenState {
         spawn_nav_bot(AgentKind::CargoForklift, AgentZone::HangarBay, 5, 1);
         spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::HangarBay, 7, 0);
 
-        // Central Core Atrium: 1 wheeled FloorScrubber + 1 tracked SecurityEnforcer
-        spawn_nav_bot(AgentKind::FloorScrubber, AgentZone::CentralAtrium, 11, 0);
-        spawn_nav_bot(AgentKind::SecurityEnforcer, AgentZone::CentralAtrium, 14, 0);
+        // Central Core Atrium: 2 nimble PanelTechBots (slot 0 on forward ground half, slot 1 on upper mezzanine)
+        spawn_nav_bot(AgentKind::PanelTechBot, AgentZone::CentralAtrium, 11, 0);
+        spawn_nav_bot(AgentKind::PanelTechBot, AgentZone::CentralAtrium, 60, 1);
 
         // Cross-Room Data Courier Runner (Hangar <-> Atrium <-> Pipe Tunnel <-> Solar Bay!)
         spawn_nav_bot(AgentKind::CourierRunner, AgentZone::CentralAtrium, 12, 0);
@@ -371,6 +374,7 @@ impl OrbitalHavenState {
             agents,
             elevator: ElevatorState::default(),
             walker: WalkerBotState::default(),
+            hermes: HermesBotState::default(),
             door_open: [0.0; 3],
             pad_airlocks: [AirlockState::default(), AirlockState::default()],
             pipe_tunnel_owner: None,

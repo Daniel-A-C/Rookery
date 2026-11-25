@@ -198,6 +198,9 @@ impl OrbitalHavenState {
         // 3b. Update Interior Walker Camera Bot, 3-deck Glass Elevator & sliding blast doors
         self.step_walker_and_elevator(dt);
 
+        // 3c. Update Hermes free-flying camera drone (hover, return-to-home autopilot)
+        self.step_hermes(dt);
+
         // 4. Update station event cycle
         self.step_events(dt);
 
@@ -1109,6 +1112,14 @@ impl OrbitalHavenState {
                 continue;
             }
 
+            // Atrium PanelTechBots: calibrate 12 glowing wall panels across the forward ground half
+            // (Z >= +3.5, strictly clear of the main elevator) and Upper U-Mezzanine via the Mini-Elevator!
+            if kind == AgentKind::PanelTechBot {
+                self.step_panel_tech_bot(idx, dt, &all_bodies);
+                all_bodies[idx + 1].1 = self.agents[idx].pos;
+                continue;
+            }
+
             // Release Pipe Tunnel mutex if this bot has exited the tunnel
             let cur_pos = self.agents[idx].pos;
             let in_pipe_now =
@@ -1180,7 +1191,7 @@ impl OrbitalHavenState {
             }
 
             // Helper to compute which NavNodes are currently occupied by OTHER robots on the same deck
-            let mut occupied = [false; 64];
+            let mut occupied = [false; 128];
             for (ni, node) in NAV_NODES.iter().enumerate() {
                 if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
                     continue;
@@ -1376,7 +1387,6 @@ impl OrbitalHavenState {
                 self.pipe_tunnel_owner = Some(id);
             }
             self.agents[idx].yielding = false;
-            self.agents[idx].stuck_timer = 0.0;
 
             // 5. Advance smoothly along the NavGraph edge (with starboard obstacle avoidance)
             let speed = kind.cruise_speed();
@@ -1448,8 +1458,32 @@ impl OrbitalHavenState {
                         new_z = ez;
                     }
                 }
+                let actual_move =
+                    ((new_x - cur_pos[0]).powi(2) + (new_z - cur_pos[2]).powi(2)).sqrt();
                 let a = &mut self.agents[idx];
                 a.pos = [new_x, target_pos[1], new_z];
+                if actual_move < speed * dt * 0.15 {
+                    a.stuck_timer += dt;
+                    if a.stuck_timer > 1.0 && kind != AgentKind::CargoForklift {
+                        a.stuck_timer = 0.0;
+                        a.nav_path.clear();
+                        let mut best_n = a.nav_node;
+                        let mut best_d2 = f32::INFINITY;
+                        for (ni, node) in NAV_NODES.iter().enumerate() {
+                            if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
+                                continue;
+                            }
+                            let nd2 = (node.pos[0] - new_x).powi(2) + (node.pos[2] - new_z).powi(2);
+                            if nd2 < best_d2 {
+                                best_d2 = nd2;
+                                best_n = ni;
+                            }
+                        }
+                        a.nav_node = best_n;
+                    }
+                } else {
+                    a.stuck_timer = 0.0;
+                }
                 let travel_yaw = move_x.atan2(move_z);
                 a.yaw = turn_yaw(a.yaw, travel_yaw, 5.2, dt);
                 let cruise_lift = if kind == AgentKind::CargoForklift && a.carrying_cargo {
@@ -1469,17 +1503,20 @@ impl OrbitalHavenState {
                     a.dwell_timer = match a.work_action {
                         AgentWorkAction::SwappingCryoRod => 3.2,
                         AgentWorkAction::UploadingHolo => 3.0,
-                        AgentWorkAction::CalibratingCapacitor => 2.8,
+                        AgentWorkAction::CalibratingCapacitor
+                        | AgentWorkAction::CalibratingPanel => 2.8,
                         AgentWorkAction::Scanning => 2.8,
                         AgentWorkAction::DownloadingData => 2.6,
                         AgentWorkAction::Scrubbing | AgentWorkAction::PurgingWaste => 2.4,
                         AgentWorkAction::LoadingCrate => 2.2,
+                        AgentWorkAction::Celebrating => 0.4,
                         AgentWorkAction::Idle => match kind {
                             AgentKind::CargoForklift => 2.2,
                             AgentKind::SolarCapacitorBot | AgentKind::ReactorCoolantBot => 2.4,
                             AgentKind::OpsHoloDroid => 2.0,
                             AgentKind::SecurityEnforcer => 1.8,
                             AgentKind::FloorScrubber => 1.2,
+                            AgentKind::PanelTechBot => 1.0,
                             AgentKind::CourierRunner => 1.1,
                             AgentKind::HullWelder => 0.0,
                         },
@@ -1490,6 +1527,419 @@ impl OrbitalHavenState {
             // Refresh body snapshot so subsequent agents in this tick see the updated position
             all_bodies[idx + 1].1 = self.agents[idx].pos;
         }
+    }
+
+    fn step_panel_tech_bot(&mut self, idx: usize, dt: f32, all_bodies: &[(u32, [f32; 3], f32)]) {
+        use std::f32::consts::{FRAC_PI_2, PI};
+
+        use super::activities::{
+            ATRIUM_LIFT_HIGH_NODE, ATRIUM_LIFT_HIGH_Y, ATRIUM_LIFT_LOW_NODE, ATRIUM_LIFT_LOW_Y,
+            ATRIUM_LIFT_X, ATRIUM_LIFT_Z, ATRIUM_PANEL_WORK_SECS, ATRIUM_PANELS, MiniLiftPhase,
+            PanelStatus,
+        };
+        use super::nav::{NAV_NODES, find_path_avoiding};
+
+        let turn_yaw = |curr: f32, target: f32, rate: f32, dt: f32| -> f32 {
+            let mut diff = (target - curr).rem_euclid(TAU);
+            if diff > PI {
+                diff -= TAU;
+            }
+            curr + diff * (1.0 - (-rate * dt).exp())
+        };
+
+        let id = self.agents[idx].id;
+        let speed = AgentKind::PanelTechBot.cruise_speed();
+        let my_r = AgentKind::PanelTechBot.radius();
+
+        // 1. Active Mini-Elevator ride (always finishes cleanly even if celebration just started)
+        if self.room_activities.atrium.mini_lift.rider_id == Some(id) {
+            let lift = &mut self.room_activities.atrium.mini_lift;
+            let a = &mut self.agents[idx];
+            a.yielding = false;
+            a.work_action = AgentWorkAction::Idle;
+            a.dwell_timer = 0.0;
+            a.lift_height = ease_scalar(a.lift_height, 0.1, 4.5, dt);
+
+            let pickup_y = if lift.target_upper {
+                ATRIUM_LIFT_LOW_Y
+            } else {
+                ATRIUM_LIFT_HIGH_Y
+            };
+            let dest_y = if lift.target_upper {
+                ATRIUM_LIFT_HIGH_Y
+            } else {
+                ATRIUM_LIFT_LOW_Y
+            };
+
+            match lift.phase {
+                MiniLiftPhase::Idle => {
+                    lift.phase = MiniLiftPhase::MovingToPickup;
+                }
+                MiniLiftPhase::MovingToPickup => {
+                    let dy = pickup_y - lift.current_y;
+                    let step = 3.8 * dt;
+                    if dy.abs() <= step {
+                        lift.current_y = pickup_y;
+                        lift.phase = MiniLiftPhase::Boarding;
+                    } else {
+                        lift.current_y += dy.signum() * step;
+                    }
+                    let face_lift = if lift.target_upper { FRAC_PI_2 } else { 0.0 };
+                    a.yaw = turn_yaw(a.yaw, face_lift, 5.2, dt);
+                }
+                MiniLiftPhase::Boarding => {
+                    let dx = ATRIUM_LIFT_X - a.pos[0];
+                    let dz = ATRIUM_LIFT_Z - a.pos[2];
+                    let d = (dx * dx + dz * dz).sqrt();
+                    if d <= 0.14 {
+                        a.pos = [ATRIUM_LIFT_X, pickup_y, ATRIUM_LIFT_Z];
+                        lift.phase = MiniLiftPhase::Riding;
+                    } else {
+                        let s = (speed * dt).min(d);
+                        a.pos[0] += (dx / d) * s;
+                        a.pos[1] = pickup_y;
+                        a.pos[2] += (dz / d) * s;
+                        a.yaw = turn_yaw(a.yaw, dx.atan2(dz), 6.0, dt);
+                    }
+                }
+                MiniLiftPhase::Riding => {
+                    let dy = dest_y - lift.current_y;
+                    let step = 3.6 * dt;
+                    if dy.abs() <= step {
+                        lift.current_y = dest_y;
+                        lift.phase = MiniLiftPhase::Exiting;
+                    } else {
+                        lift.current_y += dy.signum() * step;
+                    }
+                    a.pos = [ATRIUM_LIFT_X, lift.current_y, ATRIUM_LIFT_Z];
+                    let exit_yaw = if lift.target_upper { PI } else { -FRAC_PI_2 };
+                    a.yaw = turn_yaw(a.yaw, exit_yaw, 4.5, dt);
+                }
+                MiniLiftPhase::Exiting => {
+                    let exit_node = if lift.target_upper {
+                        ATRIUM_LIFT_HIGH_NODE
+                    } else {
+                        ATRIUM_LIFT_LOW_NODE
+                    };
+                    let tgt = NAV_NODES[exit_node].pos;
+                    let dx = tgt[0] - a.pos[0];
+                    let dz = tgt[2] - a.pos[2];
+                    let d = (dx * dx + dz * dz).sqrt();
+                    if d <= 0.16 {
+                        a.pos = tgt;
+                        a.nav_node = exit_node;
+                        a.nav_path.clear();
+                        lift.rider_id = None;
+                        lift.phase = MiniLiftPhase::Idle;
+                    } else {
+                        let s = (speed * dt).min(d);
+                        a.pos[0] += (dx / d) * s;
+                        a.pos[1] = dest_y;
+                        a.pos[2] += (dz / d) * s;
+                        a.yaw = turn_yaw(a.yaw, dx.atan2(dz), 6.0, dt);
+                    }
+                }
+            }
+            return;
+        }
+
+        // 2. Whole-room Celebration Finale: spin & bounce joyfully in place!
+        if self.room_activities.atrium.celebrating {
+            let a = &mut self.agents[idx];
+            a.nav_path.clear();
+            a.yielding = false;
+            a.work_action = AgentWorkAction::Celebrating;
+            a.dwell_timer = 0.25;
+            a.yaw = (a.yaw + dt * 3.0).rem_euclid(TAU);
+            let target_lift = 0.55 + 0.35 * (a.phase * 1.8).sin().abs();
+            a.lift_height = ease_scalar(a.lift_height, target_lift, 6.0, dt);
+            return;
+        }
+
+        // 3. Ensure this robot has an active unclaimed Pending panel assigned
+        let cur_pos = self.agents[idx].pos;
+        let on_upper = cur_pos[1] > 0.0;
+
+        let mut assigned_panel = self
+            .room_activities
+            .atrium
+            .panels
+            .iter()
+            .position(|p| p.assigned_bot == Some(id) && p.status != PanelStatus::Fixed);
+
+        if assigned_panel.is_none() {
+            let pick_closest = |want_upper: bool| -> Option<usize> {
+                let mut best: Option<(usize, f32)> = None;
+                for (pi, (spec, rt)) in ATRIUM_PANELS
+                    .iter()
+                    .zip(self.room_activities.atrium.panels.iter())
+                    .enumerate()
+                {
+                    if rt.status != PanelStatus::Pending
+                        || rt.assigned_bot.is_some()
+                        || spec.upper_level != want_upper
+                    {
+                        continue;
+                    }
+                    let wp = NAV_NODES[spec.work_node].pos;
+                    let d2 = (wp[0] - cur_pos[0]).powi(2) + (wp[2] - cur_pos[2]).powi(2);
+                    if best.is_none_or(|(_, bd2)| d2 < bd2) {
+                        best = Some((pi, d2));
+                    }
+                }
+                best.map(|(pi, _)| pi)
+            };
+
+            let chosen = pick_closest(on_upper).or_else(|| pick_closest(!on_upper));
+            if let Some(pi) = chosen {
+                self.room_activities.atrium.panels[pi].assigned_bot = Some(id);
+                assigned_panel = Some(pi);
+                self.agents[idx].nav_path.clear();
+            }
+        }
+
+        let Some(panel_idx) = assigned_panel else {
+            // All panels are currently claimed by teammates or fixed; check celebration trigger
+            if self.room_activities.atrium.all_fixed() {
+                self.room_activities.atrium.trigger_celebration();
+            } else {
+                self.agents[idx].work_action = AgentWorkAction::Idle;
+                self.agents[idx].dwell_timer = 0.0;
+            }
+            return;
+        };
+
+        let spec = ATRIUM_PANELS[panel_idx];
+        let need_lift = spec.upper_level != on_upper;
+        let goal_node = if need_lift {
+            if on_upper {
+                ATRIUM_LIFT_HIGH_NODE
+            } else {
+                ATRIUM_LIFT_LOW_NODE
+            }
+        } else {
+            spec.work_node
+        };
+
+        let goal_pos = NAV_NODES[goal_node].pos;
+        let dist_to_goal =
+            ((goal_pos[0] - cur_pos[0]).powi(2) + (goal_pos[2] - cur_pos[2]).powi(2)).sqrt();
+
+        // 4. Arrived at goal: either board the Mini-Elevator or calibrate the control panel!
+        if dist_to_goal <= 0.34 {
+            if need_lift {
+                let lift = &mut self.room_activities.atrium.mini_lift;
+                let a = &mut self.agents[idx];
+                a.nav_node = goal_node;
+                a.nav_path.clear();
+                a.work_action = AgentWorkAction::Idle;
+                a.dwell_timer = 0.0;
+                if lift.rider_id.is_none() {
+                    lift.rider_id = Some(id);
+                    lift.target_upper = spec.upper_level;
+                    lift.phase = MiniLiftPhase::MovingToPickup;
+                } else {
+                    a.yielding = true;
+                    let wait_yaw = if on_upper { 0.0 } else { FRAC_PI_2 };
+                    a.yaw = turn_yaw(a.yaw, wait_yaw, 4.5, dt);
+                }
+                return;
+            }
+
+            // Actively calibrating this control panel!
+            {
+                let a = &mut self.agents[idx];
+                a.pos = goal_pos;
+                a.nav_node = goal_node;
+                a.nav_path.clear();
+                a.yielding = false;
+                a.work_action = AgentWorkAction::CalibratingPanel;
+                a.work_target_yaw = Some(spec.face_yaw);
+                a.dwell_timer = 0.25;
+                a.yaw = turn_yaw(a.yaw, spec.face_yaw, 6.2, dt);
+                a.lift_height = ease_scalar(a.lift_height, 0.88, 5.2, dt);
+            }
+
+            let panel = &mut self.room_activities.atrium.panels[panel_idx];
+            panel.status = PanelStatus::Working;
+            panel.progress = (panel.progress + dt / ATRIUM_PANEL_WORK_SECS).min(1.0);
+            if panel.progress >= 1.0 {
+                panel.status = PanelStatus::Fixed;
+                panel.assigned_bot = None;
+                let a = &mut self.agents[idx];
+                a.work_action = AgentWorkAction::Idle;
+                a.work_target_yaw = None;
+                a.dwell_timer = 0.0;
+                a.lift_height = 0.1;
+                if self.room_activities.atrium.all_fixed() {
+                    self.room_activities.atrium.trigger_celebration();
+                }
+            }
+            return;
+        }
+
+        // 5. Navigate smoothly along NAV_NODES on our current floor (never touching aft elevator nodes!)
+        let mut occupied = [false; 128];
+        // Strictly forbid PanelTechBots from routing through aft Atrium elevator nodes (13, 14, 15)
+        occupied[13] = true;
+        occupied[14] = true;
+        occupied[15] = true;
+        for (ni, node) in NAV_NODES.iter().enumerate() {
+            if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
+                continue;
+            }
+            for &(other_id, other_pos, _) in all_bodies {
+                if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
+                    continue;
+                }
+                let ddx = node.pos[0] - other_pos[0];
+                let ddz = node.pos[2] - other_pos[2];
+                if ddx * ddx + ddz * ddz < 2.0 * 2.0 {
+                    occupied[ni] = true;
+                    break;
+                }
+            }
+        }
+
+        if self.agents[idx].nav_path.is_empty()
+            || self.agents[idx].nav_path.last().copied() != Some(goal_node)
+        {
+            // Re-anchor nav_node to closest node on our current floor
+            let mut best_n = self.agents[idx].nav_node.min(NAV_NODES.len() - 1);
+            let mut best_d2 = f32::INFINITY;
+            for (ni, node) in NAV_NODES.iter().enumerate() {
+                if (node.pos[1] - cur_pos[1]).abs() > 1.5 {
+                    continue;
+                }
+                if !on_upper && matches!(ni, 13..=15) {
+                    continue;
+                }
+                let nd2 = (node.pos[0] - cur_pos[0]).powi(2) + (node.pos[2] - cur_pos[2]).powi(2);
+                if nd2 < best_d2 {
+                    best_d2 = nd2;
+                    best_n = ni;
+                }
+            }
+            self.agents[idx].nav_node = best_n;
+            if best_n == goal_node {
+                self.agents[idx].nav_path = vec![goal_node];
+            } else {
+                let mut path = find_path_avoiding(best_n, goal_node, &occupied[..NAV_NODES.len()]);
+                if path.is_empty() {
+                    path = vec![goal_node];
+                }
+                self.agents[idx].nav_path = path;
+            }
+        }
+
+        let Some(&next_node_id) = self.agents[idx].nav_path.first() else {
+            return;
+        };
+        let target_pos = NAV_NODES[next_node_id].pos;
+        let is_final = self.agents[idx].nav_path.len() == 1;
+        let dx = target_pos[0] - cur_pos[0];
+        let dz = target_pos[2] - cur_pos[2];
+        let dist_to_node = (dx * dx + dz * dz).sqrt();
+        // Intermediate radius > pairwise separation (1.22) so a bot cleanly curves past a teammate on a catwalk
+        let arrive_r = if is_final { 0.24 } else { 1.65 };
+
+        if dist_to_node <= arrive_r {
+            let a = &mut self.agents[idx];
+            if is_final {
+                a.pos = target_pos;
+            }
+            a.nav_node = next_node_id;
+            a.nav_path.remove(0);
+            return;
+        }
+
+        let dir_x = dx / dist_to_node.max(1e-4);
+        let dir_z = dz / dist_to_node.max(1e-4);
+
+        let mut avoid_x = 0.0f32;
+        let mut avoid_z = 0.0f32;
+        for &(other_id, other_pos, other_r) in all_bodies {
+            if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
+                continue;
+            }
+            let ox = other_pos[0] - cur_pos[0];
+            let oz = other_pos[2] - cur_pos[2];
+            let d = (ox * ox + oz * oz).sqrt();
+            let safe_r = my_r + other_r + 0.35;
+            let min_sep = my_r + other_r + 1.15;
+            if d < min_sep && d > 1e-4 {
+                let forward_dot = (ox * dir_x + oz * dir_z) / d;
+                if forward_dot > 0.3 {
+                    let strength = ((min_sep - d) / (min_sep - safe_r).max(0.25)).clamp(0.35, 1.4);
+                    avoid_x += dir_z * strength;
+                    avoid_z -= dir_x * strength;
+                }
+                if d < safe_r {
+                    let push = (safe_r - d) / safe_r;
+                    avoid_x -= (ox / d) * push * 1.5;
+                    avoid_z -= (oz / d) * push * 1.5;
+                }
+            }
+        }
+
+        let mut move_x = dir_x + avoid_x;
+        let mut move_z = dir_z + avoid_z;
+        let m_len = (move_x * move_x + move_z * move_z).sqrt();
+        if m_len > 1e-4 {
+            move_x /= m_len;
+            move_z /= m_len;
+        }
+        let step = (speed * dt).min(dist_to_node);
+        let mut new_x = cur_pos[0] + move_x * step;
+        let mut new_z = cur_pos[2] + move_z * step;
+
+        // Hard post-step separation from other same-level robots
+        for &(other_id, other_pos, other_r) in all_bodies {
+            if other_id == id || (other_pos[1] - cur_pos[1]).abs() > 1.5 {
+                continue;
+            }
+            let rx = new_x - other_pos[0];
+            let rz = new_z - other_pos[2];
+            let rd = (rx * rx + rz * rz).sqrt();
+            let hard_r = my_r + other_r + 0.12;
+            if rd < hard_r && rd > 1e-4 {
+                new_x = other_pos[0] + (rx / rd) * hard_r;
+                new_z = other_pos[2] + (rz / rd) * hard_r;
+            }
+        }
+
+        if on_upper {
+            // Keep strictly inside the U-Mezzanine walkway bounds (Starboard, Rear Skybridge, Port)
+            if cur_pos[2] > -10.85 {
+                // Currently on the Starboard or Port side catwalk: keep X on this catwalk while allowing Z into the skybridge
+                if cur_pos[0] >= 0.0 {
+                    new_x = new_x.clamp(7.25, 10.35);
+                } else {
+                    new_x = new_x.clamp(-10.35, -7.25);
+                }
+                new_z = new_z.clamp(-13.15, 6.7);
+            } else {
+                // Currently in the Rear Upper Skybridge strip (`Z <= -10.85`): allow full X, and exit onto side catwalks once |X| >= 7.25
+                new_x = new_x.clamp(-10.35, 10.35);
+                if new_x.abs() < 7.25 {
+                    new_z = new_z.clamp(-13.15, -10.85);
+                } else {
+                    new_z = new_z.clamp(-13.15, 6.7);
+                }
+            }
+        } else {
+            // Keep strictly in the elevator-free forward ground half!
+            new_x = new_x.clamp(-10.1, 10.1);
+            new_z = new_z.clamp(2.2, 9.6);
+        }
+
+        let a = &mut self.agents[idx];
+        a.pos = [new_x, target_pos[1], new_z];
+        a.yaw = turn_yaw(a.yaw, move_x.atan2(move_z), 5.6, dt);
+        a.work_action = AgentWorkAction::Idle;
+        a.dwell_timer = 0.0;
+        a.yielding = false;
+        a.lift_height = ease_scalar(a.lift_height, 0.1, 4.2, dt);
     }
 
     fn step_walker_and_elevator(&mut self, dt: f32) {
@@ -2295,17 +2745,22 @@ impl OrbitalHavenState {
         }
 
         // Proximity-triggered sliding blast doors on Deck 2 (`Z = 11.6`, `Z = -14.6`, `Z = -25.0`)
-        // Opens smoothly for BOT-01 AND any Deck-2 rolling robot (CourierRunner, FloorScrubber, etc.)!
+        // Opens smoothly for BOT-01, HERMES-01, AND any Deck-2 rolling robot!
         let door_zs = [11.6f32, -14.6f32, -25.0f32];
         let walker_on_d2 = (self.walker.pos[1] - D2).abs() < 1.5;
+        let hermes_on_d2 = (-4.2..=4.2).contains(&self.hermes.pos[1]);
         for (i, &dz) in door_zs.iter().enumerate() {
             let walker_near = walker_on_d2
                 && self.walker.pos[0].abs() < 3.5
                 && (self.walker.pos[2] - dz).abs() < 4.5;
+            let hermes_near = hermes_on_d2
+                && !self.hermes.docked
+                && self.hermes.pos[0].abs() < 4.2
+                && (self.hermes.pos[2] - dz).abs() < 5.5;
             let any_bot_near = self.agents.iter().any(|a| {
                 (a.pos[1] - D2).abs() < 1.5 && a.pos[0].abs() < 3.8 && (a.pos[2] - dz).abs() < 4.5
             });
-            let tgt = if walker_near || any_bot_near {
+            let tgt = if walker_near || hermes_near || any_bot_near {
                 1.0
             } else {
                 0.0
@@ -2377,7 +2832,11 @@ impl OrbitalHavenState {
             .map(|s| s.id);
         self.camera_rig.uplink_ship_id = best_ship_id;
 
-        if self.camera_rig.auto_director && !self.camera_rig.primary_feed.is_dynamic() {
+        if self.camera_rig.auto_director
+            && !self.camera_rig.primary_feed.is_dynamic()
+            && !self.hermes.active
+            && self.camera_rig.primary_feed != CameraFeedId::HermesFlyCam
+        {
             self.camera_rig.director_timer -= dt;
             if self.camera_rig.director_timer <= 0.0 {
                 self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
@@ -2510,7 +2969,11 @@ impl OrbitalHavenState {
 
     pub fn toggle_auto_director(&mut self) {
         self.camera_rig.auto_director = !self.camera_rig.auto_director;
-        if self.camera_rig.auto_director && !self.camera_rig.primary_feed.is_dynamic() {
+        if self.camera_rig.auto_director
+            && !self.camera_rig.primary_feed.is_dynamic()
+            && !self.hermes.active
+            && self.camera_rig.primary_feed != CameraFeedId::HermesFlyCam
+        {
             self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
         }
     }
@@ -2572,5 +3035,224 @@ impl OrbitalHavenState {
     pub fn nudge_pan(&mut self, dyaw: f32, dpitch: f32) {
         self.camera_rig.manual_pan[0] = (self.camera_rig.manual_pan[0] + dyaw).clamp(-0.65, 0.65);
         self.camera_rig.manual_pan[1] = (self.camera_rig.manual_pan[1] + dpitch).clamp(-0.38, 0.38);
+    }
+
+    // =========================================================================
+    // Hermes (`HERMES-01`) Free-Flying Camera Drone
+    // =========================================================================
+
+    /// Activate Hermes when entering Direct Interaction Mode: spawns at his Atrium home alcove
+    /// and jumps the primary camera feed to his first-person view.
+    pub fn activate_hermes(&mut self) {
+        if !self.hermes.active {
+            if self.camera_rig.primary_feed != CameraFeedId::HermesFlyCam {
+                self.hermes.saved_feed = Some(self.camera_rig.primary_feed);
+            }
+            if self.camera_rig.layout == CameraLayout::Grid2x2 {
+                self.hermes.saved_layout = Some(self.camera_rig.layout);
+                self.camera_rig.layout = CameraLayout::Single;
+            }
+        }
+        self.hermes.pos = HERMES_HOME_POS;
+        self.hermes.vel = [0.0, 0.0, 0.0];
+        self.hermes.yaw = HERMES_HOME_YAW;
+        self.hermes.pitch = HERMES_HOME_PITCH;
+        self.hermes.active = true;
+        self.hermes.docked = false;
+        self.hermes.returning_home = false;
+        self.hermes.thrust_level = 0.35;
+
+        self.camera_rig.primary_feed = CameraFeedId::HermesFlyCam;
+        self.camera_rig.manual_pan = [0.0, 0.0];
+        self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+    }
+
+    /// Deactivate Hermes when exiting Direct Interaction Mode: restores the previous camera feed
+    /// and layout, and sends Hermes smoothly flying back to dock in his Atrium home bay.
+    pub fn deactivate_hermes(&mut self) {
+        if !self.hermes.active {
+            return;
+        }
+        self.hermes.active = false;
+        self.hermes.returning_home = true;
+        self.hermes.vel = [0.0, 0.0, 0.0];
+
+        if let Some(prev_feed) = self.hermes.saved_feed.take() {
+            self.camera_rig.primary_feed = prev_feed;
+            self.camera_rig.static_glitch_timer = STATIC_GLITCH_DURATION;
+        }
+        if let Some(prev_layout) = self.hermes.saved_layout.take() {
+            self.camera_rig.layout = prev_layout;
+        }
+        self.camera_rig.director_timer = DIRECTOR_INTERVAL_SECS;
+    }
+
+    /// Apply Minecraft-creative-style flight controls to Hermes:
+    /// - `move_fwd` (`+1` Up Arrow, `-1` Down Arrow) and `move_right` (`+1` Right Arrow, `-1` Left Arrow)
+    ///   move horizontally in the XZ plane relative to Hermes's current yaw.
+    /// - `move_up` (`+1` Spacebar, `-1` Shift) moves purely vertically along Y.
+    /// - `fly_along_look` (Left Mouse Button held) propels Hermes smoothly along his exact 3D look vector.
+    /// - `look_dyaw` / `look_dpitch` rotate the camera freely (360° yaw, ±85° pitch).
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_hermes_controls(
+        &mut self,
+        dt: f32,
+        move_fwd: f32,
+        move_right: f32,
+        move_up: f32,
+        fly_along_look: bool,
+        look_dyaw: f32,
+        look_dpitch: f32,
+    ) {
+        if !self.hermes.active {
+            return;
+        }
+        let dt = dt.clamp(0.0, 0.1);
+
+        // Mouse look: unbounded yaw, clamped pitch (±85°)
+        self.hermes.yaw = (self.hermes.yaw + look_dyaw).rem_euclid(TAU);
+        self.hermes.pitch = (self.hermes.pitch + look_dpitch).clamp(-1.48, 1.48);
+
+        // Horizontal XZ basis matching right-handed `build_perspective_view_proj`:
+        // forward = [sin(yaw), 0, cos(yaw)], right = cross(forward, up) = [-cos(yaw), 0, sin(yaw)]
+        let (sy, cy) = self.hermes.yaw.sin_cos();
+        let (sp, cp) = self.hermes.pitch.sin_cos();
+        let fwd_x = sy;
+        let fwd_z = cy;
+        let right_x = -cy;
+        let right_z = sy;
+
+        let mut horiz_x = fwd_x * move_fwd + right_x * move_right;
+        let mut horiz_z = fwd_z * move_fwd + right_z * move_right;
+        let mut vert_y = move_up.clamp(-1.0, 1.0);
+
+        if fly_along_look {
+            horiz_x += sy * cp;
+            vert_y += sp;
+            horiz_z += cy * cp;
+        }
+
+        let h_len = (horiz_x * horiz_x + horiz_z * horiz_z).sqrt();
+        if h_len > 1.0 {
+            horiz_x /= h_len;
+            horiz_z /= h_len;
+        }
+        vert_y = vert_y.clamp(-1.0, 1.0);
+
+        const HORIZ_SPEED: f32 = 14.0;
+        const VERT_SPEED: f32 = 10.0;
+        let target_vx = horiz_x * HORIZ_SPEED;
+        let target_vy = vert_y
+            * if fly_along_look {
+                HORIZ_SPEED
+            } else {
+                VERT_SPEED
+            };
+        let target_vz = horiz_z * HORIZ_SPEED;
+
+        let moving = h_len > 0.01 || vert_y.abs() > 0.01;
+        let rate = if moving { 10.0 } else { 8.5 };
+        self.hermes.vel[0] = ease_scalar(self.hermes.vel[0], target_vx, rate, dt);
+        self.hermes.vel[1] = ease_scalar(self.hermes.vel[1], target_vy, rate, dt);
+        self.hermes.vel[2] = ease_scalar(self.hermes.vel[2], target_vz, rate, dt);
+
+        self.hermes.pos[0] += self.hermes.vel[0] * dt;
+        self.hermes.pos[1] += self.hermes.vel[1] * dt;
+        self.hermes.pos[2] += self.hermes.vel[2] * dt;
+
+        // Soft outer orbital boundary so Hermes can explore all of HELIOS-09 and nearby space
+        // without drifting infinitely into deep space.
+        const MAX_ORBIT_RADIUS: f32 = 220.0;
+        let r = len3(self.hermes.pos);
+        if r > MAX_ORBIT_RADIUS {
+            let scale = MAX_ORBIT_RADIUS / r;
+            self.hermes.pos[0] *= scale;
+            self.hermes.pos[1] *= scale;
+            self.hermes.pos[2] *= scale;
+        }
+
+        let speed_norm = (len3(self.hermes.vel) / HORIZ_SPEED).clamp(0.0, 1.0);
+        self.hermes.thrust_level =
+            ease_scalar(self.hermes.thrust_level, 0.25 + 0.75 * speed_norm, 6.0, dt);
+    }
+
+    fn step_hermes(&mut self, dt: f32) {
+        self.hermes.hover_phase = (self.hermes.hover_phase + dt * 2.8) % TAU;
+
+        if self.hermes.active {
+            return;
+        }
+
+        if self.hermes.returning_home {
+            let to_home = sub3(HERMES_HOME_POS, self.hermes.pos);
+            let dist = len3(to_home);
+            if dist < 0.15 {
+                self.hermes.pos = HERMES_HOME_POS;
+                self.hermes.vel = [0.0, 0.0, 0.0];
+                self.hermes.yaw = HERMES_HOME_YAW;
+                self.hermes.pitch = HERMES_HOME_PITCH;
+                self.hermes.returning_home = false;
+                self.hermes.docked = true;
+                self.hermes.thrust_level = 0.0;
+            } else {
+                let dir = norm3(to_home, [0.0, 0.0, -1.0]);
+                let speed = (dist * 2.4).clamp(4.0, 18.0);
+                let step_len = (speed * dt).min(dist);
+                self.hermes.pos[0] += dir[0] * step_len;
+                self.hermes.pos[1] += dir[1] * step_len;
+                self.hermes.pos[2] += dir[2] * step_len;
+
+                let desired_yaw = if dist > 1.2 {
+                    dir[0].atan2(dir[2])
+                } else {
+                    HERMES_HOME_YAW
+                };
+                // Smooth shortest-arc yaw interpolation
+                let mut dy = (desired_yaw - self.hermes.yaw) % TAU;
+                if dy > std::f32::consts::PI {
+                    dy -= TAU;
+                } else if dy < -std::f32::consts::PI {
+                    dy += TAU;
+                }
+                self.hermes.yaw =
+                    (self.hermes.yaw + dy * (1.0 - (-5.0 * dt).exp())).rem_euclid(TAU);
+                self.hermes.pitch = ease_scalar(self.hermes.pitch, HERMES_HOME_PITCH, 4.5, dt);
+                self.hermes.thrust_level = ease_scalar(self.hermes.thrust_level, 0.65, 5.0, dt);
+            }
+        } else if self.hermes.docked {
+            self.hermes.pos = HERMES_HOME_POS;
+            self.hermes.thrust_level = ease_scalar(self.hermes.thrust_level, 0.0, 5.0, dt);
+        }
+    }
+
+    /// Returns `true` if world position `p` lies inside one of Station HELIOS-09's interior rooms
+    /// (used to switch atmospheric fog cleanly when Hermes flies out into open space).
+    pub fn is_pos_interior(p: [f32; 3]) -> bool {
+        let [x, y, z] = p;
+        // Hangar Bay (`X:-12..12, Y:-4..10, Z:12..42`)
+        if x.abs() <= 12.2 && (-4.5..=10.5).contains(&y) && (11.5..=42.0).contains(&z) {
+            return true;
+        }
+        // Central Core Atrium (`X:-12..12, Y:-4.2..11.2, Z:-14.6..11.6`)
+        if x.abs() <= 12.2 && (-4.5..=11.4).contains(&y) && (-14.8..=11.6).contains(&z) {
+            return true;
+        }
+        // Ops Command Deck (`X:-11..11, Y:11.4..21.4, Z:-11..11`)
+        if x.abs() <= 11.0 && (11.4..=21.4).contains(&y) && (-11.0..=11.0).contains(&z) {
+            return true;
+        }
+        // Reactor & Concourse (`X:-19..19, Y:-15.6..-4.8, Z:-10..10`)
+        if x.abs() <= 19.0 && (-15.8..=-4.8).contains(&y) && (-10.0..=10.0).contains(&z) {
+            return true;
+        }
+        // Axial Pipe Tunnel (`X:-3..3, Y:-4.5..2.5, Z:-25.2..-14.6`)
+        if x.abs() <= 3.2 && (-4.5..=2.5).contains(&y) && (-25.2..=-14.6).contains(&z) {
+            return true;
+        }
+        // Aft Solar Engineering Bay (`X:-7..7, Y:-4.5..6.8, Z:-42.8..-25.0`)
+        if x.abs() <= 7.0 && (-4.5..=6.8).contains(&y) && (-42.8..=-25.0).contains(&z) {
+            return true;
+        }
+        false
     }
 }

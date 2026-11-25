@@ -804,6 +804,7 @@ const ORBITAL_CAMERA_OPTIONS: ReadonlyArray<{ slug: string; label: string }> = [
   { slug: "reactor", label: "CAM-09 · Reactor & Concourse" },
   { slug: "solar_bay", label: "CAM-10 · Solar Engineering" },
   { slug: "walker_bot", label: "BOT-01 · Interior Walker-Cam" },
+  { slug: "hermes", label: "HERMES · Free-Fly Camera Bot" },
   { slug: "ship_nose", label: "UPLINK-1 · Live Ship Nose" },
   { slug: "ship_dorsal", label: "UPLINK-2 · Live Ship Dorsal" },
 ];

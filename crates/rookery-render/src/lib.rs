@@ -37,5 +37,5 @@ pub use koi_scene::KoiPondScene;
 pub use nebula_scene::CosmicNebulaScene;
 pub use orbital_scene::OrbitalHavenScene;
 pub use renderer::{DisplayStats, Renderer, SceneFactory, SurfaceSize};
-pub use scene::{BlankScene, Pointer, PointerAction, RawPointer, Scene, SceneInput};
+pub use scene::{BlankScene, FlightKeys, Pointer, PointerAction, RawPointer, Scene, SceneInput};
 pub use shinjuku_scene::ShinjukuRainScene;

@@ -8,8 +8,8 @@ use std::f32::consts::TAU;
 
 use rookery_core::orbital::simulation::REACTOR_CORE_Z;
 use rookery_core::orbital::{
-    AgentKind, AgentWorkAction, CargoVisualKind, OrbitalHavenState, PAD_A_POS, PAD_B_POS,
-    PAD_C_POS, ServiceKind, ShipClass, StationEventKind,
+    AgentKind, AgentWorkAction, CargoVisualKind, HERMES_HOME_POS, OrbitalHavenState, PAD_A_POS,
+    PAD_B_POS, PAD_C_POS, ServiceKind, ShipClass, StationEventKind,
 };
 
 use super::cameras::basis_from_forward;
@@ -1524,6 +1524,185 @@ pub fn build_dynamic_entities(
                     );
                 }
             }
+            AgentKind::PanelTechBot => {
+                // Nimble 4-wheel Atrium control-panel calibration robot with twin articulated arms
+                let is_working = agent.work_action == AgentWorkAction::CalibratingPanel;
+                let is_celebrating = agent.work_action == AgentWorkAction::Celebrating;
+                let bounce_y = if is_celebrating {
+                    (time * 9.0 + agent.id as f32).sin().abs() * 0.24
+                } else if is_working {
+                    (time * 11.0 + agent.id as f32).sin().abs() * 0.06
+                } else {
+                    0.0
+                };
+
+                // Multicolor cycling helper for active work & celebration
+                let palette = [
+                    [0.12, 0.88, 1.0, 1.0],
+                    [1.0, 0.22, 0.82, 1.0],
+                    [1.0, 0.84, 0.14, 1.0],
+                    [0.20, 1.0, 0.45, 1.0],
+                    [1.0, 0.46, 0.12, 1.0],
+                ];
+                let mc_col =
+                    palette[((time * 10.0 + agent.id as f32 * 1.7) as usize) % palette.len()];
+                let visor_col = if is_working || is_celebrating {
+                    mc_col
+                } else {
+                    [0.16, 0.62, 1.0, 1.0]
+                };
+
+                // 1. Four compact omni-wheels
+                for sx in [-0.42f32, 0.42f32] {
+                    for sz in [-0.38f32, 0.38f32] {
+                        op.push_oriented_box(
+                            p,
+                            r,
+                            u,
+                            f,
+                            [sx, 0.16, sz],
+                            [0.16, 0.32, 0.32],
+                            Tile::DarkSteelRib,
+                            dark_steel,
+                            0.0,
+                        );
+                    }
+                }
+                // 2. Lower hazard bumper & nimble upright tech chassis
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.34 + bounce_y * 0.4, 0.0],
+                    [0.88, 0.24, 0.86],
+                    Tile::HazardStripe,
+                    white,
+                    0.0,
+                );
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 0.94 + bounce_y, -0.04],
+                    [0.74, 0.96, 0.66],
+                    Tile::ShipArmor,
+                    theme.hull_tint,
+                    0.0,
+                );
+                // 3. Glowing chest diagnostic visor
+                op.push_oriented_box(
+                    p,
+                    r,
+                    u,
+                    f,
+                    [0.0, 1.08 + bounce_y, 0.32],
+                    [0.54, 0.36, 0.08],
+                    Tile::CrtConsole,
+                    visor_col,
+                    1.38,
+                );
+                // 4. Articulated twin calibration arms (rapidly tap/tune panel while working, raised while celebrating!)
+                for (side_idx, sx) in [-0.46f32, 0.46f32].iter().enumerate() {
+                    let tap = if is_working {
+                        (time * 15.0 + side_idx as f32 * std::f32::consts::PI + agent.id as f32)
+                            .sin()
+                    } else {
+                        0.0
+                    };
+                    let arm_y = if is_celebrating {
+                        1.52 + bounce_y + (time * 12.0 + side_idx as f32 * 2.0).sin() * 0.16
+                    } else if is_working {
+                        1.14 + bounce_y + tap * 0.20
+                    } else {
+                        0.92 + bounce_y
+                    };
+                    let arm_z = if is_working {
+                        0.48 + tap.abs() * 0.22
+                    } else if is_celebrating {
+                        0.18
+                    } else {
+                        0.14
+                    };
+                    let arm_len = if is_working { 0.78 } else { 0.46 };
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [*sx, arm_y, arm_z],
+                        [0.14, 0.16, arm_len],
+                        Tile::DarkSteelRib,
+                        dark_steel,
+                        0.0,
+                    );
+                    // Glowing fingertip tool probe
+                    op.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [*sx, arm_y, arm_z + arm_len * 0.52],
+                        [0.14, 0.14, 0.16],
+                        Tile::CeilingLight,
+                        if is_working || is_celebrating {
+                            mc_col
+                        } else {
+                            accent
+                        },
+                        1.4,
+                    );
+                }
+                // 5. Rotating rooftop diagnostic beacon dome
+                let beacon_yaw = agent.yaw
+                    + time
+                        * if is_working || is_celebrating {
+                            8.0
+                        } else {
+                            2.0
+                        };
+                let (bsy, bcy) = beacon_yaw.sin_cos();
+                let bf = [bsy, 0.0, bcy];
+                let br = [bcy, 0.0, -bsy];
+                op.push_oriented_box(
+                    p,
+                    br,
+                    u,
+                    bf,
+                    [0.0, 1.56 + bounce_y, -0.04],
+                    [0.34, 0.28, 0.34],
+                    Tile::CeilingLight,
+                    visor_col,
+                    1.42,
+                );
+                // 6. Multicolor holographic interface beam & sparks while working on a panel!
+                if is_working {
+                    tr.push_oriented_box(
+                        p,
+                        r,
+                        u,
+                        f,
+                        [0.0, 1.18 + bounce_y, 1.12],
+                        [0.78, 0.56, 0.88],
+                        Tile::ForcefieldHex,
+                        [mc_col[0], mc_col[1], mc_col[2], 0.36],
+                        1.8,
+                    );
+                } else if is_celebrating {
+                    tr.push_oriented_box(
+                        p,
+                        br,
+                        u,
+                        bf,
+                        [0.0, 1.98 + bounce_y, 0.0],
+                        [0.95, 0.18, 0.95],
+                        Tile::ForcefieldHex,
+                        [mc_col[0], mc_col[1], mc_col[2], 0.48],
+                        1.9,
+                    );
+                }
+            }
             AgentKind::OpsHoloDroid => {
                 // 4-wheel UNATCO telemetry droid with 3 glowing CRT displays & spinning radar dish
                 // 1. 4 omni-wheel pods at corners
@@ -2349,6 +2528,154 @@ pub fn build_dynamic_entities(
             Tile::CeilingLight,
             accent,
             1.1,
+        );
+    }
+
+    // 6D. HERMES-01 Free-Flying Winged Camera Drone & Atrium Home Alcove Status Strip
+    {
+        let h = &state.hermes;
+        // Dynamic status beacon strip on Hermes's Atrium home docking hood
+        let dock_col = if h.docked {
+            sec
+        } else {
+            let pulse = 0.6 + 0.4 * (time * 4.5).sin().abs();
+            [accent[0] * pulse, accent[1] * pulse, accent[2] * pulse, 1.0]
+        };
+        op.push_box(
+            [HERMES_HOME_POS[0], 8.38, -12.34],
+            [2.4, 0.12, 0.12],
+            Tile::CeilingLight,
+            1.5,
+            dock_col,
+            1.25,
+        );
+
+        let (sy, cy) = h.yaw.sin_cos();
+        let (sp, cp) = h.pitch.sin_cos();
+        let hf = [sy * cp, sp, cy * cp];
+        let hr = [cy, 0.0, -sy];
+        let hu = [-sy * sp, cp, -cy * sp];
+        let bob = if h.docked {
+            0.0
+        } else {
+            (h.hover_phase).sin() * 0.07
+        };
+        let hp = [h.pos[0], h.pos[1] + bob, h.pos[2]];
+
+        // 1. Sleek armored central camera-drone chassis
+        op.push_oriented_box(
+            hp,
+            hr,
+            hu,
+            hf,
+            [0.0, 0.0, 0.0],
+            [0.72, 0.46, 0.92],
+            Tile::ShipArmor,
+            white,
+            0.0,
+        );
+        // Amber/gold dorsal trim plate
+        op.push_oriented_box(
+            hp,
+            hr,
+            hu,
+            hf,
+            [0.0, 0.25, -0.04],
+            [0.54, 0.10, 0.68],
+            Tile::HazardStripe,
+            sec,
+            0.0,
+        );
+        // 2. Signature Hermes winged stabilizer fins (port & starboard)
+        for side in [-1.0f32, 1.0f32] {
+            op.push_oriented_box(
+                hp,
+                hr,
+                hu,
+                hf,
+                [side * 0.64, 0.04, -0.10],
+                [0.62, 0.10, 0.36],
+                Tile::ShipArmor,
+                sec,
+                0.0,
+            );
+            op.push_oriented_box(
+                hp,
+                hr,
+                hu,
+                hf,
+                [side * 0.96, 0.10, -0.22],
+                [0.24, 0.08, 0.24],
+                Tile::CeilingLight,
+                accent,
+                if h.docked { 0.45 } else { 1.1 },
+            );
+        }
+        // 3. Quad corner ducted micro-thruster pods with dynamic hover-glow rings
+        let thr_em = if h.docked {
+            0.25
+        } else {
+            0.85 + h.thrust_level * 0.75
+        };
+        let thr_col = if h.docked { sec } else { accent };
+        for (tx, tz) in [(-0.46, 0.34), (0.46, 0.34), (-0.46, -0.34), (0.46, -0.34)] {
+            op.push_oriented_box(
+                hp,
+                hr,
+                hu,
+                hf,
+                [tx, -0.10, tz],
+                [0.26, 0.22, 0.26],
+                Tile::DarkSteelRib,
+                dark_steel,
+                0.0,
+            );
+            op.push_oriented_box(
+                hp,
+                hr,
+                hu,
+                hf,
+                [tx, -0.22, tz],
+                [0.18, 0.07, 0.18],
+                Tile::CeilingLight,
+                thr_col,
+                thr_em,
+            );
+        }
+        // 4. Front gimballed camera optic housing & glowing REC lens
+        op.push_oriented_box(
+            hp,
+            hr,
+            hu,
+            hf,
+            [0.0, -0.02, 0.48],
+            [0.44, 0.32, 0.18],
+            Tile::DarkSteelRib,
+            theme.rib_tint,
+            0.0,
+        );
+        op.push_oriented_box(
+            hp,
+            hr,
+            hu,
+            hf,
+            [0.0, -0.02, 0.59],
+            [0.24, 0.20, 0.06],
+            Tile::CeilingLight,
+            if h.active { accent } else { red_strobe },
+            1.35,
+        );
+        // 5. Dorsal whip telemetry antenna & status beacon
+        op.push_oriented_box(
+            hp,
+            hr,
+            hu,
+            hf,
+            [0.18, 0.44, -0.22],
+            [0.06, 0.38, 0.06],
+            Tile::CeilingLight,
+            dock_col,
+            1.15,
         );
     }
 }

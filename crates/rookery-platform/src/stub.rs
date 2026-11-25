@@ -71,3 +71,13 @@ pub fn cursor_position() -> Option<(f64, f64)> {
 pub fn mouse_buttons() -> crate::MouseButtons {
     crate::MouseButtons::default()
 }
+
+pub fn flight_keys() -> crate::FlightKeys {
+    crate::FlightKeys::default()
+}
+
+pub fn take_mouse_delta() -> (f32, f32) {
+    (0.0, 0.0)
+}
+
+pub fn set_mouse_look_capture(_enabled: bool) {}

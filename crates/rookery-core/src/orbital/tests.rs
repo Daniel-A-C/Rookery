@@ -445,7 +445,10 @@ fn all_rolling_robots_navigate_without_collisions() {
                 continue;
             }
             if let Some(p0) = prev_pos.get_mut(&a.id) {
-                let d_step = ((a.pos[0] - p0[0]).powi(2) + (a.pos[2] - p0[2]).powi(2)).sqrt();
+                let d_step = ((a.pos[0] - p0[0]).powi(2)
+                    + (a.pos[1] - p0[1]).powi(2)
+                    + (a.pos[2] - p0[2]).powi(2))
+                .sqrt();
                 *window_dist.entry(a.id).or_insert(0.0) += d_step;
                 *p0 = a.pos;
             }
@@ -490,13 +493,24 @@ fn all_rolling_robots_navigate_without_collisions() {
                 .filter(|a| !matches!(a.kind, AgentKind::HullWelder | AgentKind::CargoForklift))
             {
                 let moved = window_dist.get(&a.id).copied().unwrap_or(0.0);
+                let min_moved = if a.kind == AgentKind::PanelTechBot {
+                    // PanelTechBots hold in place for the 12s whole-room celebration light show
+                    5.0
+                } else {
+                    8.0
+                };
                 assert!(
-                    moved >= 8.0,
-                    "step {step_idx}: agent {} ({:?} in {:?}) appears stuck (moved only {moved:.2}m in 30s at {:?})",
+                    moved >= min_moved,
+                    "step {step_idx}: agent {} ({:?} in {:?}) appears stuck (moved only {moved:.2}m in 30s at {:?}, node={}, path={:?}, yielding={}, dwell={:.2}, action={:?})",
                     a.id,
                     a.kind,
                     a.zone,
-                    a.pos
+                    a.pos,
+                    a.nav_node,
+                    a.nav_path,
+                    a.yielding,
+                    a.dwell_timer,
+                    a.work_action
                 );
             }
             for v in window_dist.values_mut() {
@@ -817,9 +831,9 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
     let mut saw_hangar_gantry_finale = false;
     let mut saw_hangar_replenished = false;
 
-    let mut saw_atrium_clean_all = false;
-    let mut saw_atrium_purge = false;
-    let mut saw_atrium_pillars_all = false;
+    let mut saw_atrium_working = false;
+    let mut saw_atrium_celebration = false;
+    let mut saw_atrium_reset = false;
 
     let mut saw_ops_all_layers = false;
     let mut saw_ops_broadcast = false;
@@ -836,7 +850,8 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
     let mut saw_holo_cube = false;
     let mut saw_cryo_swap = false;
     let mut saw_solar_calibrate = false;
-    let mut saw_atrium_scrub = false;
+    let mut saw_panel_calibrate = false;
+    let mut saw_hangar_scrub = false;
 
     // Simulate 320 seconds (slightly over 1 full 5-minute 300s loop) at 5 Hz
     for _ in 0..1600 {
@@ -859,14 +874,27 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
             saw_hangar_replenished = true;
         }
 
-        if act.atrium.cleaned_sectors == ATRIUM_SECTOR_COUNT as u8 {
-            saw_atrium_clean_all = true;
+        if act
+            .atrium
+            .panels
+            .iter()
+            .any(|p| p.status == PanelStatus::Working)
+        {
+            saw_atrium_working = true;
         }
-        if act.atrium.verified_pillars == 4 {
-            saw_atrium_pillars_all = true;
+        if act.atrium.celebrating {
+            saw_atrium_celebration = true;
         }
-        if act.atrium.purging_waste {
-            saw_atrium_purge = true;
+        if saw_atrium_celebration
+            && !act.atrium.celebrating
+            && act.atrium.cycles_completed >= 1
+            && act
+                .atrium
+                .panels
+                .iter()
+                .any(|p| p.status == PanelStatus::Pending)
+        {
+            saw_atrium_reset = true;
         }
 
         if act.ops.completed_layers == OPS_HOLO_LAYERS {
@@ -906,8 +934,11 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
             if a.work_action == AgentWorkAction::CalibratingCapacitor {
                 saw_solar_calibrate = true;
             }
+            if a.work_action == AgentWorkAction::CalibratingPanel {
+                saw_panel_calibrate = true;
+            }
             if a.work_action == AgentWorkAction::Scrubbing {
-                saw_atrium_scrub = true;
+                saw_hangar_scrub = true;
             }
         }
     }
@@ -927,16 +958,16 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
     );
 
     assert!(
-        saw_atrium_clean_all,
-        "Atrium should clean all 12 floor sectors"
+        saw_atrium_working,
+        "Atrium control panels should enter Working (multicolor flashing) state"
     );
     assert!(
-        saw_atrium_pillars_all,
-        "Atrium security enforcer should verify all 4 server pillars"
+        saw_atrium_celebration,
+        "Atrium should trigger whole-room celebration light show once all 12 panels turn green"
     );
     assert!(
-        saw_atrium_purge,
-        "Atrium wash dock should trigger waste purge finale"
+        saw_atrium_reset,
+        "Atrium control panels should reset back to Pending (blue) after celebration finale"
     );
 
     assert!(
@@ -987,7 +1018,164 @@ fn bespoke_five_minute_room_activities_progress_and_loop_cleanly() {
         "SolarCapacitorBots should perform CalibratingCapacitor work action"
     );
     assert!(
-        saw_atrium_scrub,
-        "FloorScrubbers should perform Scrubbing work action"
+        saw_panel_calibrate,
+        "PanelTechBots should perform CalibratingPanel work action"
     );
+    assert!(
+        saw_hangar_scrub,
+        "Hangar FloorScrubber should perform Scrubbing work action"
+    );
+}
+
+#[test]
+fn atrium_panel_bots_stay_clear_of_main_elevator_and_use_mini_lift() {
+    let mut st = OrbitalHavenState::new(1234);
+    let mut saw_mini_lift_ride = false;
+    let mut saw_ground_fix = false;
+    let mut saw_upper_fix = false;
+    let mut saw_celebration = false;
+
+    for step in 0..2400 {
+        st.step(0.1);
+        let at = &st.room_activities.atrium;
+        if at.mini_lift.phase == MiniLiftPhase::Riding {
+            saw_mini_lift_ride = true;
+        }
+        if at.celebrating {
+            saw_celebration = true;
+        }
+        for (spec, rt) in ATRIUM_PANELS.iter().zip(at.panels.iter()) {
+            if rt.status == PanelStatus::Fixed {
+                if spec.upper_level {
+                    saw_upper_fix = true;
+                } else {
+                    saw_ground_fix = true;
+                }
+            }
+        }
+        for a in st
+            .agents
+            .iter()
+            .filter(|a| a.kind == AgentKind::PanelTechBot)
+        {
+            if a.pos[1] < 0.0 {
+                assert!(
+                    a.pos[2] >= 1.5,
+                    "step {step}: ground-floor PanelTechBot {} entered aft elevator half at {:?}",
+                    a.id,
+                    a.pos
+                );
+            }
+        }
+    }
+
+    assert!(
+        saw_mini_lift_ride,
+        "PanelTechBots should ride the dedicated Atrium Mini-Elevator between levels"
+    );
+    assert!(
+        saw_ground_fix && saw_upper_fix,
+        "PanelTechBots should calibrate both ground-floor and upper-mezzanine control panels"
+    );
+    assert!(
+        saw_celebration && st.room_activities.atrium.cycles_completed >= 1,
+        "Atrium should complete a full 12-panel sync, celebration light show, and reset (fixed={}/12, celebrating={}, cycles={}, lift={:?}, bots={:?})",
+        st.room_activities.atrium.fixed_count(),
+        st.room_activities.atrium.celebrating,
+        st.room_activities.atrium.cycles_completed,
+        st.room_activities.atrium.mini_lift,
+        st.agents
+            .iter()
+            .filter(|a| a.kind == AgentKind::PanelTechBot)
+            .map(|a| (a.id, a.pos, a.nav_node, a.nav_path.clone(), a.work_action))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn hermes_camera_bot_lifecycle_and_minecraft_flight() {
+    assert_eq!(
+        CameraFeedId::from_slug("hermes"),
+        Some(CameraFeedId::HermesFlyCam)
+    );
+    assert_eq!(CameraFeedId::HermesFlyCam.slug(), "hermes");
+
+    let mut st = OrbitalHavenState::new(777);
+    assert!(st.hermes.docked);
+    assert!(!st.hermes.active);
+    assert_eq!(st.hermes.pos, HERMES_HOME_POS);
+
+    // Put station in 2x2 Grid on IntCentralAtrium before activating Hermes
+    st.set_layout(CameraLayout::Grid2x2);
+    st.select_feed(CameraFeedId::IntCentralAtrium);
+
+    st.activate_hermes();
+    assert!(st.hermes.active);
+    assert!(!st.hermes.docked);
+    assert_eq!(st.hermes.pos, HERMES_HOME_POS);
+    assert_eq!(st.camera_rig.primary_feed, CameraFeedId::HermesFlyCam);
+    assert_eq!(st.camera_rig.layout, CameraLayout::Single);
+
+    // Fly forward and upward (Spacebar), while looking up (pitch clamped)
+    st.hermes.yaw = 0.0;
+    st.hermes.pitch = 0.0;
+    let start_pos = st.hermes.pos;
+    for _ in 0..20 {
+        st.apply_hermes_controls(0.05, 1.0, 0.0, 1.0, false, 0.0, 0.2);
+    }
+    assert!(
+        st.hermes.pos[2] > start_pos[2] + 5.0,
+        "Up arrow should move Hermes forward along +Z: {:?}",
+        st.hermes.pos
+    );
+    assert!(
+        st.hermes.pos[1] > start_pos[1] + 4.0,
+        "Spacebar should ascend Hermes along +Y: {:?}",
+        st.hermes.pos
+    );
+    assert!(
+        st.hermes.pitch <= 1.481,
+        "Pitch must be clamped to ±85°: {}",
+        st.hermes.pitch
+    );
+
+    // Strafe right at yaw=0 moves along -X (right-handed cross([0,0,1], [0,1,0]) = [-1,0,0])
+    let x_before = st.hermes.pos[0];
+    for _ in 0..15 {
+        st.apply_hermes_controls(0.05, 0.0, 1.0, -1.0, false, 0.0, 0.0);
+    }
+    assert!(
+        st.hermes.pos[0] < x_before - 2.0,
+        "Right arrow at yaw=0 should strafe along -X: before={x_before}, after={}",
+        st.hermes.pos[0]
+    );
+
+    // Click-to-fly (fly_along_look = true) moves along exact 3D look vector including pitch
+    st.hermes.yaw = 0.0;
+    st.hermes.pitch = 0.6;
+    st.hermes.vel = [0.0, 0.0, 0.0];
+    let pos_before_click = st.hermes.pos;
+    for _ in 0..15 {
+        st.apply_hermes_controls(0.05, 0.0, 0.0, 0.0, true, 0.0, 0.0);
+    }
+    assert!(
+        st.hermes.pos[2] > pos_before_click[2] + 3.0
+            && st.hermes.pos[1] > pos_before_click[1] + 2.0,
+        "Click-to-fly should propel Hermes along 3D look vector (forward + upward): before={pos_before_click:?}, after={:?}",
+        st.hermes.pos
+    );
+
+    // Deactivating Hermes restores previous feed & layout and flies Hermes back home to dock
+    st.deactivate_hermes();
+    assert!(!st.hermes.active);
+    assert!(st.hermes.returning_home);
+    assert_eq!(st.camera_rig.primary_feed, CameraFeedId::IntCentralAtrium);
+    assert_eq!(st.camera_rig.layout, CameraLayout::Grid2x2);
+
+    for _ in 0..120 {
+        st.step(0.05);
+    }
+    assert!(st.hermes.docked, "Hermes should dock back at his home bay");
+    assert!(!st.hermes.returning_home);
+    assert_eq!(st.hermes.pos, HERMES_HOME_POS);
 }

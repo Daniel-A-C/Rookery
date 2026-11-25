@@ -456,6 +456,16 @@ impl RenderThread {
         } else {
             PointerAction::None
         };
+        let mut remaining_mouse_delta = if self.interactive {
+            raw_pointer.mouse_delta
+        } else {
+            (0.0, 0.0)
+        };
+        let mut remaining_keys = if self.interactive {
+            Some(raw_pointer.keys)
+        } else {
+            None
+        };
 
         for d in self.displays.values_mut() {
             let Some(due) = d.next_due else { continue };
@@ -477,12 +487,17 @@ impl RenderThread {
                 })
             });
             let is_over = pointer.is_some();
+            let mouse_delta = std::mem::replace(&mut remaining_mouse_delta, (0.0, 0.0));
+            let keys = remaining_keys.take().unwrap_or_default();
             let input = SceneInput {
                 interactive: self.interactive,
                 pointer,
                 action: if is_over { action } else { PointerAction::None },
                 left_held: is_over && raw_pointer.left_down,
                 right_held: is_over && raw_pointer.right_down,
+                mouse_delta,
+                keys,
+                mouse_fly_forward: self.interactive && raw_pointer.left_down,
             };
             let dt = frame_start.duration_since(d.last_update);
             d.last_update = frame_start;

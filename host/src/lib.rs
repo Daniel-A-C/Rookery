@@ -22,7 +22,9 @@ use rookery_core::orbital::{ORBITAL_STATE_FILE_NAME, OrbitalHavenState};
 use rookery_core::settings::{SETTINGS_FILE_NAME, Settings};
 use rookery_core::world::{WORLD_STATE_FILE_NAME, WorldState};
 use rookery_platform::{DisplayInfo, desktop_layer, occlusion_probe, power_probe, screens_asleep};
-use rookery_render::{AppCatalog, AudioEngine, CatalogState, Gpu, RawPointer, Renderer};
+use rookery_render::{
+    AppCatalog, AudioEngine, CatalogState, FlightKeys, Gpu, RawPointer, Renderer,
+};
 use state::{HostInner, HostState};
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -212,10 +214,21 @@ pub fn run() {
                 Arc::new(|| {
                     let pos = rookery_platform::cursor_position();
                     let btns = rookery_platform::mouse_buttons();
+                    let mouse_delta = rookery_platform::take_mouse_delta();
+                    let pk = rookery_platform::flight_keys();
                     RawPointer {
                         position: pos,
                         left_down: btns.left,
                         right_down: btns.right,
+                        mouse_delta,
+                        keys: FlightKeys {
+                            up: pk.up,
+                            down: pk.down,
+                            left: pk.left,
+                            right: pk.right,
+                            space: pk.space,
+                            shift: pk.shift,
+                        },
                     }
                 }),
             )?;

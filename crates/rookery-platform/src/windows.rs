@@ -6,6 +6,8 @@
 
 use std::ffi::c_void;
 use std::mem::size_of;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Result, bail};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -18,7 +20,8 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON,
+    GetAsyncKeyState, VK_DOWN, VK_LBUTTON, VK_LEFT, VK_MBUTTON, VK_RBUTTON, VK_RIGHT, VK_SHIFT,
+    VK_SPACE, VK_UP,
 };
 use windows::Win32::UI::Shell::{
     QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
@@ -27,14 +30,15 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowExW, FindWindowW, GWL_EXSTYLE, GWL_STYLE, GetClientRect, GetCursorPos,
     GetSystemMetrics, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, HWND_BOTTOM,
     HWND_TOP, IsIconic, IsWindowVisible, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SMTO_NORMAL,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SendMessageTimeoutW, SetForegroundWindow,
-    SetParent, SetWindowLongPtrW, SetWindowPos, WS_CAPTION, WS_CHILD, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP, WS_THICKFRAME, WS_VISIBLE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SendMessageTimeoutW, SetCursorPos,
+    SetForegroundWindow, SetParent, SetWindowLongPtrW, SetWindowPos, ShowCursor, WS_CAPTION,
+    WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP, WS_THICKFRAME,
+    WS_VISIBLE,
 };
 use windows::core::BOOL;
 use windows::core::w;
 
-use crate::{DesktopLayer, DisplayInfo, DisplayOcclusion, OcclusionProbe, PowerProbe};
+use crate::{DesktopLayer, DisplayInfo, DisplayOcclusion, FlightKeys, OcclusionProbe, PowerProbe};
 
 const WM_SPAWN_WORKERW: u32 = 0x052C;
 
@@ -375,5 +379,69 @@ pub fn mouse_buttons() -> crate::MouseButtons {
         left,
         right,
         middle,
+    }
+}
+
+static MOUSE_LOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+static LOCK_ANCHOR: Mutex<Option<(i32, i32)>> = Mutex::new(None);
+
+pub fn flight_keys() -> FlightKeys {
+    let down = |vk: i32| unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+    FlightKeys {
+        up: down(VK_UP.0 as i32),
+        down: down(VK_DOWN.0 as i32),
+        left: down(VK_LEFT.0 as i32),
+        right: down(VK_RIGHT.0 as i32),
+        space: down(VK_SPACE.0 as i32),
+        shift: down(VK_SHIFT.0 as i32),
+    }
+}
+
+pub fn take_mouse_delta() -> (f32, f32) {
+    if !MOUSE_LOOK_ACTIVE.load(Ordering::Acquire) {
+        return (0.0, 0.0);
+    }
+    let anchor = LOCK_ANCHOR.lock().ok().and_then(|g| *g);
+    let Some((ax, ay)) = anchor else {
+        return (0.0, 0.0);
+    };
+    let mut pt = POINT::default();
+    if unsafe { GetCursorPos(&mut pt) }.is_err() {
+        return (0.0, 0.0);
+    }
+    let dx = (pt.x - ax) as f32;
+    let dy = (pt.y - ay) as f32;
+    if dx.abs() > 0.0 || dy.abs() > 0.0 {
+        let _ = unsafe { SetCursorPos(ax, ay) };
+    }
+    (dx, dy)
+}
+
+pub fn set_mouse_look_capture(enabled: bool) {
+    if enabled {
+        if MOUSE_LOOK_ACTIVE.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let mut pt = POINT::default();
+        if unsafe { GetCursorPos(&mut pt) }.is_ok()
+            && let Ok(mut g) = LOCK_ANCHOR.lock()
+        {
+            *g = Some((pt.x, pt.y));
+        }
+        unsafe {
+            ShowCursor(false);
+        }
+        log::info!("enabled Windows mouse-look capture");
+    } else {
+        if let Ok(mut g) = LOCK_ANCHOR.lock() {
+            *g = None;
+        }
+        if !MOUSE_LOOK_ACTIVE.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        unsafe {
+            ShowCursor(true);
+        }
+        log::info!("disabled Windows mouse-look capture");
     }
 }

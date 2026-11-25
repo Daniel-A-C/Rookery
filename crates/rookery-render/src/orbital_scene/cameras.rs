@@ -357,15 +357,15 @@ pub fn resolve_camera(
             )
         }
         CameraFeedId::IntCentralAtrium => {
-            // High bulkhead mount just inward of the port mezzanine rail so the catwalk never occludes the floor,
-            // framing the full 2-story Atrium, elevator shaft, corridor portals & aft pipe tunnel door.
-            let eye = [-6.2, 8.8, 10.2];
-            let tgt = [0.8, -1.2, -4.5];
+            // High bulkhead mount framing the forward ground control panels, dedicated Starboard Mini-Elevator,
+            // Starboard & Port upper mezzanines, Rear Upper Skybridge, and the 3-deck glass elevator.
+            let eye = [-6.8, 8.9, 10.4];
+            let tgt = [1.4, -0.8, -3.2];
             (
                 eye,
                 apply_pan(eye, tgt, servo_sweep * 0.55, 0.0),
                 [0.0, 1.0, 0.0],
-                80.0,
+                82.0,
                 format!("{} // {}", active_feed.code(), active_feed.label()),
                 format!(
                     "{} · ELEV {}",
@@ -535,6 +535,43 @@ pub fn resolve_camera(
                 format!("LOC: {}", state.walker.current_room),
             )
         }
+        CameraFeedId::HermesFlyCam => {
+            let h = &state.hermes;
+            let (sy, cy) = h.yaw.sin_cos();
+            let (sp, cp) = h.pitch.sin_cos();
+            let fwd = [sy * cp, sp, cy * cp];
+            let bob = if h.docked {
+                0.0
+            } else {
+                h.hover_phase.sin() * 0.05
+            };
+            // Place eye cleanly ahead of Hermes's front optic lens so his hull never clips the near plane
+            let eye = [
+                h.pos[0] + fwd[0] * 0.72,
+                h.pos[1] + bob + fwd[1] * 0.72,
+                h.pos[2] + fwd[2] * 0.72,
+            ];
+            let tgt = [
+                eye[0] + fwd[0] * 24.0,
+                eye[1] + fwd[1] * 24.0,
+                eye[2] + fwd[2] * 24.0,
+            ];
+            let sub = if h.active {
+                "LMB/ARROWS: FLY · SPACE/SHIFT: UP/DN · MOUSE: LOOK · ESC: EXIT".to_string()
+            } else if h.returning_home {
+                "AUTOPILOT // RETURNING TO ATRIUM DOCK".to_string()
+            } else {
+                "DOCKED // CENTRAL ATRIUM ALCOVE".to_string()
+            };
+            (
+                eye,
+                tgt,
+                [0.0, 1.0, 0.0],
+                76.0,
+                format!("{} // {}", active_feed.code(), active_feed.label()),
+                sub,
+            )
+        }
         CameraFeedId::ShipNoseUplink => {
             if let Some(ship) = state.uplink_ship() {
                 let (r, u, f) = basis_from_forward(ship.forward);
@@ -627,6 +664,12 @@ pub fn resolve_camera(
         raw_title
     };
 
+    let is_interior = if active_feed == CameraFeedId::HermesFlyCam {
+        OrbitalHavenState::is_pos_interior(state.hermes.pos)
+    } else {
+        active_feed.is_interior()
+    };
+
     ResolvedCamera {
         eye,
         target,
@@ -634,7 +677,7 @@ pub fn resolve_camera(
         fov_deg,
         title,
         subtitle,
-        is_interior: active_feed.is_interior(),
+        is_interior,
         is_uplink: active_feed.is_ship_uplink(),
     }
 }

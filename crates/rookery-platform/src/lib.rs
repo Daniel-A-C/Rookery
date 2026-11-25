@@ -157,6 +157,17 @@ pub struct MouseButtons {
     pub middle: bool,
 }
 
+/// Held directional and vertical flight keys polled during Direct Interaction Mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlightKeys {
+    pub up: bool,
+    pub down: bool,
+    pub left: bool,
+    pub right: bool,
+    pub space: bool,
+    pub shift: bool,
+}
+
 /// Returns the global cursor position in the same coordinate space as [`DisplayInfo::bounds_native`].
 pub fn cursor_position() -> Option<(f64, f64)> {
     #[cfg(target_os = "macos")]
@@ -186,6 +197,56 @@ pub fn mouse_buttons() -> MouseButtons {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         stub::mouse_buttons()
+    }
+}
+
+/// Returns currently held flight control keys (Arrow keys, Spacebar, Shift).
+pub fn flight_keys() -> FlightKeys {
+    #[cfg(target_os = "macos")]
+    {
+        macos::flight_keys()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::flight_keys()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        stub::flight_keys()
+    }
+}
+
+/// Consumes and returns accumulated relative mouse movement `(dx, dy)` since the last poll
+/// while mouse-look capture is active.
+pub fn take_mouse_delta() -> (f32, f32) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::take_mouse_delta()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::take_mouse_delta()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        stub::take_mouse_delta()
+    }
+}
+
+/// Enable or disable pointer-locked mouse-look capture (hides cursor and captures raw mouse deltas
+/// and flight key events). Must be called on the main thread.
+pub fn set_mouse_look_capture(enabled: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::set_mouse_look_capture(enabled);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::set_mouse_look_capture(enabled);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        stub::set_mouse_look_capture(enabled);
     }
 }
 

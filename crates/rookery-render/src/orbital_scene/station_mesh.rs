@@ -985,25 +985,88 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
             );
         }
         // Mid-level industrial mezzanine catwalk inside the 2-story Atrium (`Y = 3.0`)
-        let cat_x = if x_side < 0.0 { -8.8 } else { 8.8 };
+        // Both side decks extend cleanly back to Z = -13.6 (`X = ±6.7..±11.2`), meeting the Rear Skybridge
+        // flush at X = ±6.7 with zero overlap. Inner handrails stop at Z = -10.40 so the U-turn corners stay open!
+        // Starboard catwalk trims at Z = +7.2 to dock flush with the dedicated Bot Mini-Elevator at Z = +8.4.
+        let (cat_x, cat_z, cat_len, rail_z, rail_len) = if x_side < 0.0 {
+            (-8.95f32, -2.05f32, 23.1f32, -0.45f32, 19.90f32)
+        } else {
+            (8.95f32, -3.20f32, 20.8f32, -1.60f32, 17.60f32)
+        };
         op.push_box(
-            [cat_x, 3.0, -1.5],
-            [4.2, 0.45, 22.0],
+            [cat_x, 3.0, cat_z],
+            [4.5, 0.45, cat_len],
             Tile::FloorGrate,
             2.8,
             hull,
             0.0,
         );
-        let rail_x = if x_side < 0.0 { -6.8 } else { 6.8 };
+        let rail_x = if x_side < 0.0 { -6.82 } else { 6.82 };
         op.push_box(
-            [rail_x, 3.65, -1.5],
-            [0.24, 0.85, 22.0],
+            [rail_x, 3.65, rail_z],
+            [0.24, 0.85, rail_len],
             Tile::HazardStripe,
             2.2,
             bright_white,
             0.0,
         );
+        // Front end-railing cap on the Port mezzanine dead-end (`Z = +9.38`)
+        if x_side < 0.0 {
+            op.push_box(
+                [-9.07, 3.65, 9.38],
+                [4.26, 0.85, 0.24],
+                Tile::HazardStripe,
+                2.2,
+                bright_white,
+                0.0,
+            );
+        }
     }
+    // Rear Upper Skybridge connecting Port and Starboard mezzanines into a continuous U-walkway (`Y = 3.0`)
+    // Spans X = -6.7..+6.7 flush between side decks; handrail meets side rails cleanly at Z = -10.40 with zero clipping.
+    op.push_box(
+        [0.0, 3.0, -12.0],
+        [13.4, 0.45, 3.2],
+        Tile::FloorGrate,
+        2.8,
+        hull,
+        0.0,
+    );
+    op.push_box(
+        [0.0, 3.65, -10.52],
+        [13.88, 0.85, 0.24],
+        Tile::HazardStripe,
+        2.2,
+        bright_white,
+        0.0,
+    );
+    // Dedicated Atrium Bot Mini-Elevator Guide Rails & Header Frame (`X = +8.8, Z = +8.4`)
+    for rz in [7.55f32, 9.25f32] {
+        op.push_box(
+            [10.25, 1.15, rz],
+            [0.34, 10.1, 0.34],
+            Tile::DarkSteelRib,
+            2.5,
+            rib,
+            0.0,
+        );
+    }
+    op.push_box(
+        [9.55, 6.25, 8.4],
+        [1.85, 0.55, 2.3],
+        Tile::DarkSteelRib,
+        2.2,
+        rib,
+        0.0,
+    );
+    op.push_box(
+        [10.05, 1.15, 8.4],
+        [0.14, 9.4, 0.24],
+        Tile::CeilingLight,
+        2.0,
+        accent_em,
+        0.95,
+    );
     // Atrium Rear Bulkhead (`Z = -14.6`) split around the Axial Pipe Tunnel doorway (`X:-2.6..2.6, Y:-3.9..1.8`)
     op.push_box(
         [-7.3, 3.4, -14.6],
@@ -1037,11 +1100,83 @@ pub fn build_static_station(theme: &OrbitalTheme) -> StaticStationMeshes {
         bright_white,
         0.0,
     );
-    // Atrium Server & CRT Status Pillars + Ceiling Fluorescent Strips
+    // HERMES-01 Home Docking Alcove mounted high on the Atrium Rear-Port bulkhead (`X = -5.8, Y = 6.85..8.52, Z = -14.15..-12.0`)
+    // Clearly visible on the upper-left of `CAM-07 // Central Core Atrium` and well above the activity panel at `[-3.6, 5.0, -14.1]`.
+    {
+        let hx = -5.8f32;
+        // Cantilevered charging shelf platform & hazard-striped landing lip
+        op.push_box(
+            [hx, 6.85, -13.1],
+            [3.2, 0.28, 2.1],
+            Tile::DarkSteelRib,
+            2.4,
+            rib,
+            0.0,
+        );
+        op.push_box(
+            [hx, 6.86, -12.02],
+            [3.24, 0.30, 0.22],
+            Tile::HazardStripe,
+            1.8,
+            bright_white,
+            0.0,
+        );
+        // Inductive circular charging coil pad seated on the shelf
+        op.push_cylinder(
+            [hx, 7.04, -13.1],
+            0.82,
+            0.88,
+            0.12,
+            8,
+            Tile::ReactorCoil,
+            accent_em,
+            0.95,
+        );
+        // Underside structural cantilever struts anchoring the shelf to the rear bulkhead
+        for sx in [hx - 1.25, hx + 1.25] {
+            op.push_box(
+                [sx, 6.35, -13.65],
+                [0.28, 0.85, 0.95],
+                Tile::DarkSteelRib,
+                2.0,
+                rib,
+                0.0,
+            );
+        }
+        // Protective upper cowl/hood & side docking guide rails
+        op.push_box(
+            [hx, 8.52, -13.25],
+            [3.3, 0.26, 1.85],
+            Tile::HullPanel,
+            3.0,
+            dark_hull,
+            0.0,
+        );
+        for sx in [hx - 1.52, hx + 1.52] {
+            op.push_box(
+                [sx, 7.68, -13.35],
+                [0.24, 1.52, 1.55],
+                Tile::DarkSteelRib,
+                2.2,
+                rib,
+                0.0,
+            );
+        }
+        // Backplate telemetry CRT screen ("HERMES-01 DOCK")
+        op.push_box(
+            [hx, 7.72, -14.08],
+            [2.2, 1.05, 0.16],
+            Tile::CrtConsole,
+            1.8,
+            accent_em,
+            0.85,
+        );
+    }
+    // Atrium Server & CRT Status Pillars (shortened to Y = -3.88..+0.72 so they sit cleanly below the Y = 3.0 mezzanine!)
     for (px, pz) in [(-6.8, 5.2), (6.8, 5.2), (-7.2, -10.2), (7.2, -10.2)] {
         op.push_box(
-            [px, -0.5, pz],
-            [2.0, 6.6, 2.0],
+            [px, -1.58, pz],
+            [2.0, 4.6, 2.0],
             Tile::ServerRack,
             2.2,
             bright_white,

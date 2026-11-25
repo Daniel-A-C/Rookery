@@ -616,6 +616,7 @@ impl HostState {
         let apps_dir = self.apps_dir.clone();
         let popover_open = self.popover_visible.load(Ordering::Relaxed);
         let _ = app.run_on_main_thread(move || {
+            rookery_platform::set_mouse_look_capture(false);
             crate::webview_sandbox::update_webview_wallpaper(
                 &app_clone,
                 &app_id_str,
@@ -664,7 +665,9 @@ impl HostState {
             for effect in effects {
                 match effect {
                     Effect::Promote => {
+                        let mut enable_mouse_look = false;
                         if let Ok(inner) = state.inner.lock() {
+                            enable_mouse_look = inner.settings.active_app == "orbital-haven";
                             for d in inner.displays.values() {
                                 if !crate::webview_sandbox::set_interactive_webviews(
                                     &app_clone, true, &d.info,
@@ -675,8 +678,12 @@ impl HostState {
                                 }
                             }
                         }
+                        if enable_mouse_look {
+                            rookery_platform::set_mouse_look_capture(true);
+                        }
                     }
                     Effect::Demote => {
+                        rookery_platform::set_mouse_look_capture(false);
                         if let Ok(inner) = state.inner.lock() {
                             for d in inner.displays.values() {
                                 if !crate::webview_sandbox::set_interactive_webviews(
@@ -705,6 +712,7 @@ impl HostState {
     /// Persist clean shutdown and stop the render thread.
     pub fn clean_shutdown(&self) {
         self.shutting_down.store(true, Ordering::SeqCst);
+        rookery_platform::set_mouse_look_capture(false);
         if let Ok(mut inner) = self.inner.lock() {
             inner.settings.mark_clean_shutdown(Utc::now());
             if let Err(e) = inner.settings.save(&self.settings_path) {

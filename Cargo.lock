@@ -3763,6 +3763,7 @@ name = "rookery-platform"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block2",
  "log",
  "objc2",
  "objc2-app-kit",

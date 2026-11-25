@@ -2,21 +2,26 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result, bail};
+use block2::RcBlock;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2_app_kit::{
-    NSApplication, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSScreen, NSView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSApplication, NSColor, NSCursor, NSEvent, NSEventMask, NSEventModifierFlags, NSEventType,
+    NSScreen, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowOcclusionState,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
-    CGDisplayIsAsleep, CGEvent, CGEventSource, CGEventSourceStateID, CGMainDisplayID,
-    CGMouseButton, CGRectMakeWithDictionaryRepresentation, CGWindowLevelForKey, CGWindowLevelKey,
-    CGWindowListCopyWindowInfo, CGWindowListOption, kCGDesktopIconWindowLevel, kCGNullWindowID,
-    kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
+    CGAssociateMouseAndMouseCursorPosition, CGDisplayIsAsleep, CGEvent, CGEventSource,
+    CGEventSourceStateID, CGMainDisplayID, CGMouseButton, CGRectMakeWithDictionaryRepresentation,
+    CGWindowLevelForKey, CGWindowLevelKey, CGWindowListCopyWindowInfo, CGWindowListOption,
+    kCGDesktopIconWindowLevel, kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer,
+    kCGWindowOwnerPID,
 };
 use objc2_foundation::NSProcessInfo;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -27,7 +32,8 @@ use rookery_core::occlusion::{DEFAULT_COVERAGE_THRESHOLD, UNCOVERED_THRESHOLD, c
 use rookery_core::{DisplayId, Rect};
 
 use crate::{
-    DesktopLayer, DisplayInfo, DisplayOcclusion, MouseButtons, OcclusionProbe, PowerProbe,
+    DesktopLayer, DisplayInfo, DisplayOcclusion, FlightKeys, MouseButtons, OcclusionProbe,
+    PowerProbe,
 };
 
 /// Map of `DisplayId` -> raw `NSWindow` pointer (only dereferenced on the main thread or for
@@ -343,6 +349,145 @@ pub fn mouse_buttons() -> MouseButtons {
         left,
         right,
         middle,
+    }
+}
+
+static MOUSE_LOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+static FLIGHT_KEYS: LazyLock<Mutex<FlightKeys>> =
+    LazyLock::new(|| Mutex::new(FlightKeys::default()));
+static MOUSE_DELTA: LazyLock<Mutex<(f32, f32)>> = LazyLock::new(|| Mutex::new((0.0, 0.0)));
+static EVENT_MONITOR: LazyLock<Mutex<usize>> = LazyLock::new(|| Mutex::new(0));
+
+pub fn flight_keys() -> FlightKeys {
+    FLIGHT_KEYS.lock().map(|k| *k).unwrap_or_default()
+}
+
+pub fn take_mouse_delta() -> (f32, f32) {
+    if let Ok(mut d) = MOUSE_DELTA.lock() {
+        let out = *d;
+        *d = (0.0, 0.0);
+        out
+    } else {
+        (0.0, 0.0)
+    }
+}
+
+pub fn set_mouse_look_capture(enabled: bool) {
+    if enabled {
+        if MOUSE_LOOK_ACTIVE.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if let Ok(mut k) = FLIGHT_KEYS.lock() {
+            *k = FlightKeys::default();
+        }
+        if let Ok(mut d) = MOUSE_DELTA.lock() {
+            *d = (0.0, 0.0);
+        }
+
+        let mask = NSEventMask::KeyDown
+            | NSEventMask::KeyUp
+            | NSEventMask::FlagsChanged
+            | NSEventMask::MouseMoved
+            | NSEventMask::LeftMouseDragged
+            | NSEventMask::RightMouseDragged;
+
+        let handler = RcBlock::new(|ev_ptr: NonNull<NSEvent>| -> *mut NSEvent {
+            // SAFETY: AppKit passes a valid non-null `NSEvent` pointer to the local monitor.
+            let ev: &NSEvent = unsafe { ev_ptr.as_ref() };
+            let ty = ev.r#type();
+            match ty {
+                NSEventType::MouseMoved
+                | NSEventType::LeftMouseDragged
+                | NSEventType::RightMouseDragged => {
+                    let dx = ev.deltaX() as f32;
+                    let dy = ev.deltaY() as f32;
+                    if let Ok(mut d) = MOUSE_DELTA.lock() {
+                        d.0 += dx;
+                        d.1 += dy;
+                    }
+                    ev_ptr.as_ptr()
+                }
+                NSEventType::FlagsChanged => {
+                    let shift = ev.modifierFlags().contains(NSEventModifierFlags::Shift);
+                    if let Ok(mut k) = FLIGHT_KEYS.lock() {
+                        k.shift = shift;
+                    }
+                    ev_ptr.as_ptr()
+                }
+                NSEventType::KeyDown | NSEventType::KeyUp => {
+                    let down = ty == NSEventType::KeyDown;
+                    let code = ev.keyCode();
+                    let handled = if let Ok(mut k) = FLIGHT_KEYS.lock() {
+                        match code {
+                            126 => {
+                                k.up = down;
+                                true
+                            }
+                            125 => {
+                                k.down = down;
+                                true
+                            }
+                            123 => {
+                                k.left = down;
+                                true
+                            }
+                            124 => {
+                                k.right = down;
+                                true
+                            }
+                            49 => {
+                                k.space = down;
+                                true
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    };
+                    if handled {
+                        std::ptr::null_mut()
+                    } else {
+                        ev_ptr.as_ptr()
+                    }
+                }
+                _ => ev_ptr.as_ptr(),
+            }
+        });
+
+        let monitor =
+            unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &handler) };
+        if let Some(m) = monitor
+            && let Ok(mut slot) = EVENT_MONITOR.lock()
+        {
+            *slot = Retained::into_raw(m) as usize;
+        }
+        let _ = CGAssociateMouseAndMouseCursorPosition(false);
+        NSCursor::hide();
+        log::info!("enabled macOS mouse-look & flight key capture");
+    } else {
+        if let Ok(mut k) = FLIGHT_KEYS.lock() {
+            *k = FlightKeys::default();
+        }
+        if let Ok(mut d) = MOUSE_DELTA.lock() {
+            *d = (0.0, 0.0);
+        }
+        if !MOUSE_LOOK_ACTIVE.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        let raw_ptr = EVENT_MONITOR
+            .lock()
+            .map(|mut slot| std::mem::replace(&mut *slot, 0))
+            .unwrap_or(0);
+        if raw_ptr != 0 {
+            // SAFETY: `raw_ptr` was produced by `Retained::into_raw` on the main thread.
+            if let Some(mon) = unsafe { Retained::<AnyObject>::from_raw(raw_ptr as *mut AnyObject) }
+            {
+                unsafe { NSEvent::removeMonitor(&mon) };
+            }
+        }
+        let _ = CGAssociateMouseAndMouseCursorPosition(true);
+        NSCursor::unhide();
+        log::info!("disabled macOS mouse-look & flight key capture");
     }
 }
 
