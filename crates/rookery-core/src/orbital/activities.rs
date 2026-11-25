@@ -496,7 +496,7 @@ impl ReactorCryoCycleState {
             let deposited = idx + usize::from(u >= 0.88);
             self.vat_rod_count = (deposited as u8).min(REACTOR_ROD_COUNT as u8);
 
-            for i in 0..REACTOR_ROD_COUNT {
+            for (i, heat) in self.rod_heat.iter_mut().enumerate() {
                 if i < idx || (i == idx && u >= 0.62) {
                     // Freshly swapped rod starts cool cyan and slowly warms slightly over the cycle
                     let since_swap = if i == idx {
@@ -504,14 +504,14 @@ impl ReactorCryoCycleState {
                     } else {
                         0.08 + ((idx - i) as f32 * 0.14)
                     };
-                    self.rod_heat[i] = since_swap.clamp(0.05, 0.52);
+                    *heat = since_swap.clamp(0.05, 0.52);
                 } else if i == idx {
                     // Currently active manifold heats up to peak orange until swapped at u=0.62
-                    self.rod_heat[i] = (0.78 + u * 0.35).clamp(0.0, 1.0);
+                    *heat = (0.78 + u * 0.35).clamp(0.0, 1.0);
                 } else {
                     // Waiting manifolds gradually heat up as their turn approaches
                     let ahead = (i - idx) as f32;
-                    self.rod_heat[i] = (0.82 - ahead * 0.14 + u * 0.12).clamp(0.35, 0.95);
+                    *heat = (0.82 - ahead * 0.14 + u * 0.12).clamp(0.35, 0.95);
                 }
             }
         } else {
